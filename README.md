@@ -3,7 +3,7 @@
 A convergence loop that runs independent review agents against a pushed commit, applies the findings
 that survive verification, and repeats until every agent reports nothing new.
 
-Derived from a real run on `vefaas-dispatcher` !1158 (exponential CreateSandbox retry backoff).
+Derived from a real run on `worker-pool` #128 (exponential CreateSandbox retry backoff).
 Three rounds, two agents (`codex`, `droid`), converged. See [CASE-STUDY.md](CASE-STUDY.md) for the
 findings and the numbers.
 

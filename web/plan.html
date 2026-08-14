@@ -155,7 +155,7 @@
     <div class="kicker">plan and method</div>
     <h1>Run a commit past several independent reviewers until they stop finding things</h1>
     <div class="meta">
-      <span>extracted from vefaas-dispatcher !1158</span>
+      <span>extracted from worker-pool #128</span>
       <span>3 rounds &middot; 2 agents &middot; converged</span>
       <span>node 24 &middot; zero runtime deps</span>
     </div>
@@ -302,7 +302,7 @@
   </section>
 
   <section>
-    <h2>The reference run: !1158</h2>
+    <h2>The reference run: #128</h2>
     <p>Change under review: replace a flat 30s retry wait after a failed <code>CreateSandbox</code> with
       exponential backoff (1s &rarr; 60s cap, jitter) in a prewarm-pool worker. Two agents,
       <code>codex</code> and <code>droid</code>, plus an in-platform reviewer that had already produced
@@ -444,7 +444,7 @@
   <section>
     <h2>Where this actually is</h2>
     <p>The proof of concept does <strong>not</strong> build the orchestrator. The main agent drives the
-      loop by hand, as it did for !1158, and writes the run file the console reads. That keeps the POC to
+      loop by hand, as it did for #128, and writes the run file the console reads. That keeps the POC to
       the question worth answering &mdash; <em>is a second PR's review useful?</em> &mdash; rather than
       spending the time on process supervision.</p>
 

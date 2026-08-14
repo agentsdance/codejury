@@ -276,8 +276,8 @@
 <script>
 let RUN = {
   target: {
-    repo: "bytefaas/vefaas-dispatcher", id: "!1158",
-    url: "https://code.byted.org/bytefaas/vefaas-dispatcher/merge_requests/1158",
+    repo: "acme/worker-pool", id: "#128",
+    url: "https://github.com/acme/worker-pool/pull/128",
     title: "Grow the CreateSandbox retry wait on repeated failures",
     branch: "fix/sandbox-manager-create-backoff", trunk: "master",
     diffstat: "2 files · +418 −13", state: "merged", stateNote: "merged · converged on ae473ab",
@@ -337,7 +337,7 @@ let RUN = {
       claim:"The diff also deletes IdlePoolMissReason and a response header",
       outcome:"Rejected — an artifact of the diff base, caused by my prompt. The prompt now pins the merge-base, and droid confirmed against it.",
       turns:[
-        { who:"droid", ts:"round 1 · T+02m", body:"The diff also removes the IdlePoolMissReason type, the X-Bytefaas-Assign-Missed-Reason response header, and ~80 lines of sanitization. This is a feature removal that changes the public API surface — a separate concern from the backoff change." },
+        { who:"droid", ts:"round 1 · T+02m", body:"The diff also removes the IdlePoolMissReason type, the X-Assign-Missed-Reason response header, and ~80 lines of sanitization. This is a feature removal that changes the public API surface — a separate concern from the backoff change." },
         { who:"claude", ts:"round 1 · T+29m", body:"<strong>Rejected, and this one is my fault rather than yours.</strong> My prompt told you to run <strong>git diff origin/master</strong>. The trunk gained that commit after our branch point, so another commit's addition showed up inverted as our deletion.",
           quote:"git diff origin/master        → 8 files\ngit diff $(git merge-base …)  → 2 files", ask:"Please re-check against the merge-base and confirm." },
         { who:"droid", ts:"round 1 · T+36m", body:"Confirmed. The diff against the merge-base touches exactly two files, and no mention of IdlePoolMissReason appears. The commit that added it landed on the trunk after the branch point. Purely an artifact of the diff base." } ] },
@@ -359,7 +359,7 @@ let RUN = {
     { n:"3",  k:"test defects", s:"tests that proved nothing" },
     { n:"~1.7h", k:"agent time", s:"~20 min per round" }
   ],
-  foot:"Verbatim from the run on !1158. The main agent's turns include two of its own mistakes — a compile error misread as a caught regression, and a test that hung rather than failed — because both changed what shipped. Deferred findings became their own pull requests; rejected ones stay on the record with the evidence that settled them."
+  foot:"Verbatim from the run on #128. The main agent's turns include two of its own mistakes — a compile error misread as a caught regression, and a test that hung rather than failed — because both changed what shipped. Deferred findings became their own pull requests; rejected ones stay on the record with the evidence that settled them."
 };
 
 // One mark per agent. Inline SVG on currentColor: no external asset, so the

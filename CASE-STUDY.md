@@ -1,4 +1,4 @@
-# Case study: vefaas-dispatcher !1158
+# Case study: worker-pool #128
 
 The run this method was extracted from. Change under review: replace a flat 30s retry wait after a
 failed `CreateSandbox` with exponential backoff (1s → 60s cap, jitter), in a prewarm-pool worker.
