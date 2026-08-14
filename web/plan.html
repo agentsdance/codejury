@@ -1,0 +1,505 @@
+<!doctype html>
+<title>Plan and method</title>
+<style>
+  /* tokens copied from index.html so the two pages read as one product */
+  :root {
+    --ground:#F4F6F8; --surface:#FFFFFF; --surface-alt:#EDF0F4;
+    --line:#D7DDE4; --line-soft:#E6EAEF; --ink:#14181D; --ink-2:#39434F; --muted:#5A6572;
+    --accent:#3A6B8A; --accent-soft:#E2ECF3; --main-hue:#6A4E8C; --main-soft:#EDE6F4;
+    --codex:#3A6B8A; --droid:#1F7A6B; --droid-soft:#DDF0EC;
+    --ok:#2E7D5B; --ok-soft:#E0F0E8; --warn:#B07A2B; --warn-soft:#F6ECD9;
+    --bad:#A8443A; --bad-soft:#F6E3E0;
+    --shadow:0 1px 2px rgba(20,24,29,.05), 0 8px 24px -14px rgba(20,24,29,.20);
+    --serif: ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans: ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0E1216; --surface:#161C23; --surface-alt:#1C232B;
+      --line:#2B343E; --line-soft:#222A33; --ink:#E4E9EE; --ink-2:#B4BEC9; --muted:#8593A2;
+      --accent:#7FB0D0; --accent-soft:#1A2B38; --main-hue:#B49AD4; --main-soft:#241C31;
+      --codex:#7FB0D0; --droid:#63C4B0; --droid-soft:#142C28;
+      --ok:#6FC49B; --ok-soft:#15271E; --warn:#D9A857; --warn-soft:#292013;
+      --bad:#E08076; --bad-soft:#2B1816;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -16px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0E1216; --surface:#161C23; --surface-alt:#1C232B;
+    --line:#2B343E; --line-soft:#222A33; --ink:#E4E9EE; --ink-2:#B4BEC9; --muted:#8593A2;
+    --accent:#7FB0D0; --accent-soft:#1A2B38; --main-hue:#B49AD4; --main-soft:#241C31;
+    --codex:#7FB0D0; --droid:#63C4B0; --droid-soft:#142C28;
+    --ok:#6FC49B; --ok-soft:#15271E; --warn:#D9A857; --warn-soft:#292013;
+    --bad:#E08076; --bad-soft:#2B1816;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -16px rgba(0,0,0,.75);
+  }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans);
+         font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+         overflow-wrap:break-word; }
+  .wrap { max-width:920px; margin:0 auto; padding:34px 22px 80px;
+          display:flex; flex-direction:column; gap:34px; }
+
+  /* header */
+  .hd { display:flex; flex-direction:column; gap:12px; }
+  .nav { display:flex; gap:16px; align-items:baseline; font-family:var(--mono); font-size:11.5px; }
+  .nav a { color:var(--accent); text-decoration:none;
+           border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent); }
+  .nav a:hover { border-bottom-color:var(--accent); }
+  .nav a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .kicker { font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+            text-transform:uppercase; color:var(--muted); }
+  h1 { font-family:var(--serif); font-size:clamp(26px,3.6vw,38px); font-weight:600; margin:0;
+       line-height:1.12; letter-spacing:-.015em; text-wrap:balance; }
+  .meta { display:flex; flex-wrap:wrap; gap:6px 18px; font-family:var(--mono);
+          font-size:12px; color:var(--muted); }
+  .lede { margin:6px 0 0; font-size:16px; color:var(--ink-2); max-width:72ch; }
+
+  /* sections */
+  section { display:flex; flex-direction:column; gap:14px;
+            border-top:1px solid var(--line); padding-top:28px; }
+  h2 { font-family:var(--serif); font-size:22px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  h3 { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+       color:var(--muted); font-weight:500; margin:8px 0 -4px; }
+  p { margin:0; max-width:72ch; color:var(--ink-2); }
+  p.tight { font-size:13.4px; color:var(--muted); }
+  strong { color:var(--ink); font-weight:600; }
+  a { color:var(--accent); }
+  code { font-family:var(--mono); font-size:.9em; background:var(--surface-alt);
+         border:1px solid var(--line-soft); border-radius:3px; padding:1px 5px; }
+
+  /* the round is a real sequence, so it gets real numbers */
+  ol.steps { list-style:none; counter-reset:s; margin:0; padding:0; }
+  /* The marker is positioned, not a grid column. As a grid, every child after
+     the first became its own item and wrapped into the 28px number column —
+     the body text rendered one character wide. */
+  ol.steps li { counter-increment:s; position:relative; padding:11px 0 11px 42px;
+                border-top:1px dashed var(--line-soft); }
+  ol.steps li:first-child { border-top:0; }
+  ol.steps li::before { content:counter(s); position:absolute; left:0; top:11px;
+                        font-family:var(--mono); font-size:12px;
+                        color:var(--accent); line-height:1.9; }
+  ol.steps b { color:var(--ink); }
+  ol.steps .sub { display:block; color:var(--muted); font-size:13.2px; }
+  .loopback { font-family:var(--mono); font-size:11.5px; color:var(--muted);
+              border-top:1px dashed var(--line-soft); padding-top:11px; }
+
+  /* unordered facts stay unnumbered — they are a set, not a sequence */
+  ul.plain { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px; }
+  /* Same fix as the steps: a bare text run after <b> is its own grid item. */
+  ul.plain li { position:relative; padding-left:21px;
+                color:var(--ink-2); font-size:14.2px; }
+  ul.plain li::before { content:""; position:absolute; left:0; top:.62em;
+                        width:5px; height:5px; border-radius:50%;
+                        background:var(--line); }
+  ul.plain li b { color:var(--ink); }
+
+  /* wide content scrolls inside itself, never the page */
+  .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:4px;
+            background:var(--surface); box-shadow:var(--shadow); max-width:100%; }
+  table { border-collapse:collapse; width:100%; min-width:540px; font-size:13.3px; }
+  th { text-align:left; font-family:var(--mono); font-size:10px; letter-spacing:.11em;
+       text-transform:uppercase; color:var(--muted); font-weight:500; padding:10px 15px;
+       background:var(--surface-alt); border-bottom:1px solid var(--line); white-space:nowrap; }
+  td { padding:11px 15px; border-bottom:1px solid var(--line-soft);
+       vertical-align:top; color:var(--ink-2); }
+  tr:last-child td { border-bottom:0; }
+  td.mono, th.mono { font-family:var(--mono); font-size:12px; white-space:nowrap; }
+  td b { color:var(--ink); }
+  .yes { color:var(--ok); font-family:var(--mono); }
+
+  pre { margin:0; overflow-x:auto; max-width:100%; background:var(--surface-alt);
+        border:1px solid var(--line); border-radius:4px; padding:14px 16px;
+        font-family:var(--mono); font-size:12.3px; line-height:1.62; color:var(--ink-2); }
+
+  .callout { border-left:2px solid var(--accent); background:var(--accent-soft);
+             padding:12px 16px; border-radius:0 3px 3px 0; font-size:14px; color:var(--ink-2); }
+  .quote { border-left:2px solid var(--line); padding:2px 0 2px 15px; margin:0;
+           font-family:var(--serif); font-size:15.5px; color:var(--ink-2); max-width:66ch; }
+
+  /* triage: the section that carries the value, so it gets the panel */
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:4px;
+           box-shadow:var(--shadow); padding:20px 22px; display:flex;
+           flex-direction:column; gap:16px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:1px;
+           background:var(--line-soft); border:1px solid var(--line); }
+  .stats div { background:var(--surface); padding:13px 15px; display:flex;
+               flex-direction:column; gap:2px; }
+  .stats .n { font-family:var(--mono); font-size:22px; font-variant-numeric:tabular-nums;
+              letter-spacing:-.02em; }
+  .stats .k { font-family:var(--mono); font-size:10px; letter-spacing:.11em;
+              text-transform:uppercase; color:var(--muted); }
+  .stats .bad .n { color:var(--bad); }
+  .verdict { font-family:var(--mono); font-size:10.5px; letter-spacing:.08em;
+             text-transform:uppercase; padding:2px 8px; border-radius:3px; white-space:nowrap;
+             display:inline-block; margin-bottom:5px; }
+  .verdict[data-v="wrong"] { color:var(--bad); background:var(--bad-soft); }
+  .verdict[data-v="ours"] { color:var(--warn); background:var(--warn-soft); }
+  .verdict[data-v="partial"] { color:var(--accent); background:var(--accent-soft); }
+
+  footer { border-top:1px solid var(--line); padding-top:16px; color:var(--muted);
+           font-size:12.6px; max-width:78ch; }
+
+  @media (max-width:620px) {
+    .wrap { padding:26px 16px 60px; gap:28px; }
+    ol.steps li { padding-left:32px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="hd">
+    <nav class="nav"><a href="index.html">&larr; console</a><span class="kicker">macr &middot; reference</span></nav>
+    <div class="kicker">plan and method</div>
+    <h1>Run a commit past several independent reviewers until they stop finding things</h1>
+    <div class="meta">
+      <span>extracted from vefaas-dispatcher !1158</span>
+      <span>3 rounds &middot; 2 agents &middot; converged</span>
+      <span>node 24 &middot; zero runtime deps</span>
+    </div>
+    <p class="lede">A convergence loop: run independent review agents against a pushed commit, apply the
+      findings that survive verification, push, and repeat until every agent reports nothing new. The
+      loop is not the interesting part &mdash; the triage gate is. Roughly a third of what the reviewers
+      suggested did not survive it.</p>
+  </header>
+
+  <section>
+    <h2>One round</h2>
+    <p>Everything below repeats per round. The round is genuinely ordered, so it is numbered.</p>
+    <ol class="steps">
+      <li><b>Pin a worktree at the pushed HEAD.</b>
+        <span class="sub">Diff against <code>git merge-base HEAD origin/master</code>, never the trunk
+          tip &mdash; see the traps below.</span></li>
+      <li><b>Launch every enabled agent in parallel, in the background.</b>
+        <span class="sub">The slowest agent sets the round's wall clock. Serialising a 20-minute agent
+          behind a 2-minute one wastes most of it.</span></li>
+      <li><b>Reproduce each finding against the real code &mdash; before touching anything.</b>
+        <span class="sub">This is the step most easily skipped and the one carrying the value.</span></li>
+      <li><b>Fix it, add a regression test, then reintroduce the bug and confirm the test fails.</b>
+        <span class="sub">A test that passes both with and without the fix is decoration.</span></li>
+      <li><b>Format, vet, run the full suite, amend, push <code>--force-with-lease</code>.</b>
+        <span class="sub">Then append the newly-settled items to the prompt.</span></li>
+      <li><b>Stop iff every agent emitted the stop token on the same commit.</b>
+        <span class="sub">Otherwise round N+1.</span></li>
+    </ol>
+    <p class="loopback">&#8629; back to 1, at the new sha</p>
+
+    <h3>Why it terminates instead of churning</h3>
+    <ul class="plain">
+      <li><b>A growing settled list.</b> Without it, each fresh agent rediscovers the same deferred
+        issues every round, forever.</li>
+      <li><b>A literal stop token.</b> Termination is a <code>grep</code>, not a judgement call.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The prompt</h2>
+    <p><code>prompts/review-round.md</code> has four sections, in this order.</p>
+    <ol class="steps">
+      <li><b>What the change does.</b>
+        <span class="sub">The design in a few bullets, so the agent does not have to infer intent.</span></li>
+      <li><b>ALREADY SETTLED &mdash; do NOT re-report.</b>
+        <span class="sub">A numbered list, appended to after every round. For deliberately deferred items,
+          include the reasoning, so an agent can argue with the reasoning instead of re-proposing a fix
+          you already rejected.</span></li>
+      <li><b>What you want.</b>
+        <span class="sub">The specific classes of defect. Always include the test-quality question:</span></li>
+      <li><b>The stop token.</b>
+        <span class="sub">Say exactly <code>NO NEW FINDINGS</code> on its own line.</span></li>
+    </ol>
+    <p class="quote">&ldquo;Would each assertion actually fail if the behaviour it guards regressed? Read
+      the assertions, not the test names.&rdquo;</p>
+    <p class="tight">That question produced every finding in rounds 2 and 3.</p>
+    <div class="callout">Plus <strong>DO NOT edit any files</strong>. You want findings to triage, not
+      competing patches to merge.</div>
+    <p><code>prompts/feedback.md</code> replies per finding as <strong>ACCEPTED / AGREE-BUT-DEFERRED /
+      REJECTED</strong>, each with reasoning and each ending in a direct question. Closing the loop that
+      way is what turned two &ldquo;you should fix this&rdquo; items into explicit agreement to defer them.</p>
+  </section>
+
+  <section>
+    <h2>What did not survive triage</h2>
+    <p>Five suggestions were rejected outright and two deferred by agreement, against three accepted.
+      They are recorded because a tool that reports every finding as real is lying about its own
+      output &mdash; and because verifying the rejections is what makes the accepted findings
+      trustworthy.</p>
+
+    <div class="stats">
+      <div><span class="n">3</span><span class="k">accepted</span></div>
+      <div class="bad"><span class="n">5</span><span class="k">rejected</span></div>
+      <div><span class="n">2</span><span class="k">deferred</span></div>
+      <div><span class="n">4</span><span class="k">operator errors</span></div>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>suggestion</th><th>why it died</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>&ldquo;the diff also deletes <code>IdlePoolMissReason</code>&rdquo;</td>
+            <td><span class="verdict" data-v="ours">prompt bug</span><br>Artifact of diffing against the
+              trunk tip after trunk moved. Our mistake, not the reviewer's; the prompt now pins the
+              merge-base.</td>
+          </tr>
+          <tr>
+            <td>&ldquo;guard the select with <code>if ctx.Err() != nil { return }</code>&rdquo;</td>
+            <td><span class="verdict" data-v="wrong">fix wrong</span><br>The finding was right. The
+              proposed fix consumes a queued job without releasing its in-flight reservation &mdash;
+              trading a bounded extra RPC for a permanent pool under-fill.</td>
+          </tr>
+          <tr>
+            <td>&ldquo;<code>PatchConvey</code> around a pure function is unnecessary&rdquo;</td>
+            <td><span class="verdict" data-v="wrong">wrong</span><br><code>convey.So</code> panics outside
+              a Convey scope. Proven with a throwaway test.</td>
+          </tr>
+          <tr>
+            <td>&ldquo;the failure counter is neither an all-error nor a consecutive-generic streak&rdquo;</td>
+            <td><span class="verdict" data-v="partial">half taken</span><br>Mischaracterisation &mdash; it
+              is precisely <em>generic failures since this worker last succeeded</em>. The actionable half
+              (make that explicit) was taken.</td>
+          </tr>
+          <tr>
+            <td>&ldquo;extract the test helper to package level&rdquo;</td>
+            <td><span class="verdict" data-v="wrong">speculative</span><br>Generality for a single caller.
+              Repeated verbatim the next round &mdash; a decent signal of convergence.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Operator errors the discipline caught</h3>
+    <p class="tight">All near-misses that would otherwise have produced false confidence.</p>
+    <ul class="plain">
+      <li>A simulated regression deleted the only use of an import, so the observed FAIL was a
+        <b>compile error</b>, not a failing assertion. Re-run with the import kept in use &mdash; and the
+        tests then passed, confirming the finding.</li>
+      <li>Two verification runs <b>never executed</b>: wrapped in <code>timeout</code>, which does not
+        exist on macOS (exit 127). Empty output read as success.</li>
+      <li>A new deterministic test <b>hung</b> under regression instead of failing &mdash; the worker
+        drained the buffered channel then blocked on an open, empty one. Closing the channel made it fail
+        in 0.00s.</li>
+      <li>A mock rebuilt inside a loop <b>silently stopped applying</b> after the first iteration, so
+        later iterations exercised the real implementation.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Triage rules that earned their place</h2>
+    <ul class="plain">
+      <li><b>Reproduce before fixing.</b> Every accepted finding was demonstrated against the real code
+        first.</li>
+      <li><b>Every fix gets a regression test, and the test gets verified by reintroducing the bug.</b></li>
+      <li><b>A test that hangs on regression is worse than one that fails.</b> It burns the CI timeout and
+        reads as an infra fault.</li>
+      <li><b>Distinguish &ldquo;no hits&rdquo; from &ldquo;broken query&rdquo;.</b> When verifying against
+        logs or metrics, run a control you know should return rows. A zero is not evidence until the pipe
+        is proven.</li>
+      <li><b>An agent's suggested fix can be wrong even when its finding is right.</b> Judge the two
+        separately.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The reference run: !1158</h2>
+    <p>Change under review: replace a flat 30s retry wait after a failed <code>CreateSandbox</code> with
+      exponential backoff (1s &rarr; 60s cap, jitter) in a prewarm-pool worker. Two agents,
+      <code>codex</code> and <code>droid</code>, plus an in-platform reviewer that had already produced
+      four rounds of findings before the loop started.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="mono">round</th><th class="mono">commit</th><th>codex</th><th>droid</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">1</td><td class="mono">bf94454</td><td>no production issues; 1 low (test tautology)</td><td class="mono">NO NEW FINDINGS</td></tr>
+          <tr><td class="mono">2</td><td class="mono">6901882</td><td>no production issues; 2 low (test precision)</td><td class="mono">NO NEW FINDINGS</td></tr>
+          <tr><td class="mono">3</td><td class="mono">ae473ab</td><td class="mono"><b>NO NEW FINDINGS</b></td><td class="mono"><b>NO NEW FINDINGS</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Zero production correctness findings across the three rounds &mdash; the production code had
+      already been hardened by four earlier review rounds. Everything the loop found was
+      <strong>tests asserting less than the PR claimed</strong>, all three the same species: a test that
+      passes whether or not the behaviour exists.</p>
+
+    <ul class="plain">
+      <li><b>Jitter was deletable with every test still green.</b> Every assertion accepted the nominal
+        delay as its upper bound, so <code>return delay</code> satisfied them. Fixed by asserting jitter
+        shortens and varies across 200 draws.</li>
+      <li><b>The cancellation test was probabilistic.</b> A regressed worker's <code>select</code> could
+        still pick <code>ctx.Done()</code> first in all 20 runs &mdash; a ~1-in-10&#8310; false pass. Made
+        deterministic by stubbing the wait while leaving the context live.</li>
+      <li><b>The tests validated their own constants.</b> Expected bounds were derived from the constants
+        under test, so changing the cap to 48s left every test green while breaking the documented
+        contract. Fixed by pinning the literal values in a separate test.</li>
+    </ul>
+
+    <h3>Cost</h3>
+    <p class="tight">codex ~15&ndash;20 min per round, droid ~2 min, run in parallel &rarr; ~20 min per
+      round wall clock. Three rounds plus one feedback exchange &asymp; 1.5 h of agent time. Yield:
+      3 real test defects, 5 rejected suggestions, 4 operator errors surfaced.</p>
+  </section>
+
+  <section>
+    <h2>Agents are configuration</h2>
+    <p>The loop is agent-agnostic; <code>codex</code> and <code>droid</code> are just the two entries that
+      happen to be enabled. Adding a third is a config change, not a code change. Only three things
+      actually vary between agents, and all three bit during the reference run.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>dimension</th><th>values</th><th>why it matters</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">promptDelivery</td><td class="mono">argv | file | stdin</td>
+            <td>codex takes the prompt as an argument, droid needs <code>-f &lt;path&gt;</code></td></tr>
+          <tr><td class="mono">cwd</td><td class="mono">worktree | flag</td>
+            <td>codex runs <em>in</em> the worktree, droid takes <code>--cwd</code> and ignores process cwd</td></tr>
+          <tr><td class="mono">resume.supported</td><td class="mono">true | false</td>
+            <td>decides whether feedback is a real conversation or a fresh run with prior findings quoted back</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre>agents:
+  - name: codex
+    promptDelivery: argv
+    cwd: worktree
+    argv: ["codex", "exec", "--skip-git-repo-check", "{{promptText}}"]
+    resume: { supported: true, argv: ["codex", "exec", "resume", "--last", "{{promptText}}"] }
+    expect: { latencySeconds: 1100, verbose: true }
+
+  - name: droid
+    promptDelivery: file
+    cwd: flag
+    argv: ["droid", "exec", "--cwd", "{{worktree}}", "--auto", "medium", "-f", "{{promptFile}}"]
+    resume: { supported: false, reason: "exec text output carries no session id" }
+    expect: { latencySeconds: 130, verbose: false }</pre>
+
+    <div class="callout">A verbose agent's stdout is a <strong>full transcript that contains the
+      prompt</strong>, so grepping the whole stream for the stop token matches the instruction that asked
+      for the token. Parse the final report block &mdash; hence <code>parse.reportFrom</code>.</div>
+  </section>
+
+  <section>
+    <h2>Why a CLI and a skill, not one of them</h2>
+    <p>Reviewers and the main agent reach the system in completely different ways, and that difference
+      decides the design. <strong>Reviewers need no cooperation</strong> &mdash; they are subprocesses;
+      whatever spawns them already owns their stdout, exit code, wall time and round. Their output
+      <em>is</em> the data. <strong>The main agent has to report</strong> &mdash; it is not a subprocess of
+      anything, and its most valuable output is a judgement (<em>this reproduces, that one does not, this
+      fix leaks a reservation</em>) that nothing captures unless it is deliberately emitted.</p>
+    <p>A binary cannot make those judgements. Instructions cannot capture a subprocess. Hence two pieces.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th></th><th class="mono">macr</th><th>the skill</th></tr></thead>
+        <tbody>
+          <tr><td><b>owns</b></td><td><b>mechanics</b></td><td><b>judgement</b></td></tr>
+          <tr><td>worktree, merge-base pinning</td><td class="yes">&check;</td><td></td></tr>
+          <tr><td>spawning agents; per-agent argv, prompt delivery, cwd</td><td class="yes">&check;</td><td></td></tr>
+          <tr><td>capturing stdout, parsing the report block</td><td class="yes">&check;</td><td></td></tr>
+          <tr><td>appending events, serving the console</td><td class="yes">&check;</td><td></td></tr>
+          <tr><td>convergence detection (grep the stop token)</td><td class="yes">&check;</td><td></td></tr>
+          <tr><td>deciding a finding reproduces</td><td></td><td class="yes">&check;</td></tr>
+          <tr><td>writing the regression test, proving it fails without the fix</td><td></td><td class="yes">&check;</td></tr>
+          <tr><td>replying to every finding, including rejections</td><td></td><td class="yes">&check;</td></tr>
+          <tr><td>maintaining the settled list</td><td></td><td class="yes">&check;</td></tr>
+          <tr><td>escalating past the turn limit</td><td></td><td class="yes">&check;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout"><strong>Hard rule: the CLI must work without the skill.</strong> If
+      <code>macr review</code> only functions inside a session reading SKILL.md, it is not a tool &mdash;
+      it is a prompt with a binary attached, and it cannot run in CI or for anyone on a different agent.</div>
+  </section>
+
+  <section>
+    <h2>The event log</h2>
+    <p>One append-only NDJSON file per PR: <code>runs/&lt;id&gt;/events.ndjson</code>. Two writers are
+      safe &mdash; the CLI appends agent events while the main agent appends verdicts.</p>
+    <pre>{"t":"round.start","n":2,"sha":"6901882"}
+{"t":"agent.launch","agent":"codex","round":2}
+{"t":"agent.report","agent":"codex","round":2,"verdict":"found","raw":"…"}
+{"t":"finding.raised","id":"X1","agent":"codex","claim":"jitter is deletable","file":"main_test.go:2237"}
+{"t":"finding.reproduced","id":"X1","evidence":"return delay → all backoff tests PASS"}
+{"t":"finding.resolved","id":"X1","verdict":"accepted","reason":"now asserts jitter varies"}
+{"t":"commit.pushed","sha":"ae473ab"}
+{"t":"round.end","n":2}</pre>
+    <p>The console folds the log into the current view, and three things fall out for free: the timeline
+      is measured rather than estimated, a run can be replayed, and the view is derived state rather than
+      a hand-written report.</p>
+
+    <h3>Enforce the half that is checkable</h3>
+    <p>Today the triage gate holds only because the operator chose to be disciplined. A skill can be
+      skipped; a check cannot. Enforce the mechanical half &mdash; an accepted finding must have a
+      recorded reproduction, a fix must have a test that was observed failing without it &mdash; and leave
+      the judgement half to the skill.</p>
+    <pre>macr finding resolve X1 --verdict accepted
+  → refused: no finding.reproduced event for X1</pre>
+  </section>
+
+  <section>
+    <h2>Where this actually is</h2>
+    <p>The proof of concept does <strong>not</strong> build the orchestrator. The main agent drives the
+      loop by hand, as it did for !1158, and writes the run file the console reads. That keeps the POC to
+      the question worth answering &mdash; <em>is a second PR's review useful?</em> &mdash; rather than
+      spending the time on process supervision.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>command</th><th>state</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">macr review [flags]</td><td>runs <b>one</b> round: every reviewer reads the diff, findings are recorded. Iterating to convergence is still manual. <code>--dry-run</code> exercises the pipeline without spawning anything.</td></tr>
+          <tr><td class="mono">macr web [flags]</td><td>serves the console and this page</td></tr>
+          <tr><td class="mono">macr agents</td><td>checks which configured agents are installed</td></tr>
+          <tr><td class="mono">macr finding &lt;cmd&gt;</td><td><span class="verdict" data-v="ours">not built</span> raise | reproduce | resolve, appending events and enforcing the gate</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Still to build</h3>
+    <ul class="plain">
+      <li>An agent registry: invocation, cwd handling, whether sessions resume, expected latency.</li>
+      <li>Prompt assembly: template plus the accumulated settled list, versioned per round.</li>
+      <li>A findings model &mdash; <code>{id, agent, round, severity, file, line, claim, status}</code>
+        with status one of <code>accepted | deferred | rejected | superseded</code> &mdash; so the settled
+        list generates itself.</li>
+      <li>The reproduce/fix/verify gate as an explicit state machine.</li>
+      <li>Convergence detection across N agents on a single commit sha.</li>
+      <li>A per-round budget, because the long-tail agent dominates wall clock.</li>
+    </ul>
+
+    <div class="callout">Deliberately <strong>not</strong> automated: applying a fix without first
+      reproducing the finding. That gate is where the value was.</div>
+  </section>
+
+  <section>
+    <h2>Known traps</h2>
+    <ul class="plain">
+      <li><b>Diff base.</b> <code>git diff origin/master</code> shows commits master gained <em>since</em>
+        your branch point as deletions in your diff. Always diff against
+        <code>git merge-base HEAD origin/master</code>. This produced a confident, completely spurious
+        finding on round zero.</li>
+      <li><b>Prompt-induced findings are your bug, not theirs.</b> Fix the prompt and say so.</li>
+      <li><b><code>timeout</code> does not exist on macOS.</b> Wrapping a verification in it exits 127 and
+        the command never runs &mdash; an empty result that looks like a pass.</li>
+      <li><b>Removing a call can orphan an import</b>, turning &ldquo;the test caught it&rdquo; into a
+        compile error. Keep the import used when simulating a regression.</li>
+      <li><b>Mock frameworks may not re-apply inside a loop.</b> Build the mock once outside;
+        re-building per iteration silently kept the real implementation (mockey).</li>
+      <li><b>Agents recycle suggestions when they have nothing left.</b> A verbatim repeat of a prior
+        cosmetic note is a decent signal of convergence.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Method extracted from a single real run. It has been proven on one pull request, which is exactly one
+    more than most review methodologies and far fewer than would justify calling it validated. The
+    rejected suggestions and the operator errors are kept on this page for the same reason they were kept
+    in the run record: they are what makes the accepted findings mean anything.
+  </footer>
+
+</div>

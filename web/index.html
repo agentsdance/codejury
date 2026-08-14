@@ -1,0 +1,716 @@
+<!doctype html>
+<title>Convergence Console</title>
+<style>
+  :root {
+    --ground:#F4F6F8; --surface:#FFFFFF; --surface-alt:#EDF0F4;
+    --line:#D7DDE4; --line-soft:#E6EAEF; --ink:#14181D; --ink-2:#39434F; --muted:#5A6572;
+    --accent:#3A6B8A; --accent-soft:#E2ECF3; --main-hue:#6A4E8C; --main-soft:#EDE6F4;
+    --codex:#3A6B8A; --droid:#1F7A6B; --droid-soft:#DDF0EC;
+    --ok:#2E7D5B; --ok-soft:#E0F0E8; --warn:#B07A2B; --warn-soft:#F6ECD9;
+    --bad:#A8443A; --bad-soft:#F6E3E0;
+    --shadow:0 1px 2px rgba(20,24,29,.05), 0 8px 24px -14px rgba(20,24,29,.20);
+    --serif: ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans: ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0E1216; --surface:#161C23; --surface-alt:#1C232B;
+      --line:#2B343E; --line-soft:#222A33; --ink:#E4E9EE; --ink-2:#B4BEC9; --muted:#8593A2;
+      --accent:#7FB0D0; --accent-soft:#1A2B38; --main-hue:#B49AD4; --main-soft:#241C31;
+      --codex:#7FB0D0; --droid:#63C4B0; --droid-soft:#142C28;
+      --ok:#6FC49B; --ok-soft:#15271E; --warn:#D9A857; --warn-soft:#292013;
+      --bad:#E08076; --bad-soft:#2B1816;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -16px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0E1216; --surface:#161C23; --surface-alt:#1C232B;
+    --line:#2B343E; --line-soft:#222A33; --ink:#E4E9EE; --ink-2:#B4BEC9; --muted:#8593A2;
+    --accent:#7FB0D0; --accent-soft:#1A2B38; --main-hue:#B49AD4; --main-soft:#241C31;
+    --codex:#7FB0D0; --droid:#63C4B0; --droid-soft:#142C28;
+    --ok:#6FC49B; --ok-soft:#15271E; --warn:#D9A857; --warn-soft:#292013;
+    --bad:#E08076; --bad-soft:#2B1816;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -16px rgba(0,0,0,.75);
+  }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans);
+         font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1060px; margin:0 auto; padding:34px 22px 80px; display:flex; flex-direction:column; gap:38px; }
+
+  /* header */
+  .hd { display:flex; flex-direction:column; gap:14px; }
+  .kicker { font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  h1 { font-family:var(--serif); font-size:clamp(26px,3.6vw,38px); font-weight:600; margin:0;
+       line-height:1.12; letter-spacing:-.015em; text-wrap:balance; }
+  .meta { display:flex; flex-wrap:wrap; gap:9px 20px; align-items:center;
+          font-family:var(--mono); font-size:12.5px; color:var(--muted); }
+  .meta a { color:var(--accent); text-decoration:none; border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent); }
+  .meta a:hover { border-bottom-color:var(--accent); }
+  .meta a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .badge-ok { display:inline-flex; align-items:center; gap:7px; color:var(--ok); background:var(--ok-soft);
+              border:1px solid color-mix(in srgb,var(--ok) 34%,transparent); padding:4px 12px; border-radius:999px;
+              font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
+  .badge-ok .d { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .badge-warn { display:inline-flex; align-items:center; gap:7px; color:var(--warn); background:var(--warn-soft);
+                border:1px solid color-mix(in srgb,var(--warn) 34%,transparent); padding:4px 12px; border-radius:999px;
+                font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
+  .badge-mute { display:inline-flex; align-items:center; gap:7px; color:var(--muted); background:var(--surface-alt);
+                border:1px solid var(--line); padding:4px 12px; border-radius:999px;
+                font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
+  .badge-warn .d,.badge-mute .d { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .switcher { display:flex; gap:6px; flex-wrap:wrap; }
+  .switcher:empty { display:none; }
+  .pr-chip { font-family:var(--mono); font-size:11.5px; padding:5px 11px; border-radius:3px; cursor:pointer;
+             border:1px solid var(--line); background:var(--surface); color:var(--muted);
+             display:inline-flex; align-items:center; gap:7px; }
+  .pr-chip:hover { border-color:var(--accent); color:var(--accent); }
+  .pr-chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .pr-chip[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .pr-chip .d { width:7px; height:7px; border-radius:50%; }
+
+  h2 { font-family:var(--serif); font-size:22px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  section { display:flex; flex-direction:column; gap:14px; }
+  .note { margin:0; color:var(--muted); font-size:13.5px; max-width:66ch; }
+
+  /* timeline */
+  .tl { background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow);
+        padding:18px 20px 14px; display:flex; flex-direction:column; gap:12px; overflow-x:auto; }
+  .tl-inner { min-width:660px; display:flex; flex-direction:column; gap:10px; }
+  .tl-rounds { position:relative; height:20px; }
+  .tl-rounds span { position:absolute; top:0; font-family:var(--mono); font-size:10.5px;
+                    letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+                    border-left:1px solid var(--line); padding-left:7px; }
+  .lane { display:grid; grid-template-columns:74px 1fr; gap:12px; align-items:center; }
+  .lane .who { font-family:var(--mono); font-size:12px; display:flex; align-items:center; gap:7px; }
+  .lane .who .sw { width:9px; height:9px; border-radius:2px; }
+  .track { position:relative; height:26px; background:var(--surface-alt); border-radius:3px; }
+  /* min-width so a span that is real but very short — or has not finished and
+     therefore has no width at all — still paints something hoverable. */
+  .seg { position:absolute; top:0; height:26px; border-radius:3px; display:flex; align-items:center;
+         min-width:4px; padding:0 7px; font-family:var(--mono); font-size:10.5px; color:#fff;
+         white-space:nowrap; overflow:hidden; }
+  /* Still running: striped rather than solid, and never flush to the right edge. */
+  .seg[data-open="1"] { min-width:10px; margin-left:-5px;
+    background-image:repeating-linear-gradient(115deg,rgba(255,255,255,.30) 0 4px,transparent 4px 8px); }
+  .seg[data-a="codex"] { background:var(--codex); }
+  .seg[data-a="droid"] { background:var(--droid); }
+  .seg[data-a="main"]  { background:var(--main-hue); }
+  .tl-foot { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+
+  /* rounds */
+  .rgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+  .rcard { background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow);
+           overflow:hidden; display:flex; flex-direction:column; }
+  .rcard header { padding:11px 15px; background:var(--surface-alt); border-bottom:1px solid var(--line-soft);
+                  display:flex; align-items:baseline; gap:10px; }
+  .rcard header b { font-family:var(--mono); font-size:13px; }
+  .rcard header .sha { font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-left:auto; }
+  .verd { display:flex; gap:10px; padding:11px 15px; border-top:1px solid var(--line-soft); align-items:flex-start; }
+  .verd:first-of-type { border-top:0; }
+  .verd .ag { font-family:var(--mono); font-size:11.5px; display:flex; align-items:center; gap:6px; min-width:76px; }
+  .verd .ag .sw { width:8px; height:8px; border-radius:2px; }
+  .verd .txt { font-size:13.2px; color:var(--ink-2); }
+  .verd .txt b { color:var(--ink); }
+  .verd[data-s="clean"] .txt b { color:var(--ok); }
+  .verd[data-s="found"] .txt b { color:var(--warn); }
+
+  /* exchanges */
+  .filters { display:flex; gap:7px; flex-wrap:wrap; }
+  .chip { font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+          padding:5px 11px; border-radius:999px; border:1px solid var(--line); background:var(--surface);
+          color:var(--muted); cursor:pointer; }
+  .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .chip[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--surface); }
+  :root[data-theme="dark"] .chip[aria-pressed="true"] { color:#0E1216; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .chip[aria-pressed="true"]{ color:#0E1216; } }
+
+  /* exchange — a terminal transcript. Deliberately dark in both themes: this is
+     agent output, and it reads as a session rather than a document. */
+  .term, .io { --t-bg:#0F1419; --t-fg:#C6CFD8; --t-dim:#6B7885; --t-line:#212A33;
+          --t-codex:#7FB0D0; --t-droid:#63C4B0; --t-claude:#B49AD4;
+          --t-ok:#6FC49B; --t-warn:#D9A857; --t-bad:#E08076;
+          background:var(--t-bg); border:1px solid var(--t-line); border-radius:6px;
+          overflow:hidden; box-shadow:var(--shadow); font-family:var(--mono); }
+  .term-bar { display:flex; align-items:center; gap:8px; padding:9px 13px;
+              background:#0A0E12; border-bottom:1px solid var(--t-line); }
+  .term-bar .dot { width:10px; height:10px; border-radius:50%; }
+  .term-bar .dot.r { background:#E0655B; } .term-bar .dot.y { background:#D9A857; }
+  .term-bar .dot.g { background:#59B87F; }
+  .term-bar .t { margin-left:8px; font-size:11.5px; color:var(--t-dim); }
+  .term-body { padding:14px 16px 16px; font-size:12.8px; line-height:1.62; color:var(--t-fg);
+               overflow-x:auto; }
+  .term .cwd { color:var(--t-droid); }
+  .term .branch { color:var(--t-claude); }
+  .term .cmdline { margin:0 0 12px; white-space:pre-wrap; word-break:break-all; }
+  .term .cmdline .p { color:var(--t-ok); margin-right:7px; }
+  .term .cmdline .c { color:var(--t-fg); }
+
+  .xb { border-top:1px solid var(--t-line); padding:13px 0 4px; }
+  .xb:first-of-type { border-top:0; padding-top:2px; }
+  .xb-head { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin-bottom:9px; }
+  .xb-head .claim { color:#E7EDF3; font-weight:600; flex:1 1 300px; }
+  .xb-head .meta { color:var(--t-dim); font-size:11.5px; width:100%; }
+  .tag { font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; padding:2px 8px;
+         border-radius:3px; white-space:nowrap; }
+  .tag[data-r="accepted"] { color:var(--t-ok);   background:rgba(111,196,155,.13); }
+  .tag[data-r="deferred"] { color:var(--t-warn); background:rgba(217,168,87,.13); }
+  .tag[data-r="rejected"] { color:var(--t-bad);  background:rgba(224,128,118,.13); }
+  .tag[data-r="open"]     { color:var(--t-codex); background:rgba(127,176,208,.13); }
+
+  .ln { display:grid; grid-template-columns:82px 78px minmax(0,1fr); gap:10px; padding:5px 0;
+        align-items:start; }
+  .ln .at { color:var(--t-dim); font-size:11.5px; line-height:1.35; }
+  .ln .at b { display:block; font-weight:500; color:#8A99A8; }
+  .ln .at i { display:block; font-style:normal; font-size:10.5px; opacity:.72; }
+  .ln .nm { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+  .ln .nm svg { width:12px; height:12px; }
+  .ln[data-who="codex"]  .nm { color:var(--t-codex); }
+  .ln[data-who="droid"]  .nm { color:var(--t-droid); }
+  .ln[data-who="claude"] .nm { color:var(--t-claude); }
+  .ln .say { white-space:pre-wrap; }
+  .ln .say strong { color:#EDF2F7; font-weight:600; }
+  @media (max-width:720px){ .ln{ grid-template-columns:1fr; gap:2px; } }
+
+  .term .q { margin:7px 0 3px 0; padding:8px 11px; background:#0A0E12; border-left:2px solid var(--t-line);
+             color:#9FB0BF; font-size:12px; white-space:pre; overflow-x:auto; }
+  .term .ask { margin:7px 0 3px; padding-left:10px; border-left:2px solid var(--t-codex); color:#DCE5EC; }
+  .term .out { margin:9px 0 2px; font-size:12.2px; }
+  .term .out[data-r="accepted"] { color:var(--t-ok); }
+  .term .out[data-r="deferred"] { color:var(--t-warn); }
+  .term .out[data-r="rejected"] { color:var(--t-bad); }
+  .term .out b { text-transform:uppercase; letter-spacing:.08em; font-size:11px; }
+
+  /* What went in and what came out, as one session. A clean verdict still has a
+     report, and hiding it was why a converged run looked like nothing happened. */
+  .io { background:var(--t-bg); border:1px solid var(--t-line); border-radius:6px;
+        overflow:hidden; box-shadow:var(--shadow); font-family:var(--mono); }
+  .io-body { padding:13px 16px 18px; font-size:12.6px; line-height:1.6; color:var(--t-fg);
+             max-height:640px; overflow:auto; }
+  .io .cmdline { margin:0 0 4px; white-space:pre-wrap; word-break:break-all; }
+  .io .cmdline .p { color:var(--t-ok); margin-right:7px; }
+
+  /* A divider that carries its own metadata, the way a TUI labels a pane. */
+  .rule { display:flex; align-items:center; gap:10px; margin:20px 0 9px;
+          font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--t-dim); }
+  .rule:first-child { margin-top:4px; }
+  .rule i { flex:1 1 auto; height:1px; background:var(--t-line); }
+  .rule .lbl { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+  .rule .lbl svg { width:12px; height:12px; }
+  .rule[data-who="codex"] .lbl { color:var(--t-codex); }
+  .rule[data-who="droid"] .lbl { color:var(--t-droid); }
+  .rule[data-who="stdin"] .lbl { color:var(--t-claude); }
+  .rule .rt { color:var(--t-dim); white-space:nowrap; }
+  .rule .rt b { font-weight:600; }
+  .rule .rt b[data-s="clean"] { color:var(--t-ok); }
+  .rule .rt b[data-s="found"] { color:var(--t-warn); }
+  .rule .rt b[data-s="error"] { color:var(--t-bad); }
+
+  .io .stream { margin:0; white-space:pre-wrap; overflow-x:auto; color:var(--t-fg);
+                border-left:2px solid var(--t-line); padding:2px 0 2px 13px; }
+  .io .stream.raw { white-space:pre; }
+  .io .stream.stdin { color:#9FB0BF; }
+
+  /* Terminal-style toggles: they read as flags, not as buttons. */
+  .tabs { display:flex; gap:6px; margin:8px 0 0 13px; }
+  .tabs button { font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; cursor:pointer;
+                 padding:2px 8px; border-radius:2px; border:1px solid var(--t-line);
+                 background:transparent; color:var(--t-dim); }
+  .tabs button:hover { border-color:var(--t-codex); color:var(--t-codex); }
+  .tabs button:focus-visible { outline:2px solid var(--t-codex); outline-offset:2px; }
+  .tabs button[aria-pressed="true"] { border-color:var(--t-ok); color:var(--t-ok); }
+  .io .fold { cursor:pointer; }
+  .io .fold:focus-visible { outline:2px solid var(--t-codex); outline-offset:2px; }
+
+  /* shipped */
+  .ship { display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:1px;
+          background:var(--line-soft); border:1px solid var(--line); }
+  .ship div { background:var(--surface); padding:15px 17px; display:flex; flex-direction:column; gap:3px; }
+  .ship .n { font-family:var(--mono); font-size:24px; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .ship .k { font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); }
+  .ship .s { font-size:12.4px; color:var(--muted); }
+  footer { border-top:1px solid var(--line); padding-top:16px; color:var(--muted); font-size:12.6px; max-width:78ch; }
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="hd">
+    <div class="switcher" id="switcher"></div>
+    <div class="kicker" id="t-kicker"></div>
+    <h1 id="t-title"></h1>
+    <div class="meta" id="t-meta"></div>
+    <p class="note" id="t-summary"></p>
+  </header>
+
+  <section>
+    <h2>How the run actually went</h2>
+    <p class="note">Reviewers run concurrently; the main agent works between rounds. Bar width is real elapsed time.</p>
+    <div class="tl"><div class="tl-inner" id="tl"></div></div>
+    <p class="tl-foot" id="tlfoot"></p>
+  </section>
+
+  <section>
+    <h2>Round by round</h2>
+    <div class="rgrid" id="rounds"></div>
+    <div class="said" id="said"></div>
+  </section>
+
+  <section>
+    <h2>The exchange</h2>
+    <p class="note" id="x-note"></p>
+    <div class="filters" id="filters"></div>
+    <div id="thread" style="display:flex;flex-direction:column;gap:16px"></div>
+  </section>
+
+  <section id="ship-sec">
+    <h2>What shipped</h2>
+    <div class="ship" id="ship"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+let RUN = {
+  target: {
+    repo: "bytefaas/vefaas-dispatcher", id: "!1158",
+    url: "https://code.byted.org/bytefaas/vefaas-dispatcher/merge_requests/1158",
+    title: "Grow the CreateSandbox retry wait on repeated failures",
+    branch: "fix/sandbox-manager-create-backoff", trunk: "master",
+    diffstat: "2 files · +418 −13", state: "merged", stateNote: "merged · converged on ae473ab",
+    summary: "Two reviewers — codex and droid — read each pushed commit independently. The main agent triages what they find, fixes what survives verification, answers every finding including the ones it rejects, and pushes again. Three rounds until both reported nothing new."
+  },
+  totalMin: 100,
+  lanes: [
+    { who:"codex",  label:"codex",  segs:[ {r:1,s:0,e:18},{r:2,s:40,e:58},{r:3,s:78,e:96} ] },
+    { who:"droid",  label:"droid",  segs:[ {r:1,s:0,e:2},{r:2,s:40,e:42},{r:3,s:78,e:80} ] },
+    { who:"main",   label:"claude", segs:[ {r:1,s:18,e:40,t:"triage · fix · push"},
+                                           {r:2,s:58,e:78,t:"triage · fix · push"},
+                                           {r:3,s:96,e:100,t:"merge prep"} ] }
+  ],
+  marks: [ {at:0,l:"round 1"}, {at:40,l:"round 2"}, {at:78,l:"round 3"} ],
+  tlfoot:"codex ~18 min per round, droid ~2 min. Every round's wall clock is set by the slower reviewer — running them in series would have roughly doubled the run.",
+  xnote:"Every finding gets a reply. The rejected one matters most — it caught a bug in the prompt, not the code.",
+  rounds: [
+    { n:1, sha:"bf94454", verdicts:[
+      { a:"codex", s:"found", t:"<b>1 finding</b> — tests derive their bounds from the constants they check" },
+      { a:"droid", s:"clean", t:"<b>NO NEW FINDINGS</b>" } ] },
+    { n:2, sha:"6901882", verdicts:[
+      { a:"codex", s:"found", t:"<b>2 findings</b> — jitter is deletable; cancellation test is probabilistic" },
+      { a:"droid", s:"clean", t:"<b>NO NEW FINDINGS</b>" } ] },
+    { n:3, sha:"ae473ab", verdicts:[
+      { a:"codex", s:"clean", t:"<b>NO NEW FINDINGS</b>" },
+      { a:"droid", s:"clean", t:"<b>NO NEW FINDINGS</b>" } ] }
+  ],
+  exchanges: [
+    { id:"X1", round:2, res:"accepted", loc:"main_test.go:2237 · low · found by codex",
+      claim:"Jitter could be deleted and every test would still pass",
+      outcome:"Fixed. Test_createBackoff now asserts jitter shortens and varies across 200 draws — verified to fail when jitter is removed.",
+      turns:[
+        { who:"codex", ts:"round 2 · T+18m", body:"Every assertion accepts the nominal delay itself. Replacing createBackoff's final expression with <strong>return delay</strong> removes jitter entirely yet passes all new backoff and worker tests. The sampling assertion only enforces the ceiling, not that waits are ever shortened or varied." },
+        { who:"claude", ts:"round 2 · T+41m", body:"Reproduced — and my first attempt to reproduce it was itself wrong. Deleting the jitter expression orphaned the <strong>math/rand/v2</strong> import, so the FAIL I saw was a compile error, not an assertion. Kept the import used and re-ran: every test passed. You were right.",
+          quote:"_ = rand.Float64()\nreturn delay          // jitter gone\nall backoff tests: PASS", ask:"Fixed by asserting jitter actually moves. Does that close it?" },
+        { who:"codex", ts:"round 3 · T+96m", body:"NO NEW FINDINGS." } ] },
+
+    { id:"X2", round:2, res:"accepted", loc:"main_test.go:2476 · low · found by codex",
+      claim:"The cancellation test could pass by luck",
+      outcome:"Fixed. The wait is now stubbed to report an unfinished wait with the context still live, so a looping worker has no race to hide behind. Fails deterministically in 0.00s.",
+      turns:[
+        { who:"codex", ts:"round 2 · T+18m", body:"If the worker regresses from <strong>return</strong> to <strong>continue</strong>, its next select can still choose ctx.Done() before a buffered job. All 20 runs can therefore report exactly one call and pass incorrectly — roughly a 1-in-1,048,576 false pass." },
+        { who:"claude", ts:"round 2 · T+52m", body:"Accepted. Made it deterministic rather than merely improbable. Writing it surfaced a second problem of my own: under regression the test <strong>hung</strong> instead of failing — the worker drained the buffered channel then blocked on an open, empty one. Closing the channel makes it fail fast.",
+          quote:"before: 20 runs, P(false pass) ≈ 2⁻²⁰\nafter:  deterministic, fails in 0.00s",
+          ask:"A test that hangs on regression is worse than one that fails — it burns the CI timeout and reads as infra. Agreed?" },
+        { who:"codex", ts:"round 3 · T+96m", body:"NO NEW FINDINGS." } ] },
+
+    { id:"X3", round:1, res:"accepted", loc:"main_test.go:2223 · low · found by codex",
+      claim:"The tests validate their own constants",
+      outcome:"Fixed. Test_backoffLimits pins 1s / 60s / 0.2 / 60s independently, so a constant change has to be deliberate.",
+      turns:[
+        { who:"codex", ts:"round 1 · T+18m", body:"The expected bounds are derived from createBackoffJitter and maxCreateBackoff. Changing jitter to 50% or lowering the cap to 48s leaves all new tests green despite violating the specified behaviour. Pin those contractual values independently." },
+        { who:"claude", ts:"round 1 · T+33m", body:"Reproduced exactly as described — with the cap at 48s and jitter at 50%, every existing backoff test stayed green and only the new pinning test failed.",
+          quote:"cap 60s→48s, jitter 0.2→0.5\nother backoff tests: PASS\nTest_backoffLimits:  FAIL" } ] },
+
+    { id:"X4", round:1, res:"rejected", loc:"acquire_route_handler.go · info · raised by droid",
+      claim:"The diff also deletes IdlePoolMissReason and a response header",
+      outcome:"Rejected — an artifact of the diff base, caused by my prompt. The prompt now pins the merge-base, and droid confirmed against it.",
+      turns:[
+        { who:"droid", ts:"round 1 · T+02m", body:"The diff also removes the IdlePoolMissReason type, the X-Bytefaas-Assign-Missed-Reason response header, and ~80 lines of sanitization. This is a feature removal that changes the public API surface — a separate concern from the backoff change." },
+        { who:"claude", ts:"round 1 · T+29m", body:"<strong>Rejected, and this one is my fault rather than yours.</strong> My prompt told you to run <strong>git diff origin/master</strong>. The trunk gained that commit after our branch point, so another commit's addition showed up inverted as our deletion.",
+          quote:"git diff origin/master        → 8 files\ngit diff $(git merge-base …)  → 2 files", ask:"Please re-check against the merge-base and confirm." },
+        { who:"droid", ts:"round 1 · T+36m", body:"Confirmed. The diff against the merge-base touches exactly two files, and no mention of IdlePoolMissReason appears. The commit that added it landed on the trunk after the branch point. Purely an artifact of the diff base." } ] },
+
+    { id:"X5", round:1, res:"deferred", loc:"main.go:289 · medium · found by codex",
+      claim:"Producer can over-reserve the in-flight count",
+      outcome:"Deferred by agreement. Pre-existing and untouched by this change; tracked as its own PR rather than widening this one.",
+      turns:[
+        { who:"codex", ts:"round 1 · T+18m", body:"The producer reads the in-flight count, unlocks, calculates need, and only later locks again to add it. During manager replacement two producers can observe the same count and both reserve the full deficit. The mutex prevents a data race but not this check-then-act race." },
+        { who:"claude", ts:"round 1 · T+33m", body:"<strong>Agree it is real. Not fixing it here</strong> — producer and the in-flight map are untouched by this change, which only edits the worker retry path. Widening the PR to cover it would mix two concerns.",
+          ask:"Do you agree it is (a) pre-existing and (b) not made materially more likely by this change? If the new backoff widens that window, say so and I will reconsider." },
+        { who:"codex", ts:"round 1 · T+51m", body:"Accepted. The producer reservation code is byte-for-byte outside this commit's diff, so the issue is pre-existing. The new backoff does not materially widen the concurrent-producer window; cancellation-aware worker exit arguably reduces old/new manager overlap. I agree it belongs in a separate PR." } ] }
+  ],
+  ship: [
+    { n:"3",  k:"rounds",       s:"to convergence" },
+    { n:"5",  k:"exchanges",    s:"3 fixed · 1 deferred · 1 rejected" },
+    { n:"11", k:"turns",        s:"every finding answered" },
+    { n:"0",  k:"prod bugs",    s:"found in these 3 rounds" },
+    { n:"3",  k:"test defects", s:"tests that proved nothing" },
+    { n:"~1.7h", k:"agent time", s:"~20 min per round" }
+  ],
+  foot:"Verbatim from the run on !1158. The main agent's turns include two of its own mistakes — a compile error misread as a caught regression, and a test that hung rather than failed — because both changed what shipped. Deferred findings became their own pull requests; rejected ones stay on the record with the evidence that settled them."
+};
+
+// One mark per agent. Inline SVG on currentColor: no external asset, so the
+// console works served locally and as a self-contained page, and both themes
+// get the right contrast for free. Unknown agents fall back to a plain dot.
+const ICONS = {
+  // Official marks (simple-icons, CC0 icon set; the marks themselves remain the
+  // trademarks of their owners and are used here only to identify the tools).
+  claude: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>',
+  codex: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>',
+  // Factory publishes no mark in the icon set, so droid keeps an honest generic
+  // machine glyph rather than an invented "official" logo.
+  // Factory's own mark, taken from factory.ai's nav logo.
+  droid: '<svg viewBox="0 0 67 65" width="15" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="M47.75 11.15a.867.867 0 0 1-.671-.806.84.84 0 0 1 .067-.362c1.688-4.007 2.433-7.213 1.23-8.555-3.183-3.56-15.952 3.52-20.024 5.919a.9.9 0 0 1-1.273-.41c-1.711-3.998-3.51-6.78-5.334-6.9-4.833-.323-8.73 13.49-9.87 17.992a.85.85 0 0 1-.459.563.9.9 0 0 1-.737.027c-4.109-1.647-7.398-2.373-8.773-1.2-3.651 3.104 3.609 15.557 6.068 19.528a.85.85 0 0 1-.11 1.031.9.9 0 0 1-.31.21C3.455 39.856.604 41.61.478 43.389c-.329 4.713 13.834 8.513 18.452 9.625q.186.046.337.163a.87.87 0 0 1 .332.642.84.84 0 0 1-.067.362c-1.688 4.007-2.433 7.214-1.23 8.555 3.183 3.561 15.954-3.519 20.025-5.917a.9.9 0 0 1 1.058.107.9.9 0 0 1 .215.302c1.711 3.997 3.509 6.779 5.334 6.9 4.833.322 8.73-13.49 9.868-17.993a.85.85 0 0 1 .168-.33.88.88 0 0 1 .659-.324.9.9 0 0 1 .371.066c4.109 1.647 7.397 2.372 8.773 1.2 3.651-3.105-3.61-15.559-6.07-19.53a.85.85 0 0 1 .111-1.03.9.9 0 0 1 .31-.21c4.1-1.67 6.952-3.424 7.075-5.203.331-4.713-13.833-8.513-18.45-9.623m-5.546-4.518c.93 1.624-3.858 12.446-7.42 20.015a.7.7 0 0 1-.28.303.71.71 0 0 1-.796-.059.7.7 0 0 1-.23-.341c-1.439-4.921-3.082-10.704-4.841-15.612a.84.84 0 0 1 .01-.594.87.87 0 0 1 .401-.446c4.392-2.34 11.908-5.446 13.156-3.266m-21.048 1.34c1.833.507 6.294 11.46 9.264 19.268a.67.67 0 0 1-.2.754.71.71 0 0 1-.794.08c-4.589-2.485-9.94-5.444-14.743-7.702a.87.87 0 0 1-.422-.427.84.84 0 0 1-.04-.591c1.414-4.679 4.471-12.063 6.935-11.383M7.243 23.433c1.664-.906 12.762 3.763 20.522 7.235.13.058.239.154.311.274a.67.67 0 0 1-.06.776.7.7 0 0 1-.35.225c-5.045 1.403-10.976 3.006-16.01 4.721a.9.9 0 0 1-.607-.01.88.88 0 0 1-.456-.391c-2.395-4.284-5.586-11.613-3.35-12.83M8.617 43.96c.519-1.788 11.752-6.14 19.758-9.035a.72.72 0 0 1 .773.195.67.67 0 0 1 .081.774c-2.548 4.475-5.582 9.694-7.898 14.377a.87.87 0 0 1-.437.413.9.9 0 0 1-.607.039c-4.797-1.37-12.37-4.36-11.67-6.763m15.855 13.568c-.93-1.623 3.859-12.446 7.42-20.014a.7.7 0 0 1 .28-.303.715.715 0 0 1 .796.059.7.7 0 0 1 .23.34c1.439 4.92 3.083 10.705 4.841 15.613a.84.84 0 0 1-.01.593.87.87 0 0 1-.402.445c-4.391 2.335-11.908 5.447-13.15 3.267zm21.049-1.34c-1.836-.506-6.297-11.461-9.266-19.269a.67.67 0 0 1 .2-.755.71.71 0 0 1 .795-.078c4.587 2.484 9.94 5.445 14.742 7.703.189.088.339.24.423.426a.84.84 0 0 1 .039.592c-1.413 4.686-4.47 12.063-6.933 11.381m13.912-15.462c-1.665.907-12.762-3.763-20.523-7.236a.7.7 0 0 1-.311-.273.67.67 0 0 1 .06-.777.7.7 0 0 1 .35-.225c5.046-1.402 10.975-3.005 16.009-4.72a.9.9 0 0 1 .609.01.88.88 0 0 1 .457.392c2.393 4.282 5.584 11.613 3.349 12.829M58.06 20.2c-.521 1.79-11.753 6.14-19.759 9.036a.72.72 0 0 1-.774-.195.67.67 0 0 1-.08-.776c2.547-4.474 5.581-9.694 7.897-14.377a.87.87 0 0 1 .437-.412.9.9 0 0 1 .607-.038c4.797 1.377 12.37 4.359 11.672 6.762"/></svg>',
+};
+const icon = (name) => ICONS[name] ??
+  '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg>';
+
+// Times are pinned to Singapore, not the viewer's locale: a review record should
+// read the same wherever it is opened, and 24-hour reads better against log data.
+const TZ = "Asia/Singapore";
+const TZ_LABEL = "SGT";
+const clockFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TZ, hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
+// A turn carries an ISO time when it was measured; the round/offset label is
+// secondary context, shown under it rather than wrapped into the same line.
+function when(t) {
+  let clock = "";
+  if (t?.at) {
+    const d = new Date(t.at);
+    if (!Number.isNaN(+d)) clock = clockFmt.format(d);
+  }
+  const ctx = t?.ts ?? "";
+  return `${clock ? `<b>${esc(clock)}</b>` : ""}${ctx ? `<i>${esc(ctx)}</i>` : ""}`;
+}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const rich = s => esc(s).replace(/&lt;strong&gt;/g,"<strong>").replace(/&lt;\/strong&gt;/g,"</strong>")
+                        .replace(/&lt;b&gt;/g,"<b>").replace(/&lt;\/b&gt;/g,"</b>");
+const pct = m => (m / RUN.totalMin) * 100;
+
+// exchanges. "open" is a finding the main agent has not answered yet, and it is
+// the state a live run spends most of its time in — leaving it out of the
+// filters hid every finding the CLI recorded.
+const STATES = ["open","accepted","deferred","rejected"];
+let show = new Set(STATES);
+$("filters").innerHTML = STATES
+  .map(v=>`<button class="chip" data-v="${v}" aria-pressed="true">${v}</button>`).join("");
+
+function draw(){
+  const all = RUN.exchanges ?? [];
+  const rows = all.filter(x => show.has(x.res ?? x.resolution));
+  const t = RUN.target ?? {};
+  const cmd = t.url ? `macr review ${t.url}` : `macr review --dir . --trunk ${t.trunk ?? "master"}`;
+
+  // This copy has to describe THIS run. A line about the rejected finding was
+  // being printed over a run that raised no findings at all.
+  const verdicts = (RUN.rounds ?? []).flatMap(r => r.verdicts ?? []);
+  const allClean = verdicts.length > 0 && verdicts.every(v => v.s === "clean");
+  $("x-note").textContent = RUN.xnote ?? (all.length
+    ? "Every finding gets a reply, including the ones the main agent rejects — with the evidence that settled them."
+    : allClean
+      ? "Nothing to answer: every reviewer read the diff and reported no new problems."
+      : "Nothing tracked yet for this run.");
+
+  const empty = all.length ? "no exchanges match this filter"
+    : allClean ? "no findings raised — every reviewer reported clean"
+    : "no findings recorded yet";
+
+  const body = rows.length ? rows.map(x => `
+    <div class="xb">
+      <div class="xb-head">
+        <span class="claim">${esc(x.claim)}</span>
+        <span class="tag" data-r="${x.res ?? x.resolution}">${x.res ?? x.resolution}</span>
+        <span class="meta">${esc(x.id ?? "")} · ${esc(x.loc ?? "")}</span>
+      </div>
+      ${(x.turns ?? []).map(tt => `
+        <div class="ln" data-who="${tt.who}">
+          <span class="at">${when(tt)}</span>
+          <span class="nm">${icon(tt.who)}${esc(tt.who)}</span>
+          <span class="say">${rich(tt.body)}
+            ${tt.quote ? `<div class="q">${esc(tt.quote)}</div>` : ""}
+            ${tt.ask ? `<div class="ask">${esc(tt.ask)}</div>` : ""}
+          </span>
+        </div>`).join("")}
+      ${x.outcome ? `<div class="out" data-r="${x.res ?? x.resolution}"><b>${x.res ?? x.resolution}</b> — ${esc(x.outcome)}</div>` : ""}
+    </div>`).join("")
+    : `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`;
+
+  $("thread").innerHTML = `
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="t">${esc(t.repo ?? "")} ${esc(t.id ?? "")} — exchange</span>
+      </div>
+      <div class="term-body">
+        <div class="cmdline"><span class="cwd">~/${esc((t.repo ?? "repo").split("/").pop())}</span> <span class="branch">git:(${esc(t.branch ?? "?")})</span></div>
+        <div class="cmdline"><span class="p">❯</span><span class="c">${esc(cmd)}</span></div>
+        ${body}
+      </div>
+    </div>`;
+}
+
+$("filters").addEventListener("click", e=>{
+  const b=e.target.closest(".chip"); if(!b) return;
+  const v=b.dataset.v;
+  if(show.has(v)){ show.delete(v); b.setAttribute("aria-pressed","false"); }
+  else { show.add(v); b.setAttribute("aria-pressed","true"); }
+  draw();
+});
+
+const BADGE = { merged:"badge-ok", converged:"badge-ok", review:"badge-warn", human:"badge-warn", queued:"badge-mute" };
+
+function renderHeader(){
+  const t = RUN.target ?? {};
+  $("t-kicker").textContent = ALL.length > 1
+    ? `Multi-agent review · ${ALL.length} pull requests`
+    : "Multi-agent review · single pull request";
+  $("t-title").textContent = t.title ?? "(untitled change)";
+  $("t-summary").textContent = t.summary ?? "";
+
+  const link = t.url
+    ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.repo ?? "")} ${esc(t.id ?? "")}</a>`
+    : `<span>${esc(t.repo ?? "")} ${esc(t.id ?? "")}</span>`;
+  const branch = t.branch ? `<span>${esc(t.branch)} → ${esc(t.trunk ?? "master")}</span>` : "";
+  const stat = t.diffstat ? `<span>${esc(t.diffstat)}</span>` : "";
+  const cls = BADGE[t.state] ?? "badge-mute";
+  const badge = t.state
+    ? `<span class="${cls}"><span class="d"></span>${esc(t.stateNote || t.state)}</span>` : "";
+  $("t-meta").innerHTML = [link, branch, stat, badge].filter(Boolean).join("");
+
+  // Only worth showing when there is something to switch between.
+  $("switcher").innerHTML = ALL.length > 1
+    ? ALL.map((r,i)=>`<button class="pr-chip" data-i="${i}" aria-pressed="${r===RUN}">
+         <span class="d" style="background:${r.target?.state==="review"||r.target?.state==="human"?"var(--warn)":"var(--ok)"}"></span>
+         ${esc(r.target?.id ?? "?")}</button>`).join("")
+    : "";
+}
+
+// Every reviewer's report in full, plus the prompt it answered. A round where
+// nobody found anything still has to show what was checked — the first line
+// alone ("NO NEW FINDINGS") hid caveats like a reviewer that could not run the
+// tests at all.
+const bytes = n => n < 1024 ? `${n} B` : `${(n/1024).toFixed(1)} kB`;
+
+function renderSaid(){
+  const slug = RUN.slug ?? "";
+  const t = RUN.target ?? {};
+  const rounds = (RUN.rounds ?? []).filter(r => r.prompt || (r.verdicts ?? []).some(v => v.report));
+  if (!rounds.length) { $("said").innerHTML = ""; return; }
+
+  const panes = rounds.map(r => {
+    const who = (r.verdicts ?? []).map(v => v.a).join(", ") || "reviewers";
+
+    // stdin first: every reviewer in the round got this same text.
+    const stdin = r.prompt ? `
+      <div class="rule" data-who="stdin">
+        <span class="lbl">stdin</span><i></i>
+        <span class="rt">all reviewers · ${esc(bytes(r.prompt.length))}</span>
+      </div>
+      <div class="tabs"><button class="fold" data-fold="p${r.n}" aria-pressed="false">show prompt</button></div>
+      <pre class="stream stdin" id="p${r.n}" hidden>${esc(r.prompt)}</pre>` : "";
+
+    const outs = (r.verdicts ?? []).filter(v => v.report).map(v => `
+      <div class="rule" data-who="${esc(v.a)}">
+        <span class="lbl">${icon(v.a)}${esc(v.a)} · stdout</span><i></i>
+        <span class="rt">${v.seconds ? `${esc(v.seconds)}s · ` : ""}<b data-s="${esc(v.s)}">${esc(v.s)}</b>${v.rawBytes ? ` · ${esc(bytes(v.rawBytes))}` : ""}</span>
+      </div>
+      <pre class="stream">${esc(v.report)}</pre>
+      ${v.rawFile && slug ? `
+        <div class="tabs">
+          <button data-view="report" data-for="${esc(v.rawFile)}" aria-pressed="true">report</button>
+          <button data-view="raw" data-for="${esc(v.rawFile)}" data-slug="${esc(slug)}" aria-pressed="false">raw stream</button>
+        </div>` : ""}`).join("");
+
+    return `
+      <div class="rule"><span class="lbl">round ${r.n}</span><i></i>
+        <span class="rt">${esc(r.sha || "")}</span></div>
+      <div class="cmdline"><span class="p">❯</span>macr review${t.url ? ` ${esc(t.url)}` : ""} --round ${r.n} --agents ${esc(who)}</div>
+      ${stdin}
+      ${outs}`;
+  }).join("");
+
+  $("said").innerHTML = `
+    <div class="io">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="t">${esc(t.repo ?? "")} ${esc(t.id ?? "")} — reviewer i/o</span>
+      </div>
+      <div class="io-body">${panes}</div>
+    </div>`;
+}
+
+// The prompt is long and identical for every reviewer, so it stays folded until
+// asked for. The report is the thing you came to read, so it does not.
+$("said").addEventListener("click", (e) => {
+  const f = e.target.closest("button.fold");
+  if (!f) return;
+  const pre = $(f.dataset.fold);
+  const open = pre.hasAttribute("hidden");
+  pre.toggleAttribute("hidden", !open);
+  f.setAttribute("aria-pressed", String(open));
+  f.textContent = open ? "hide prompt" : "show prompt";
+});
+
+// report ⇄ raw. Fetched on demand: a verbose agent's stream can dwarf the rest
+// of the payload, and most of it is transcript rather than answer.
+$("said").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-view]");
+  if (!b) return;
+  const tabs = b.closest(".tabs");
+  const pre = tabs.previousElementSibling;
+  const want = b.dataset.view;
+  if (b.getAttribute("aria-pressed") === "true") return;
+
+  if (want === "raw") {
+    if (!pre.dataset.report) pre.dataset.report = pre.textContent;
+    if (!pre.dataset.raw) {
+      b.textContent = "loading…";
+      try {
+        const res = await fetch(`api/raw?run=${encodeURIComponent(b.dataset.slug)}&file=${encodeURIComponent(b.dataset.for)}`);
+        pre.dataset.raw = res.ok ? await res.text() : `(${res.status} — raw stream not on disk for this round)`;
+      } catch { pre.dataset.raw = "(raw stream unavailable — is the console still serving?)"; }
+      b.textContent = "raw stream";
+    }
+    pre.textContent = pre.dataset.raw;
+    pre.classList.add("raw");
+  } else {
+    pre.textContent = pre.dataset.report ?? pre.textContent;
+    pre.classList.remove("raw");
+  }
+  for (const other of tabs.querySelectorAll("button[data-view]")) {
+    other.setAttribute("aria-pressed", String(other === b));
+  }
+});
+
+function render(){
+  renderHeader();
+  // timeline
+  $("tl").innerHTML =
+    `<div class="tl-rounds">${RUN.marks.map(m=>`<span style="left:${pct(m.at)}%">${esc(m.l)}</span>`).join("")}</div>` +
+    RUN.lanes.map(l=>`
+      <div class="lane">
+        <span class="who"><span class="ic" style="color:${l.who==="main"?"var(--main-hue)":l.who==="codex"?"var(--codex)":"var(--droid)"}">${icon(l.label)}</span>${esc(l.label)}</span>
+        <div class="track">${l.segs.map(s=>{
+          const w = pct(s.e - s.s), mins = s.e - s.s;
+          return `<div class="seg" data-a="${l.who}"${s.open ? ' data-open="1"' : ""}
+                   style="left:${pct(s.s)}%;width:${w}%"
+                   title="${esc(s.t || ("round "+s.r+" · "+mins+" min"))}">${w > 9 ? esc(s.t || mins+" min") : ""}</div>`;
+        }).join("")}</div>
+      </div>`).join("");
+  $("tlfoot").textContent = RUN.tlfoot;
+
+  $("rounds").innerHTML = RUN.rounds.map(r=>`
+    <article class="rcard">
+      <header><b>Round ${r.n}</b><span class="sha">${esc(r.sha)}</span></header>
+      ${r.verdicts.map(v=>`
+        <div class="verd" data-s="${v.s}">
+          <span class="ag"><span class="ic" style="color:${v.a==="codex"?"var(--codex)":"var(--droid)"}">${icon(v.a)}</span>${esc(v.a)}</span>
+          <span class="txt">${rich(v.t)}</span>
+        </div>`).join("")}
+    </article>`).join("");
+
+  renderSaid();
+
+  // A run that has not shipped anything yet has no tally. An empty grid under a
+  // heading reads as a rendering failure, so drop the whole section.
+  const ship = RUN.ship ?? [];
+  $("ship-sec").style.display = ship.length ? "" : "none";
+  $("ship").innerHTML = ship.map(s=>`
+    <div><span class="n">${esc(s.n)}</span><span class="k">${esc(s.k)}</span><span class="s">${esc(s.s)}</span></div>`).join("");
+  // Same reason as the ship grid: an empty footer still draws its rule, which
+  // reads as content that failed to load.
+  $("foot").textContent = RUN.foot ?? "";
+  $("foot").style.display = RUN.foot ? "" : "none";
+  draw();
+}
+
+let ALL = [RUN];
+let sig = null;          // last payload seen, so an unchanged poll costs nothing
+let assetStamp = null;   // index.html mtime; a change means reload, not re-render
+let served = false;
+
+document.addEventListener("click", (e) => {
+  const c = e.target.closest(".pr-chip");
+  if (!c) return;
+  RUN = ALL[Number(c.dataset.i)];
+  render();
+});
+
+function stamp(note) {
+  const el = $("t-kicker");
+  if (!el || !served) return;
+  const t = new Date().toLocaleTimeString();
+  el.textContent = `${el.textContent.replace(/ · (updated|live).*$/, "")} · updated ${t}${note ?? ""}`;
+}
+
+async function poll({ first = false } = {}) {
+  let payload = null;
+  try {
+    const res = await fetch("api/run", { cache: "no-store" });
+    if (res.ok) payload = await res.text();
+  } catch (_) {
+    return false; // standalone, or the server went away — keep what is on screen
+  }
+
+  // The page itself may have been rebuilt while this tab was open.
+  try {
+    const h = await (await fetch("api/health", { cache: "no-store" })).json();
+    if (h?.assets) {
+      if (assetStamp && h.assets !== assetStamp) { location.reload(); return true; }
+      assetStamp = h.assets;
+    }
+  } catch (_) { /* health is optional */ }
+
+  if (payload === null) return first ? false : true;
+  served = true;
+  if (payload === sig) { stamp(); return true; }
+  sig = payload;
+
+  let live;
+  try { live = JSON.parse(payload); } catch { return true; }
+  const runs = Array.isArray(live?.targets) ? live.targets : live ? [live] : [];
+  const usable = runs.filter((x) => x && x.target && Array.isArray(x.rounds));
+  if (!usable.length) return true;
+
+  // Keep whatever the reader was looking at when new runs arrive.
+  const keep = RUN?.target?.id;
+  ALL = usable;
+  RUN = usable.find((r) => r.target?.id === keep) ?? usable[0];
+  render();
+  stamp();
+  return true;
+}
+
+(async () => {
+  const ok = await poll({ first: true });
+  render();
+  if (!ok) return; // opened standalone: nothing to poll, embedded run stands
+
+  let timer = setInterval(poll, 3000);
+  // Do not poll a tab nobody is looking at; refresh at once when it returns.
+  document.addEventListener("visibilitychange", () => {
+    clearInterval(timer);
+    if (!document.hidden) { poll(); timer = setInterval(poll, 3000); }
+  });
+})();
+</script>

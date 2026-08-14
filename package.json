@@ -1,0 +1,22 @@
+{
+  "name": "@zzxwill/macr",
+  "version": "0.1.0",
+  "description": "Run a pull request past several independent AI reviewers and watch them converge.",
+  "type": "module",
+  "bin": {
+    "macr": "bin/macr.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "web",
+    "prompts"
+  ],
+  "scripts": {
+    "start": "node bin/macr.js web --open"
+  },
+  "license": "MIT"
+}
