@@ -16,7 +16,8 @@
     "prompts"
   ],
   "scripts": {
-    "start": "node bin/macr.js web --open"
+    "start": "node bin/macr.js web --open",
+    "test": "node --test \"test/*.test.js\""
   },
   "license": "MIT"
 }
