@@ -14,7 +14,7 @@ import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
-import { appendEvent, writeRun, readEvents, foldEvents, slugFor, runsDir, writeArtifact } from "../lib/store.js";
+import { appendEvent, writeRun, readEvents, foldEvents, slugFor, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 
 const run = promisify(execFile);
@@ -176,13 +176,21 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
   const results = await Promise.all(
     pool.map(async (a) => {
       await appendEvent(dir, { t: "agent.launch", agent: a.name, round });
+
+      // Stream to the artifact as the reviewer talks, rather than only once it
+      // exits. Without this a twenty-minute agent is a black box for all twenty
+      // minutes and "still thinking" is indistinguishable from "wedged".
+      const rawName = `round-${round}.${a.name}.stdout.txt`;
+      const sink = await openArtifact(dir, rawName);
       const r = await runAgent(a, {
         worktree, prompt, stopToken: cfg.stopToken,
         dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
+        onChunk: (text) => sink.write(text),
       });
-      // The unedited stream, before extractReport picks the final turn out of a
-      // verbose transcript. Kept so the extraction itself can be checked.
-      const rawFile = await writeArtifact(dir, `round-${round}.${a.name}.stdout.txt`, r.raw ?? "");
+      // Rewritten whole at the end: the streamed copy can be short if the agent
+      // was killed mid-write, and r.raw is the authoritative buffer.
+      await sink.close();
+      const rawFile = await writeArtifact(dir, rawName, r.raw ?? "");
       await appendEvent(dir, {
         t: "agent.report", agent: a.name, round,
         verdict: r.verdict, seconds: r.seconds, summary: firstLine(r.report), report: r.report,
@@ -399,10 +407,14 @@ async function cmdReply(argv) {
 
     await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, promptFile: file });
     const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree }).argv };
+    const replyRaw = `reply.${a.name}.stdout.txt`;
+    const sink = await openArtifact(dir, replyRaw);
     const r = await runAgent(spec, {
       worktree, prompt: text, stopToken: cfg.stopToken, onLog: (m) => console.log(`  ${m}`),
+      onChunk: (chunk) => sink.write(chunk),
     });
-    await writeArtifact(dir, `reply.${a.name}.stdout.txt`, r.raw ?? "");
+    await sink.close();
+    await writeArtifact(dir, replyRaw, r.raw ?? "");
     await appendEvent(dir, {
       t: "reply.answered", agent: a.name, verdict: r.verdict, seconds: r.seconds, report: r.report,
     });
