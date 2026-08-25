@@ -8,7 +8,7 @@ description: Review a pull request with several independent AI reviewers (codex,
 You are the **main agent**. You write code, answer findings, and own the commit. Reviewers only read
 and report — never let one edit files.
 
-Not yet installed. Draft; see `DESIGN.md` for how this splits with the CLI.
+The CLI owns the mechanics; you own the judgement. See `DESIGN.md` for the split.
 
 ## The loop
 
@@ -61,6 +61,20 @@ entirely false findings.
 
 A third of suggestions will not survive this. Do not skip it.
 
+Record each step, so the settled list generates itself and the gate can hold:
+
+```bash
+macr finding list
+macr finding reproduce <id> --evidence "what demonstrated it"
+macr finding resolve <id> --verdict accepted --reason "..." --test "what failed without the fix"
+macr finding resolve <id> --verdict rejected --reason "NOT valid because ... Verified empirically."
+macr finding settled          # regenerates settled.md, which the next round's prompt carries
+```
+
+`resolve --verdict accepted` is **refused** unless a reproduction was recorded and `--test` names
+what failed without the fix. Deferring and rejecting are not gated: you are entitled to say no
+without reproducing anything, which is the whole point of the loop.
+
 1. **Reproduce before fixing.** Demonstrate the finding against the real code first.
 2. **Every fix gets a regression test, and the test gets verified by reintroducing the bug.** A test
    that passes both with and without the fix is decoration.
@@ -77,6 +91,19 @@ A third of suggestions will not survive this. Do not skip it.
 Reply to every finding — silence is not a resolution. Per finding:
 **ACCEPTED** / **AGREE-BUT-DEFERRED** / **REJECTED**, each with reasoning, each ending in a direct
 question. Template in `prompts/feedback.md`.
+
+```bash
+macr reply --dir "$WT"           # one conversation per reviewer, concurrently
+```
+
+You hold a **separate** conversation with each reviewer, about its own findings only. Never relay one
+reviewer's findings to another: two reviewers that read each other stop being independent, and their
+agreement stops being evidence. `macr reply` redacts the other agents' names out of your verdict text
+for you, so writing "agy raised this too" in a `--reason` is safe — but do not rely on it as licence
+to quote another thread.
+
+Delivery follows `resume.supported`: codex resumes the session that already holds its review, so it
+gets your verdicts alone; agy starts fresh every run, so its own findings are quoted back to it.
 
 Rejections need evidence, not authority. One was settled by writing a three-line throwaway test and
 pasting the panic.
