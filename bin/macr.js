@@ -514,10 +514,18 @@ async function cmdAgent(argv) {
   // directory and nothing else: the server re-reads it per request and tails
   // the event log, so it sees each round land without the loop telling it.
   if (values.web) {
+    // Publish before serving. A fresh run has no directory on disk until the
+    // first round publishes one, so a browser opened at ?run=<slug> would find
+    // nothing to match and fall back to whichever run sorts first — an old one.
+    await writeRun(dir, foldEvents(prior, { target }));
     const { url } = await serve({ port: Number(values.port), onLog: (m) => console.log(st.field("console", st.muted(m))) });
-    liveConsole = url;
-    console.log(st.field("console", `${url}${st.muted("  →  the conversation streams live")}`));
-    openBrowser(url);
+    // Named, not guessed. The console falls back to whichever run sorts first
+    // when nothing says otherwise, and that is an old one as often as not —
+    // the process that just created this run is the one thing that knows
+    // which of the fifteen on disk the reader means.
+    liveConsole = `${url}/?run=${encodeURIComponent(path.basename(dir))}`;
+    console.log(st.field("console", `${liveConsole}${st.muted("  →  the conversation streams live")}`));
+    openBrowser(liveConsole);
     console.log("");
   } else {
     console.log(st.field("watch", st.muted("macr web  →  the conversation streams live")) + "\n");

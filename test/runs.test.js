@@ -102,3 +102,27 @@ test("listRuns reports every PR, and a broken one is skipped not hidden", async 
     await cleanup();
   }
 });
+
+test("re-reviewing one PR puts the newest attempt first, not the alphabetical one", async () => {
+  const { dir, cleanup } = await scratch();
+  const { writeRun } = await import("../lib/store.js");
+  try {
+    // Same PR, same state: only the stamp separates them. Written oldest-last
+    // so passing cannot depend on readdir order.
+    for (const attempt of ["20260826-1033", "20260826-1454", "20260826-1411"]) {
+      const d = path.join(dir, `owner-repo-3-${attempt}`);
+      const target = { repo: "owner/repo", id: "#3", state: "review", attempt };
+      await appendEvent(d, { t: "target", target });
+      await writeRun(d, foldEvents(await readEvents(d), { target }));
+    }
+
+    const { runs } = await listRuns(dir);
+    // The console opens runs[0] when nothing names one; the oldest attempt
+    // winning that slot is how a fresh review opened a stale conversation.
+    assert.equal(runs[0].target.attempt, "20260826-1454");
+    assert.deepEqual(runs.map((r) => r.target.attempt),
+      ["20260826-1454", "20260826-1411", "20260826-1033"]);
+  } finally {
+    await cleanup();
+  }
+});
