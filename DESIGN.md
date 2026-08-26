@@ -128,8 +128,40 @@ Built: `macr review` (rounds until convergence or `--max-rounds`), the append-on
 
 Still the operator's job, on purpose:
 
-- **Deciding a finding reproduces.** The CLI records the claim and refuses an unproven acceptance; it
-  cannot judge the claim. That gate is where the value was.
-- **Pushing between rounds.** `review --max-rounds n` re-reads HEAD each round, so the fix-and-push
-  step sits between rounds rather than inside the tool. Nothing here amends anyone's branch.
 - **`macr agents`** probes presence only, not authentication or version.
+
+## The autonomous loop
+
+`macr review` leaves three jobs to whoever is sitting between rounds — deciding whether a finding
+reproduces, fixing what does, and pushing so the next round has new code to read. When nobody sits
+there, `--max-rounds 10` reviews the same commit ten times and calls it a loop.
+
+`macr agent` fills that seat. The main agent triages each finding, fixes what reproduces, commits,
+replies to every reviewer about its own findings, and goes again — up to `--rounds` (default 10).
+
+Three things make it terminate rather than argue forever:
+
+| | |
+|---|---|
+| the settled list | regenerated from the log **before** every round, so a deferred finding is not re-raised by the next reviewer to read the diff |
+| the turn limit | `MAX_TURNS` (3) exchanges per *claim*, counted per finding so one contested item cannot spend the whole run's budget |
+| the round cap | `--rounds`, default 10 |
+
+The deadlock rule is deliberately **defer, not accept**. After three turns both positions are already
+in the log; fixing something nobody demonstrated is how a stubborn false positive gets code written
+for it, and the gate that refuses an unproven acceptance would have to be bypassed to do it.
+
+**Pushing is opt-in and refuses trunk.** `--push` appends to the PR branch, fast-forward only, never
+forced. Without it the loop commits to the worktree and stops there. An agent loop that can push to
+master is one bad triage away from a bad afternoon.
+
+## Watching it happen
+
+The conversation is the product, so it is rendered as one: **claude on the left, the reviewer on the
+right**, one column per reviewer. codex and agy are separate threads and are never merged — two
+reviewers that read each other stop being independent, which is the only reason to run more than one.
+
+It streams. The append-only log is the transport: `/api/stream` replays the file on connect so a page
+opened mid-round catches up, then pushes each appended line as it lands. Reviewer stdout reaches the
+log as batched `agent.chunk` events, so a twenty-minute agent is visible for all twenty minutes
+rather than being a black box that eventually produces a report.

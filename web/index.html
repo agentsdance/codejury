@@ -266,6 +266,92 @@
   .ship .s { font-size:12.4px; color:var(--muted); }
   footer { border-top:1px solid var(--line); padding-top:16px; color:var(--muted); font-size:12.6px; max-width:78ch; }
   @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+
+  /* ── Conversation ───────────────────────────────────────────────────
+     Two speakers, two sides. claude always left, the reviewer always right,
+     so which side a bubble sits on tells you who is talking before you read
+     a word of it. One column per reviewer: codex and agy are independent
+     conversations and must never be shown merged, or their agreement stops
+     being evidence of anything. */
+  .convo-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:0 0 14px; }
+  .convo-tabs { display:flex; gap:6px; flex-wrap:wrap; min-width:0; }
+  .convo-bar .spacer { flex:1 1 auto; }
+  /* Side by side stopped scaling at three: a fourth reviewer either overflowed
+     or squeezed every column below the width a report needs to be readable in.
+     One thread at full width is the default, and stacking is a deliberate
+     choice for comparing — never something the layout does to you because a
+     fifth agent was configured. */
+  .convo-grid { display:flex; flex-direction:column; gap:18px; }
+  /* A per-reviewer count on the tab, so an unread thread is visible without
+     opening it — the reason to run five reviewers is to notice the one that
+     found something. */
+  .convo-tabs .pr-chip .n {
+    font:600 10px/1 var(--mono); color:var(--muted);
+    padding:2px 5px; border-radius:20px; background:var(--surface-alt); margin-left:2px;
+  }
+  .convo-tabs .pr-chip[aria-pressed="true"] .n { background:rgba(255,255,255,.22); color:inherit; }
+  .convo-tabs .pr-chip .n[data-live="1"] { color:var(--warn); }
+  .stack-btn {
+    font:600 11px/1 var(--sans); color:var(--ink-2); background:var(--surface);
+    border:1px solid var(--line); border-radius:20px; padding:7px 12px; cursor:pointer;
+  }
+  .stack-btn[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  /* Stacked: every thread visible, each collapsible, so one long conversation
+     does not bury the four below it. */
+  .convo > header { cursor:default; }
+  .convo-grid[data-stack="1"] .convo > header { cursor:pointer; }
+  .convo .tw { margin-right:2px; font-size:10px; color:var(--muted); display:none; }
+  .convo-grid[data-stack="1"] .convo .tw { display:inline; }
+  .convo[data-open="0"] .msgs { display:none; }
+  .convo {
+    border:1px solid var(--line); border-radius:12px; background:var(--surface);
+    box-shadow:var(--shadow); display:flex; flex-direction:column; min-width:0;
+  }
+  .convo > header {
+    display:flex; align-items:center; gap:8px; padding:10px 14px;
+    border-bottom:1px solid var(--line-soft); font:600 13px/1.3 var(--sans);
+  }
+  .convo > header .who { color:var(--ink); }
+  .convo > header .st { margin-left:auto; font:500 11px/1 var(--mono); color:var(--muted); }
+  .convo > header .d { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; }
+  .convo > header .d[data-live="1"] { background:var(--warn); animation:blip 1.4s ease-in-out infinite; }
+  @keyframes blip { 0%,100%{opacity:1} 50%{opacity:.25} }
+  .msgs { padding:14px 16px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; max-height:72vh; }
+  .convo-grid[data-stack="1"] .msgs { max-height:46vh; }
+  .msg { max-width:min(78%, 760px); display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .msg[data-side="l"] { align-self:flex-start; }
+  .msg[data-side="r"] { align-self:flex-end; }
+  .msg .nm { font:600 11px/1 var(--sans); color:var(--muted); padding:0 4px; }
+  .msg[data-side="r"] .nm { text-align:right; }
+  .bub {
+    border:1px solid var(--line); border-radius:12px; padding:9px 12px;
+    font:400 13px/1.55 var(--sans); color:var(--ink); white-space:pre-wrap;
+    overflow-wrap:anywhere; background:var(--surface-alt);
+  }
+  .msg[data-side="l"] .bub { border-bottom-left-radius:4px; background:var(--main-soft); border-color:var(--main-hue); }
+  .msg[data-side="r"] .bub { border-bottom-right-radius:4px; }
+  .bub .hd { display:block; font:600 12px/1.4 var(--sans); margin-bottom:3px; }
+  .bub .loc { font:500 11px/1.4 var(--mono); color:var(--muted); }
+  .bub[data-k="verdict"] { border-left:3px solid var(--accent); }
+  .bub[data-k="verdict"][data-v="accepted"] { border-left-color:var(--ok); background:var(--ok-soft); }
+  .bub[data-k="verdict"][data-v="rejected"] { border-left-color:var(--bad); background:var(--bad-soft); }
+  .bub[data-k="verdict"][data-v="deferred"] { border-left-color:var(--warn); background:var(--warn-soft); }
+  .bub[data-k="commit"] { font:500 12px/1.5 var(--mono); background:transparent; border-style:dashed; }
+  .bub[data-k="streaming"] { font:400 12px/1.5 var(--mono); color:var(--ink-2); }
+  .bub[data-k="streaming"]::after {
+    content:"▍"; animation:blip 1s steps(2) infinite; color:var(--accent);
+  }
+  .bub .more { display:block; margin-top:5px; font:600 11px/1 var(--sans);
+    color:var(--accent); background:none; border:0; padding:0; cursor:pointer; }
+  .convo[data-a="agy"] > header .who, .msg[data-side="r"] .nm { color:var(--muted); }
+  .convo-tabs .pr-chip .ic, .convo > header .ic, .msg .nm .ic {
+    display:inline-flex; align-items:center; vertical-align:-2px; margin-right:4px;
+  }
+  .msg .nm .ic svg { width:11px; height:11px; }
+  .msg[data-side="r"] .nm { display:flex; justify-content:flex-end; align-items:center; }
+  .convo > header .who { display:inline-flex; align-items:center; gap:2px; }
+  .convo > header .sw { margin:0 4px; color:var(--muted); font-weight:400; }
+  .convo .empty { padding:26px 14px; text-align:center; font:400 13px/1.5 var(--sans); color:var(--muted); }
 </style>
 
 <div class="wrap">
@@ -288,7 +374,19 @@
   <section>
     <h2>Round by round</h2>
     <div class="rgrid" id="rounds"></div>
-    <div class="said" id="said"></div>
+  </section>
+
+  <section id="convo-sec">
+    <h2>The conversation</h2>
+    <p class="note" id="c-note">Claude on the left, the reviewer on the right. Each reviewer is a
+      separate thread — they never see each other's findings, which is the only reason running more
+      than one counts as evidence.</p>
+    <div class="convo-bar">
+      <div class="convo-tabs" id="convo-tabs"></div>
+      <span class="spacer"></span>
+      <button class="stack-btn" id="convo-stack" aria-pressed="false">stack all</button>
+    </div>
+    <div class="convo-grid" id="convo-grid"></div>
   </section>
 
   <section>
@@ -443,10 +541,6 @@ const pct = m => (m / RUN.totalMin) * 100;
 // exchanges. "open" is a finding the main agent has not answered yet, and it is
 // the state a live run spends most of its time in — leaving it out of the
 // filters hid every finding the CLI recorded.
-// Which reviewer's conversation is on screen. Sticky across polls so a live
-// round does not yank the reader back to the first reviewer mid-read.
-let CONVO = null;
-let CONVO_RUN = null;   // which run CONVO belongs to; selection resets across PRs
 
 const STATES = ["open","accepted","deferred","rejected"];
 let show = new Set(STATES);
@@ -506,9 +600,12 @@ function draw(){
   const body = !rows.length
     ? `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`
     // Follows the conversation picked above, so the findings on screen are the
-    // ones raised in the transcript you are reading. With only one reviewer
-    // there is nothing to follow, so everything shows.
-    : who.filter(a => who.length < 2 || a === CONVO || !who.includes(CONVO)).map(agent => {
+    // ones raised in the thread you are reading. Stacked means "show me all of
+    // them", and with only one reviewer there is nothing to follow.
+    // Derived, not read off a global: draw() runs before drawConvo() on the
+    // first paint, so consulting CONVO_PICK directly showed every reviewer once
+    // and then silently disagreed with the tab that ended up pressed.
+    : who.filter(a => who.length < 2 || CONVO_STACK || a === (who.includes(CONVO_PICK) ? CONVO_PICK : who[0])).map(agent => {
         const is = x => (x.with || "unattributed") === agent;
         const mine = rows.filter(is);
         if (!mine.length) return "";
@@ -580,7 +677,10 @@ function renderHeader(){
     ? ALL.map((r,i)=>{
         const t = r.target ?? {};
         const name = (t.repo ?? "").split("/").pop();
-        return `<button class="pr-chip" data-i="${i}" aria-pressed="${r===RUN}"
+        // The slug, not the index: a positional key silently points at a
+        // different PR the moment a run is added or the list re-sorts, which is
+        // exactly how a reader ends up on a run they did not pick.
+        return `<button class="pr-chip" data-i="${i}" data-slug="${esc(r.slug ?? "")}" aria-pressed="${r===RUN}"
            title="${esc(t.repo ?? "")} ${esc(t.id ?? "")}${t.title ? ` — ${esc(t.title)}` : ""}">
          <span class="d" style="background:${t.state==="review"||t.state==="human"?"var(--warn)":"var(--ok)"}"></span>
          ${repos.size > 1 && name ? `<span class="repo">${esc(name)}</span>` : ""}${esc(t.id ?? "?")}</button>`;
@@ -594,124 +694,12 @@ function renderHeader(){
 // tests at all.
 const bytes = n => n < 1024 ? `${n} B` : `${(n/1024).toFixed(1)} kB`;
 
-// One column per reviewer, because that is what actually happened: the main
-// agent held a separate conversation with each. Interleaving them into a single
-// stream implies they saw each other — the exact opposite of the guarantee the
-// loop depends on, and it reads as one debate rather than two.
-function renderSaid(){
-  const slug = RUN.slug ?? "";
-  const t = RUN.target ?? {};
-  const rounds = (RUN.rounds ?? []).filter(r => r.prompt || (r.verdicts ?? []).some(v => v.report));
-  if (!rounds.length) { $("said").innerHTML = ""; return; }
-
-  // Ordered by launch, not by who happened to finish first: the chips should
-  // sit in the same order as the timeline lanes above them, and a fast
-  // reviewer overtaking a slow one must not reshuffle the tabs mid-round.
-  const spoke = new Set();
-  for (const r of rounds) for (const v of (r.verdicts ?? [])) if (v.report) spoke.add(v.a);
-  const launched = (RUN.lanes ?? []).map(l => l.who).filter(a => spoke.has(a));
-  const who = [...launched, ...[...spoke].filter(a => !launched.includes(a))];
-  if (!who.length) { $("said").innerHTML = ""; return; }
-
-  const replyOf = new Map((RUN.replies ?? []).map(x => [x.agent, x]));
-
-  // One conversation at a time, full width. Side by side, each column was too
-  // narrow to actually read a report in — and reading the reports is the point.
-  // The chips carry the same shape as the PR switcher above them.
-  // Reset when the PR changes. CONVO is sticky so a live poll does not yank the
-  // reader mid-read, but stickiness must not cross runs: carrying "agy" onto a
-  // PR whose first tab is codex left the pressed tab and the visible pane
-  // disagreeing, and made that tab's own click a silent no-op.
-  if (CONVO_RUN !== (RUN.slug ?? RUN.target?.id)) {
-    CONVO_RUN = RUN.slug ?? RUN.target?.id;
-    CONVO = null;
-  }
-  if (!who.includes(CONVO)) CONVO = who[0];
-
-  const chips = who.map(a => {
-    const v = rounds.flatMap(r => r.verdicts ?? []).find(x => x.a === a);
-    const bad = v && v.s !== "clean";
-    return `<button class="pr-chip" data-convo="${esc(a)}" aria-pressed="${a === CONVO}">
-      <span class="d" style="background:${bad ? "var(--warn)" : "var(--ok)"}"></span>
-      claude ⇄ ${esc(a)}</button>`;
-  }).join("");
-
-  const columns = who.filter(a => a === CONVO).map(agent => {
-    const turns = rounds.flatMap(r => {
-      const v = (r.verdicts ?? []).find(x => x.a === agent && x.report);
-      if (!v) return [];
-      return [`
-        <div class="rule" data-who="stdin">
-          <span class="lbl">claude → ${esc(agent)} · round ${r.n}</span><i></i>
-          <span class="rt">${esc(r.sha || "")}${r.prompt ? ` · ${esc(bytes(r.prompt.length))}` : ""}</span>
-        </div>
-        ${r.prompt ? `
-          <div class="tabs"><button class="fold" data-fold="p${r.n}-${esc(agent)}" aria-pressed="false">show prompt</button></div>
-          <pre class="stream stdin" id="p${r.n}-${esc(agent)}" hidden>${esc(r.prompt)}</pre>` : ""}
-        <div class="rule" data-who="${esc(agent)}">
-          <span class="lbl">${icon(agent)}${esc(agent)} → claude</span><i></i>
-          <span class="rt">${v.seconds ? `${esc(v.seconds)}s · ` : ""}<b data-s="${esc(v.s)}">${esc(v.s)}</b>${v.rawBytes ? ` · ${esc(bytes(v.rawBytes))}` : ""}</span>
-        </div>
-        <pre class="stream">${esc(v.report)}</pre>
-        ${v.rawFile && slug ? `
-          <div class="tabs">
-            <button data-view="report" data-for="${esc(v.rawFile)}" aria-pressed="true">report</button>
-            <button data-view="raw" data-for="${esc(v.rawFile)}" data-slug="${esc(slug)}" aria-pressed="false">raw stream</button>
-          </div>` : ""}`];
-    });
-
-    // The reply exchange is a later turn in this same conversation, so it
-    // belongs in this column rather than a section of its own.
-    const rep = replyOf.get(agent);
-    const replyTurn = rep ? `
-      <div class="rule" data-who="stdin">
-        <span class="lbl">claude → ${esc(agent)} · verdicts</span><i></i>
-        <span class="rt">its findings only</span>
-      </div>
-      <div class="rule" data-who="${esc(agent)}">
-        <span class="lbl">${icon(agent)}${esc(agent)} → claude · answer</span><i></i>
-        <span class="rt">${rep.seconds ? `${esc(rep.seconds)}s · ` : ""}<b data-s="${esc(rep.verdict)}">${esc(rep.verdict)}</b></span>
-      </div>
-      <pre class="stream">${esc(rep.report)}</pre>` : "";
-
-    return `
-      <div class="io convo">
-        <div class="term-bar">
-          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-          <span class="t">claude ⇄ ${esc(agent)}</span>
-        </div>
-        <div class="io-body">${turns.join("")}${replyTurn}</div>
-      </div>`;
-  }).join("");
-
-  $("said").innerHTML = `
-    ${who.length > 1 ? `<div class="convo-switch">${chips}</div>` : ""}
-    <div class="convo-note">${who.length} independent conversation${who.length > 1 ? "s" : ""} —
-      ${esc(who.join(" and "))} never saw each other's findings.</div>
-    <div class="convo-grid">${columns}</div>`;
-}
-
-// The prompt is long and identical for every reviewer, so it stays folded until
-// asked for. The report is the thing you came to read, so it does not.
-$("said").addEventListener("click", (e) => {
-  // Both halves follow the same selection: the findings below are the ones
-  // raised in the transcript above, so they must move together.
-  const c = e.target.closest("button[data-convo]");
-  if (c) { CONVO = c.dataset.convo; renderSaid(); draw(); return; }
-
-  const f = e.target.closest("button.fold");
-  if (!f) return;
-  const pre = $(f.dataset.fold);
-  const open = pre.hasAttribute("hidden");
-  pre.toggleAttribute("hidden", !open);
-  f.setAttribute("aria-pressed", String(open));
-  f.textContent = open ? "hide prompt" : "show prompt";
-});
-
-// report ⇄ raw. Fetched on demand: a verbose agent's stream can dwarf the rest
-// of the payload, and most of it is transcript rather than answer.
-$("said").addEventListener("click", async (e) => {
-  const b = e.target.closest("button[data-view]");
+// report ⇄ raw stream, now hung off the conversation rather than the removed
+// round-by-round transcript. Fetched on demand: a verbose agent's stream can
+// dwarf the rest of the payload, and most of it is transcript rather than
+// answer.
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("#convo-grid button[data-view]");
   if (!b) return;
   const tabs = b.closest(".tabs");
   const pre = tabs.previousElementSibling;
@@ -766,8 +754,6 @@ function render(){
         </div>`).join("")}
     </article>`).join("");
 
-  renderSaid();
-
   // A run that has not shipped anything yet has no tally. An empty grid under a
   // heading reads as a rendering failure, so drop the whole section.
   const ship = RUN.ship ?? [];
@@ -779,6 +765,304 @@ function render(){
   $("foot").textContent = RUN.foot ?? "";
   $("foot").style.display = RUN.foot ? "" : "none";
   draw();
+  // The stream follows whichever run is on screen; switching PRs switches it.
+  connect(RUN.slug ?? null);
+  drawConvo();
+}
+
+/* ── Conversation ─────────────────────────────────────────────────────
+   Rendered from the event stream, not from run.json. The timeline needs a
+   folded run; a conversation needs the events in the order they were spoken,
+   and folding throws that order away.
+
+   Side is fixed by speaker, never by turn order: claude left, reviewer right.
+   A reader should be able to tell who is talking from across the room. */
+let THREADS = [];        // [{agent, turns:[…]}]
+let CONVO_STACK = false; // one thread full width, or every thread stacked
+let CONVO_PICK = null;   // which thread, when not stacked
+const CONVO_SHUT = new Set(); // collapsed threads, by agent, while stacked
+
+const SIDE = (who) => (who === "claude" ? "l" : "r");
+
+// A stable colour per agent. codex and droid have tokens already; anything else
+// is hashed to a hue so a five-reviewer run does not render five identical
+// chips — and so the same agent keeps its colour across reloads.
+const HUES = { claude: "var(--main-hue)", codex: "var(--codex)", droid: "var(--droid)" };
+function hueFor(name) {
+  if (HUES[name]) return HUES[name];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return `hsl(${Math.abs(h) % 360} 42% 45%)`;
+}
+
+const VERDICT_TEXT = {
+  accepted: "Accepted — fixed",
+  deferred: "Agreed, but not fixing here",
+  rejected: "Rejected",
+  superseded: "Superseded",
+};
+
+// Long reports collapse. A twenty-minute reviewer turn can be thousands of
+// lines, and an un-collapsed one buries every exchange after it.
+const CLAMP = 700;
+function bubble(text, k, attrs = "") {
+  const t = text ?? "";
+  if (t.length <= CLAMP) return `<div class="bub" data-k="${k}" ${attrs}>${esc(t)}</div>`;
+  const id = `b${Math.abs(hash(t))}`;
+  return `<div class="bub" data-k="${k}" ${attrs}><span id="${id}-s">${esc(t.slice(0, CLAMP))}…</span
+    ><span id="${id}-f" hidden>${esc(t)}</span
+    ><button class="more" data-more="${id}">show all ${bytes(t.length)}</button></div>`;
+}
+function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+
+function turnHTML(t, agent) {
+  const side = SIDE(t.who);
+  const nm = t.who === "claude" ? "claude" : agent;
+  let body = "";
+  switch (t.kind) {
+    case "finding":
+      body = `<div class="bub" data-k="finding"><span class="hd">${esc(t.claim ?? "")}</span
+        >${t.loc ? `<span class="loc">${esc(t.loc)}</span>\n` : ""}${esc((t.body ?? "").slice(0, CLAMP))}</div>`;
+      break;
+    case "reproduced":
+      body = bubble(`Reproduced. ${t.text ?? ""}`, "reproduced");
+      break;
+    case "verdict":
+      body = `<div class="bub" data-k="verdict" data-v="${esc(t.verdict ?? "")}"
+        ><span class="hd">${esc(VERDICT_TEXT[t.verdict] ?? t.verdict ?? "")}</span
+        >${esc(t.text ?? "")}${t.test ? `\n\nRegression test: ${esc(t.test)} — verified failing with the fix reverted.` : ""}</div>`;
+      break;
+    case "commit":
+      body = `<div class="bub" data-k="commit">pushed ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
+      break;
+    case "streaming":
+      // The tail only: a live agent's stdout is the transcript so far, and the
+      // interesting part is always the end of it.
+      body = `<div class="bub" data-k="streaming">${esc((t.text ?? "").slice(-CLAMP))}</div>`;
+      break;
+    case "report":
+      body = bubble(t.text ?? "", "report");
+      break;
+    case "reply":
+      body = bubble(t.text ?? "(reply sent)", "reply");
+      break;
+    case "answer":
+      body = bubble(t.text ?? "", "answer");
+      break;
+    default:
+      body = bubble(t.text ?? "", esc(t.kind ?? "turn"));
+  }
+  return `<div class="msg" data-side="${side}"><span class="nm"
+    ><span class="ic" style="color:${nm === "claude" ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}</span>${body}</div>`;
+}
+
+function drawConvo() {
+  const tabs = $("convo-tabs"), grid = $("convo-grid"), sec = $("convo-sec");
+  if (!tabs || !grid) return;
+  const threads = THREADS.filter((t) => t.agent && t.agent !== "?");
+  if (!threads.length) { sec.style.display = "none"; return; }
+  sec.style.display = "";
+
+  const names = threads.map((t) => t.agent);
+  if (!names.includes(CONVO_PICK)) CONVO_PICK = names[0];
+  const live = (a) => threads.find((t) => t.agent === a)?.turns.some((x) => x.kind === "streaming");
+
+  // The count sits on the tab because with five reviewers the question is
+  // which one to read, and that is answerable from turn count and liveness
+  // without opening any of them.
+  tabs.innerHTML = names.map((a) => {
+    const t = threads.find((x) => x.agent === a);
+    const on = !CONVO_STACK && CONVO_PICK === a;
+    // The agent's own mark, not a coloured dot: with five reviewers the name is
+    // the slowest thing on the chip to read, and an unknown agent still gets a
+    // legible fallback glyph.
+    return `<button class="pr-chip" data-ctab="${esc(a)}" aria-pressed="${on}"
+      ><span class="ic" style="color:${hueFor(a)}">${icon(a)}</span
+      >${esc(a)}<span class="n" data-live="${live(a) ? 1 : 0}">${t.turns.length}</span></button>`;
+  }).join("");
+
+  const btn = $("convo-stack");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(CONVO_STACK));
+    btn.textContent = CONVO_STACK ? `one at a time` : `stack all ${names.length}`;
+  }
+
+  const shown = CONVO_STACK ? threads : threads.filter((t) => t.agent === CONVO_PICK);
+  grid.dataset.stack = CONVO_STACK ? "1" : "0";
+  grid.innerHTML = shown.map((t) => {
+    const open = !CONVO_STACK || !CONVO_SHUT.has(t.agent);
+    const l = live(t.agent);
+    const msgs = t.turns.length
+      ? t.turns.map((x) => turnHTML(x, t.agent)).join("")
+      : `<p class="empty">waiting for ${esc(t.agent)}…</p>`;
+    return `<div class="convo" data-a="${esc(t.agent)}" data-open="${open ? 1 : 0}">
+      <header data-fold-agent="${esc(t.agent)}"><span class="tw">${open ? "▾" : "▸"}</span
+        ><span class="d" data-live="${l ? 1 : 0}"></span>
+        <span class="who"><span class="ic" style="color:var(--main-hue)">${icon("claude")}</span>claude
+          <span class="sw">⇄</span>
+          <span class="ic" style="color:${hueFor(t.agent)}">${icon(t.agent)}</span>${esc(t.agent)}</span>
+        <span class="st">${t.turns.length} turn${t.turns.length === 1 ? "" : "s"}${l ? " · live" : ""}</span>
+      </header>
+      <div class="msgs" data-agent="${esc(t.agent)}">${msgs}</div>
+    </div>`;
+  }).join("");
+
+  for (const box of grid.querySelectorAll(".msgs")) {
+    if (box.dataset.at !== "0") box.scrollTop = box.scrollHeight;
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest("[data-ctab]");
+  if (tab) {
+    // Picking a reviewer while stacked means "show me that one", not "keep
+    // everything stacked and scroll to it".
+    CONVO_STACK = false;
+    CONVO_PICK = tab.dataset.ctab;
+    // The exchange below follows this selection, so it has to move with it.
+    drawConvo(); draw();
+    return;
+  }
+  if (e.target.closest("#convo-stack")) { CONVO_STACK = !CONVO_STACK; drawConvo(); draw(); return; }
+  const fold = e.target.closest("[data-fold-agent]");
+  if (fold && CONVO_STACK) {
+    const a = fold.dataset.foldAgent;
+    CONVO_SHUT.has(a) ? CONVO_SHUT.delete(a) : CONVO_SHUT.add(a);
+    drawConvo();
+    return;
+  }
+  const more = e.target.closest("[data-more]");
+  if (more) {
+    const id = more.dataset.more;
+    document.getElementById(`${id}-s`)?.setAttribute("hidden", "");
+    document.getElementById(`${id}-f`)?.removeAttribute("hidden");
+    more.remove();
+  }
+});
+
+// Remember whether each column was pinned to the bottom before a re-render.
+document.addEventListener("scroll", (e) => {
+  const box = e.target.closest?.(".msgs");
+  if (!box) return;
+  const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.dataset.at = atEnd ? "1" : "0";
+}, true);
+
+/* Live events. The append-only log is the transport: the server replays it on
+   connect and pushes each new line, so a page opened mid-round catches up and
+   then follows in real time. Reconnects on drop — a run outlives any one
+   connection, and a console that silently stops updating is worse than one
+   that never started. */
+let ES = null;
+let ES_SLUG = null;
+let EVENTS = [];
+let REPLAY = [];         // events arriving during a reconnect replay
+let replaying = true;    // the first batch after connecting is always a replay
+
+function connect(slug) {
+  if (!slug || slug === ES_SLUG) return;
+  ES_SLUG = slug;
+  ES?.close();
+  EVENTS = [];
+  REPLAY = [];
+  replaying = true;
+  try {
+    ES = new EventSource(`api/stream?run=${encodeURIComponent(slug)}`);
+  } catch { return; }
+  ES.addEventListener("event", (m) => {
+    let e;
+    try { e = JSON.parse(m.data); } catch { return; }
+    (replaying ? REPLAY : EVENTS).push(e);
+    if (!replaying) schedule();
+  });
+  // EventSource reconnects on its own, and the server replays the log from byte
+  // zero every time it does. Appending that replay to history we already hold
+  // duplicated every finding and reply once per dropped connection, and the
+  // duplicates compounded. "ready" ends a replay, so the events that arrived
+  // during it ARE the whole history: keep those and drop what came before.
+  ES.addEventListener("ready", () => {
+    if (REPLAY.length) { EVENTS = REPLAY.slice(); REPLAY = []; }
+    replaying = false;
+    schedule();
+  });
+  ES.onerror = () => {
+    // The next batch is a fresh replay, not a continuation.
+    replaying = true;
+    REPLAY = [];
+  };
+}
+
+// Chunks arrive faster than anyone can read. Coalesce a burst into one paint.
+let pending = null;
+function schedule() {
+  if (pending) return;
+  pending = setTimeout(() => {
+    pending = null;
+    THREADS = foldConversation(EVENTS);
+    drawConvo();
+  }, 120);
+}
+
+/* The same fold as lib/loop.js conversation(), in the browser: applying it to
+   the live stream avoids a round trip per token, and the server-side copy stays
+   authoritative for anything that reads a finished run. */
+function foldConversation(events) {
+  const threads = new Map();
+  const thread = (a) => {
+    let t = threads.get(a);
+    if (!t) threads.set(a, (t = { agent: a, turns: [] }));
+    return t;
+  };
+  const owner = new Map();
+  for (const e of events) {
+    switch (e.t) {
+      case "finding.raised":
+        owner.set(e.id, e.agent);
+        thread(e.agent).turns.push({ who: e.agent, kind: "finding", id: e.id,
+          claim: e.claim, loc: e.loc ?? "", body: e.body ?? "" });
+        break;
+      case "finding.reproduced":
+        thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "reproduced",
+          id: e.id, text: typeof e.evidence === "string" ? e.evidence : "" });
+        break;
+      case "finding.resolved":
+        thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "verdict",
+          id: e.id, verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "" });
+        break;
+      case "finding.turn":
+        thread(owner.get(e.id) ?? e.agent ?? "?").turns.push({
+          who: e.who ?? "?", kind: "rebuttal", id: e.id, text: e.text ?? "" });
+        break;
+      case "agent.chunk": {
+        const t = thread(e.agent);
+        const last = t.turns[t.turns.length - 1];
+        if (last?.kind === "streaming" && last.round === e.round) last.text += e.text ?? "";
+        else t.turns.push({ who: e.agent, kind: "streaming", round: e.round, text: e.text ?? "" });
+        break;
+      }
+      case "agent.report": {
+        const t = thread(e.agent);
+        const i = t.turns.findIndex((x) => x.kind === "streaming" && x.round === e.round);
+        const turn = { who: e.agent, kind: "report", round: e.round,
+          verdict: e.verdict, text: e.report ?? "", seconds: e.seconds };
+        if (i >= 0) t.turns.splice(i, 1, turn); else t.turns.push(turn);
+        break;
+      }
+      case "reply.sent":
+        thread(e.agent).turns.push({ who: "claude", kind: "reply", text: e.text ?? "" });
+        break;
+      case "reply.answered":
+        thread(e.agent).turns.push({ who: e.agent, kind: "answer",
+          text: e.report ?? "", verdict: e.verdict, seconds: e.seconds });
+        break;
+      case "commit.pushed":
+        for (const t of threads.values()) {
+          t.turns.push({ who: "claude", kind: "commit", sha: e.sha, text: e.subject ?? "" });
+        }
+        break;
+    }
+  }
+  return [...threads.values()];
 }
 
 let ALL = [RUN];
@@ -793,10 +1077,36 @@ document.addEventListener("click", (e) => {
   // and every subsequent render threw on RUN.target.
   const c = e.target.closest("#switcher .pr-chip");
   if (!c) return;
-  const next = ALL[Number(c.dataset.i)];
+  const next = ALL.find((r) => r.slug && r.slug === c.dataset.slug) ?? ALL[Number(c.dataset.i)];
   if (!next) return;
   RUN = next;
+  // Which PR you are reading belongs in the URL. Without it the console is one
+  // address for six runs: a reload lands somewhere else, a link shares the
+  // wrong thing, and back does nothing.
+  setRunParam(next.slug);
   render();
+});
+
+/** Put the selected run in the query string, as a history entry you can go back through. */
+function setRunParam(slug, { replace = false } = {}) {
+  if (!slug) return;
+  const url = new URL(location.href);
+  if (url.searchParams.get("run") === slug) return;
+  url.searchParams.set("run", slug);
+  history[replace ? "replaceState" : "pushState"]({ run: slug }, "", url);
+}
+
+/** The run named by ?run=, if it is one we actually have. */
+function runFromParam(runs) {
+  const want = new URL(location.href).searchParams.get("run");
+  if (!want) return null;
+  return runs.find((r) => r.slug === want) ?? null;
+}
+
+// Back and forward move between PRs rather than leaving the console.
+addEventListener("popstate", () => {
+  const pick = runFromParam(ALL);
+  if (pick && pick !== RUN) { RUN = pick; render(); }
 });
 
 function stamp(note) {
@@ -835,10 +1145,17 @@ async function poll({ first = false } = {}) {
   const usable = runs.filter((x) => x && x.target && Array.isArray(x.rounds));
   if (!usable.length) return true;
 
-  // Keep whatever the reader was looking at when new runs arrive.
-  const keep = RUN?.target?.id;
+  // Keep whatever the reader was looking at when new runs arrive. ?run= wins:
+  // it is an explicit request for one PR, and a poll that quietly moved off it
+  // would make the URL a lie.
+  const keep = RUN?.slug;
   ALL = usable;
-  RUN = usable.find((r) => r.target?.id === keep) ?? usable[0];
+  RUN = runFromParam(usable)
+    ?? usable.find((r) => r.slug === keep)
+    ?? usable[0];
+  // Stamp the address on first load so what is on screen is always linkable,
+  // without pushing a history entry nobody asked for.
+  setRunParam(RUN?.slug, { replace: true });
   render();
   stamp();
   return true;
