@@ -10,11 +10,11 @@
     "claude",
     "codex"
   ],
-  "homepage": "https://github.com/zzxwill/multiple-agents-code-reivew#readme",
-  "bugs": "https://github.com/zzxwill/multiple-agents-code-reivew/issues",
+  "homepage": "https://github.com/agentsdance/multiple-agents-code-reivew#readme",
+  "bugs": "https://github.com/agentsdance/multiple-agents-code-reivew/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zzxwill/multiple-agents-code-reivew.git"
+    "url": "git+https://github.com/agentsdance/multiple-agents-code-reivew.git"
   },
   "type": "module",
   "bin": {
