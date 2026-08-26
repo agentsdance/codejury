@@ -1420,10 +1420,17 @@ function foldConversation(events) {
         // interleave their heartbeats, so "is it the last turn?" failed on
         // every alternation and a nine-minute round grew 81 bubbles instead of
         // one.
-        const w = t.turns.find((x) => x.kind === "waiting" && x.round === e.round);
+        const w = t.turns.find(
+          (x) => x.kind === "waiting" && x.round === e.round && x.who === e.agent,
+        );
         if (w) { w.seconds = e.seconds; w.quietSeconds = e.quietSeconds ?? null; break; }
         // Real output already supersedes it; do not regress to a placeholder.
-        if (t.turns.some((x) => (x.kind === "streaming" || x.kind === "report") && x.round === e.round)) break;
+        // Per speaker, not per thread: the reviewer's report ends the reviewer's
+        // turn, but the main agent triaging afterwards is a new speaker on the
+        // same thread — keying this on the thread dropped every triage
+        // heartbeat, which is the longest silence in the round and the reason
+        // the heartbeat exists.
+        if (t.turns.some((x) => (x.kind === "streaming" || x.kind === "report") && x.round === e.round && x.who === e.agent)) break;
         t.turns.push({ who: e.agent, kind: "waiting", round: e.round, seconds: e.seconds, ts: e.ts });
         break;
       }
