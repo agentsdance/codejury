@@ -1412,7 +1412,10 @@ function foldConversation(events) {
       // so without this its column is empty for nine minutes and "thinking" is
       // indistinguishable from "wedged".
       case "agent.alive": {
-        const t = thread(e.agent);
+        // `forAgent` names the reviewer whose finding is being judged, so the
+        // main agent's heartbeat lands inside that reviewer's conversation
+        // rather than opening a thread of its own.
+        const t = thread(e.forAgent ?? e.agent);
         // Found by round, not by position. Two rounds running concurrently
         // interleave their heartbeats, so "is it the last turn?" failed on
         // every alternation and a nine-minute round grew 81 bubbles instead of
