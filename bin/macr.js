@@ -266,7 +266,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
           worktree, prompt, stopToken: cfg.stopToken,
           dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
           onChunk: (text) => {
-            spoke = true;
+            lastSpoke = Date.now();
             sink.write(text);
             buf += text;
             if (!flushing) flushing = setTimeout(flush, 700);
