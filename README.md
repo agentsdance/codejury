@@ -7,6 +7,24 @@ Derived from a real run on `worker-pool` #128 (exponential CreateSandbox retry b
 Three rounds, two agents (`codex`, `droid`), converged. See [CASE-STUDY.md](CASE-STUDY.md) for the
 findings and the numbers.
 
+## Install
+
+```bash
+npm install -g @agentsdance/cr     # then: cr <pr-url>
+npx @agentsdance/cr <pr-url>       # or without installing
+```
+
+Node 20 or newer. The reviewers are separate CLIs you install yourself — `cr` spawns whatever you
+have and skips the rest:
+
+```bash
+cr agents          # which are installed, and which role each holds
+```
+
+`cr` reads `cr.config.json` from the repo you are reviewing, if present; copy
+[`cr.config.example.json`](cr.config.example.json) to start. Without one, the built-in registry is
+used. (`macr.config.json` is still read — the tool was called `macr` before.)
+
 ## The loop
 
 ```
@@ -39,19 +57,19 @@ in the same process as the run, so the conversation streams as it is spoken rath
 the end:
 
 ```
-macr --web https://github.com/owner/repo/pull/1   # review, with the console open on it
-macr --web --port 3099 --rounds 3                 # the current branch, on another port
+cr --web https://github.com/owner/repo/pull/1   # review, with the console open on it
+cr --web --port 3099 --rounds 3                 # the current branch, on another port
 ```
 
 The console outlives the loop — it stays up until you ctrl-c, which is the point: the run finishing
-is when there is finally something worth reading. `macr web` still serves the same console
+is when there is finally something worth reading. `cr web` still serves the same console
 standalone, against runs that already exist.
 
 ## Who writes, and who only reads
 
 Exactly one agent has role `main` — **Claude Code**, the session driving the loop. It owns the working
 tree and the commit, triages every finding, and is the only writer. Its registry entry carries an
-empty `argv` because it is never spawned; `macr agents` shows it as in-process:
+empty `argv` because it is never spawned; `cr agents` shows it as in-process:
 
 ```
 ok      claude   main     (in-process)
@@ -72,7 +90,7 @@ claude ──▶ codex   its 5 findings, resumed session
 
 Never a broadcast. Two reviewers that see each other's findings stop being independent, and their
 agreement stops being evidence — which is the only reason to run more than one. On aigit #48 both
-independently found the same Windows `os.Rename` bug; neither was told the other had. `macr reply`
+independently found the same Windows `os.Rename` bug; neither was told the other had. `cr reply`
 redacts other agents' names and finding ids out of the verdict text, so independence does not depend
 on the operator remembering.
 
@@ -82,8 +100,8 @@ Each PR is its own run directory — `runs/<repo>-<id>/` — with its own event 
 list. Nothing is shared, so reviewing several at once needs no coordination:
 
 ```
-macr runs                                  # every PR under review, with its slug
-macr finding list --run agentsdance-aigit-48
+cr runs                                  # every PR under review, with its slug
+cr finding list --run agentsdance-aigit-48
 ```
 
 With one run, `--run` is optional. With several it is required, and the commands that need it refuse
@@ -98,7 +116,7 @@ once run two of every agent. The slowest still sets each round's wall clock.
 The loop is agent-agnostic; `codex` and `droid` are just the two entries that happen to be enabled.
 Adding a third is a config change, not a code change. See [config.example.yaml](config.example.yaml).
 
-Adding `agy` for the aigit #48 run was exactly that — a `macr.config.json` entry, no code:
+Adding `agy` for the aigit #48 run was exactly that — a `cr.config.json` entry, no code:
 
 ```json
 { "name": "agy", "promptDelivery": "argv", "cwd": "worktree",

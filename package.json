@@ -1,10 +1,24 @@
 {
-  "name": "@zzxwill/macr",
-  "version": "0.1.0",
+  "name": "@agentsdance/cr",
+  "version": "0.0.1",
   "description": "Run a pull request past several independent AI reviewers and watch them converge.",
+  "keywords": [
+    "code-review",
+    "ai",
+    "agents",
+    "pull-request",
+    "claude",
+    "codex"
+  ],
+  "homepage": "https://github.com/zzxwill/multiple-agents-code-reivew#readme",
+  "bugs": "https://github.com/zzxwill/multiple-agents-code-reivew/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zzxwill/multiple-agents-code-reivew.git"
+  },
   "type": "module",
   "bin": {
-    "macr": "bin/macr.js"
+    "cr": "bin/cr.js"
   },
   "engines": {
     "node": ">=20"
@@ -12,11 +26,15 @@
   "files": [
     "bin",
     "lib",
-    "web",
-    "prompts"
+    "web/index.html",
+    "prompts",
+    "cr.config.example.json"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "start": "node bin/macr.js web --open",
+    "start": "node bin/cr.js web --open",
     "test": "node --test \"test/*.test.js\""
   },
   "license": "MIT"

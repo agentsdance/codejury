@@ -21,7 +21,7 @@ A binary cannot make those judgements. Instructions cannot capture a subprocess.
 
 ## Split
 
-| | `macr` (CLI) | the skill |
+| | `cr` (CLI) | the skill |
 |---|---|---|
 | owns | mechanics | judgement |
 | worktree, merge-base pinning | ✓ | |
@@ -35,7 +35,7 @@ A binary cannot make those judgements. Instructions cannot capture a subprocess.
 | maintaining the settled list | | ✓ |
 | escalating past the turn limit | | ✓ |
 
-**Hard rule: the CLI must work without the skill.** If `macr review` only functions inside a Claude
+**Hard rule: the CLI must work without the skill.** If `cr review` only functions inside a Claude
 Code session reading SKILL.md, it is not a tool — it is a prompt with a binary attached, and it cannot
 run in CI or for anyone on a different agent.
 
@@ -65,7 +65,7 @@ The triage gate is where the value was — roughly a third of suggestions died t
 only because the operator chose to be disciplined. Some of it can be made structural:
 
 ```
-macr finding resolve X1 --verdict accepted
+cr finding resolve X1 --verdict accepted
   → refused: no finding.reproduced event for X1
 ```
 
@@ -76,14 +76,14 @@ judgement half to the skill.
 ## CLI surface
 
 ```
-macr review <pr-url>     run rounds until convergence or --max-rounds
-macr web [--runs dir]    serve the console
-macr finding <cmd>       list | reproduce | resolve | settled — appends events, enforces the gate
-macr reply               one conversation per reviewer, about its own findings only
-macr agents              probe configured agents: present, authenticated, version
+cr review <pr-url>     run rounds until convergence or --max-rounds
+cr web [--runs dir]    serve the console
+cr finding <cmd>       list | reproduce | resolve | settled — appends events, enforces the gate
+cr reply               one conversation per reviewer, about its own findings only
+cr agents              probe configured agents: present, authenticated, version
 ```
 
-`macr agents` prints the role, so who owns the commit is visible rather than implied:
+`cr agents` prints the role, so who owns the commit is visible rather than implied:
 
 ```
 ok      claude   main     (in-process)
@@ -98,7 +98,7 @@ own the commit corrupts a run rather than merely failing it.
 
 ## One conversation per reviewer
 
-`macr reply` opens a **separate** thread with each reviewer, concurrently, containing only that
+`cr reply` opens a **separate** thread with each reviewer, concurrently, containing only that
 reviewer's own findings and the main agent's verdicts on them. Reviewers never see each other's
 findings — two that read each other stop being independent, and their agreement stops being evidence,
 which is the only reason to run more than one.
@@ -116,27 +116,27 @@ Delivery follows `resume.supported`, and the difference is not cosmetic:
 | the reply is | a turn in a thread that already holds its review | addressed to an agent with no memory of it |
 | so | verdicts alone | verdicts **plus its own findings quoted back** |
 
-All four exist. `macr agents` probes presence only — it does not yet check authentication or
+All four exist. `cr agents` probes presence only — it does not yet check authentication or
 version.
 
 ---
 
 ## What is built, and what is not
 
-Built: `macr review` (rounds until convergence or `--max-rounds`), the append-only event log,
-`macr finding` with the enforcement gate, the self-generating settled list, and the console.
+Built: `cr review` (rounds until convergence or `--max-rounds`), the append-only event log,
+`cr finding` with the enforcement gate, the self-generating settled list, and the console.
 
 Still the operator's job, on purpose:
 
-- **`macr agents`** probes presence only, not authentication or version.
+- **`cr agents`** probes presence only, not authentication or version.
 
 ## The autonomous loop
 
-`macr review` leaves three jobs to whoever is sitting between rounds — deciding whether a finding
+`cr review` leaves three jobs to whoever is sitting between rounds — deciding whether a finding
 reproduces, fixing what does, and pushing so the next round has new code to read. When nobody sits
 there, `--max-rounds 10` reviews the same commit ten times and calls it a loop.
 
-`macr agent` fills that seat. The main agent triages each finding, fixes what reproduces, commits,
+`cr agent` fills that seat. The main agent triages each finding, fixes what reproduces, commits,
 replies to every reviewer about its own findings, and goes again — up to `--rounds` (default 10).
 
 Three things make it terminate rather than argue forever:

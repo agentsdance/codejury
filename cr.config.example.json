@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "Copy to macr.config.json to override or add agents. That file is per-machine",
+    "Copy to cr.config.json to override or add agents. That file is per-machine",
     "and gitignored: which reviewers you have installed is a property of your box,",
     "not of the project.",
     "",
