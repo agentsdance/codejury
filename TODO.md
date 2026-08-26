@@ -1,7 +1,15 @@
 # Deferred
 
-## The triage step
-`macr agent` still prints `→ awaiting claude: macr finding reproduce <id>` and
-moves on. It no longer lies about it — a round with open findings reports
-"N finding(s) still open — not convergence" rather than success — but the
-fix-between-rounds half of the loop is not built.
+Nothing outstanding. The triage step — the last item — is built: `macr` spawns
+the main agent per finding, which reproduces before accepting, fixes what is
+real, rejects what is not, and the loop commits and pushes between rounds.
+
+Known limits worth revisiting:
+
+- **Findings are triaged serially.** Judging them concurrently would have
+  several agents editing one tree at once, and the second fix would land on top
+  of the first without having seen it. Correct, but it makes a round with 20
+  findings long.
+- **A rejected finding is re-raised by the next reviewer** until it reaches the
+  settled list, which only happens after the round it was rejected in. The
+  turn limit bounds the argument; it does not prevent the first repeat.

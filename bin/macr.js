@@ -17,6 +17,7 @@ import { serve } from "../lib/server.js";
 import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn } from "../lib/loop.js";
+import { triageOne } from "../lib/triage.js";
 
 const run = promisify(execFile);
 const VERSION = "0.1.0";
@@ -43,7 +44,7 @@ review                           (drives itself; no operator between rounds)
   --summary <text>   intent, passed to reviewers  (default: the PR description)
   --rounds <n>       maximum rounds                           (default 10)
   --resume <slug>    continue an existing run instead of starting a new one
-  --push             push each round's fixes to the PR branch (default: commit only)
+  --no-push          commit fixes to the worktree without pushing
   --dry-run          exercise the pipeline, spawn nothing
 
 review-once flags
@@ -373,7 +374,8 @@ async function cmdAgent(argv) {
       trunk: { type: "string" },
       rounds: { type: "string", default: "10" },
       agents: { type: "string" },
-      push: { type: "boolean", default: false },
+      push: { type: "boolean", default: true },
+      "no-push": { type: "boolean", default: false },
       resume: { type: "string" },
       "dry-run": { type: "boolean", default: false },
     },
@@ -421,9 +423,10 @@ async function cmdAgent(argv) {
   const pr = await prDetails(values.pr, worktree);
   const git = await describe(worktree, trunk);
 
-  // Pushing rewrites a branch other people are reading, autonomously, once per
-  // round. It is opt-in, and it refuses trunk outright: an agent loop that can
-  // push to master is one bad triage away from a bad afternoon.
+  // The next round has to review NEW code or it is not a loop, so pushing is
+  // the default. It still refuses trunk outright: a loop that can push to
+  // master is one bad triage away from a bad afternoon.
+  values.push = values.push && !values["no-push"];
   if (values.push) {
     if (!git.branch || git.branch === "HEAD") {
       throw new Error("--push needs a checked-out branch; this worktree is detached");
@@ -467,7 +470,7 @@ async function cmdAgent(argv) {
   console.log(`main     ${main.name}`);
   console.log(`agents   ${pool.map((a) => a.name).join(", ")}${values["dry-run"] ? "  (dry run)" : ""}`);
   console.log(`rounds   ${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`);
-  console.log(`fixes    ${values.push ? `pushed to ${git.branch}` : "committed to the worktree only"}`);
+  console.log(`fixes    ${values.push ? `committed and pushed to ${git.branch}` : "committed to the worktree only"}`);
   console.log(`run      ${path.basename(dir)}${values.resume ? "  (resumed)" : ""}`);
   console.log(`watch    macr web  →  the conversation streams live\n`);
 
@@ -501,7 +504,7 @@ async function cmdAgent(argv) {
       return;
     }
 
-    console.log(`\ntriage   ${todo.length} finding(s)`);
+    console.log(`\ntriage   ${todo.length} finding(s) → ${main.name}`);
     let fixed = 0;
     for (const f of todo) {
       // The turn limit ends an argument the loop cannot win. Both positions are
@@ -515,11 +518,51 @@ async function cmdAgent(argv) {
         console.log(`  ${f.id}  deferred (turn limit)${r.ok ? "" : ` — ${r.why}`}`);
         continue;
       }
-      // The judgement itself belongs to the main agent, which is why the CLI
-      // has no opinion here: it records what was decided and refuses an
-      // acceptance that never demonstrated a reproduction.
-      console.log(`  ${f.id}  ${f.claim.slice(0, 68)}${f.claim.length > 68 ? "…" : ""}`);
-      console.log(`          → awaiting ${main.name}: macr finding reproduce ${f.id} --evidence …`);
+
+      console.log(`  ${f.id}  ${f.claim.slice(0, 66)}${f.claim.length > 66 ? "…" : ""}`);
+
+      // One finding at a time, deliberately. Judging them concurrently would
+      // have several agents editing the same tree at once, and the second fix
+      // would land on top of the first without having seen it.
+      const heart = beat(dir, main.name, round);
+      let v;
+      try {
+        v = await triageOne(main, f, {
+          worktree, trunk, stopToken: cfg.stopToken, dryRun: values["dry-run"],
+          onLog: (m) => console.log(`          ${m}`),
+        });
+      } finally {
+        clearInterval(heart);
+      }
+
+      if (!v.verdict) {
+        // Left open on purpose: an unjudged finding must be raised again rather
+        // than silently disappearing into a round that reports convergence.
+        console.log(`          ${v.failed ? "main agent failed" : "no verdict parsed"} — left open`);
+        continue;
+      }
+
+      // The reproduction is recorded before the verdict, because gate() reads
+      // the folded log: an acceptance is checked against what is already on
+      // disk, not against what this function happens to know.
+      if (v.reproduced) {
+        await appendEvent(dir, {
+          t: "finding.reproduced", id: f.id, evidence: v.reproduced, test: v.test ?? null,
+        });
+      }
+      const res = await record(dir, findings, f.id, {
+        verdict: v.verdict, reason: v.reason, test: v.test,
+      });
+      if (!res.ok) {
+        // The gate refusing is the gate working. Downgrade rather than crash:
+        // an acceptance with nothing behind it becomes an open finding again.
+        console.log(`          refused: ${res.why} — left open`);
+        continue;
+      }
+      console.log(`          ${v.verdict.toUpperCase()}${v.reason ? ` — ${v.reason.slice(0, 60)}` : ""}`);
+      if (v.verdict === "accepted") fixed++;
+      // findings must be refolded for the next iteration's gate check.
+      findings.set(f.id, (await findingsIn(dir)).get(f.id));
     }
 
     if (fixed && !values["dry-run"]) {
