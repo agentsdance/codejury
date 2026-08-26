@@ -100,3 +100,31 @@ test("a verbose transcript is read from its final turn", () => {
   assert.equal(parseFindings(tail).length, 1);
   assert.equal(hasStopToken(tail, "NO NEW FINDINGS"), false);
 });
+
+test("a reviewer's explanation inside its own fence does not kill the finding", () => {
+  // Reviewers routinely put the headers AND their prose in one fence. Requiring
+  // every line to be a header discarded the whole finding — caught by agy
+  // reviewing this very parser.
+  const report = [
+    "```",
+    "FINDING: real bug",
+    "WHERE: lib/reply.js:115",
+    "The placeholder is blanked before runAgent can fill it.",
+    "```",
+  ].join("\n");
+  const found = parseFindings(report);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].loc, "lib/reply.js:115");
+});
+
+test("a fence opening with FINDING: but carrying code is still quoted", () => {
+  // The looser rule must not swallow a diff a reviewer is quoting back.
+  const report = [
+    "Here is what the agent wrote:",
+    "```",
+    "FINDING: quoted from somewhere else",
+    "+ someCode();",
+    "```",
+  ].join("\n");
+  assert.equal(parseFindings(report).length, 0);
+});
