@@ -14,6 +14,22 @@ loop commits and pushes between rounds.
   it currently sits in a short box under the timeline while the page has room
   to spare.
 
+- **The CLI output wants a pass for legibility.** Every line is the same weight
+  and colour, so a round boundary, a reviewer's report and a triage verdict all
+  read alike in a terminal that scrolls for pages. Specifics visible in one run
+  of PR #4:
+  - `codex: codex (in worktree)` says the name twice and the useful part once.
+  - The round result is stated three times — `round 1 — 216.3s`, then
+    `codex  216.3s  findings  2 finding(s)`, then `NOT converged…`.
+  - `2 finding(s)` should be `2 findings`; the `(s)` is a placeholder that
+    escaped.
+  - The reviewer's raw report is dumped at full width with no indent or rule
+    marking where it starts and ends, so it runs into the triage that follows.
+  - Colour where it carries meaning and nowhere else: the round header, agent
+    names keyed to the console's own hues, and verdicts (accepted / rejected /
+    deferred) in the same three colours the web view already uses. Respect
+    `NO_COLOR` and a non-TTY stdout.
+
 ## Correctness
 
 - **Rebuttals are still displayed twice.** The same duplication that findings
