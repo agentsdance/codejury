@@ -393,6 +393,7 @@
     background:transparent; border-style:dashed;
   }
   .bub[data-k="waiting"] .tick { font-family:var(--mono); color:var(--ink-2); }
+  .bub[data-k="waiting"] .q { color:var(--warn); }
   .bub[data-k="waiting"]::after {
     content:"●"; margin-left:6px; font-size:9px; color:var(--warn);
     animation:blip 1.4s ease-in-out infinite;
@@ -1178,12 +1179,19 @@ function turnHTML(t, agent) {
     case "commit":
       body = `<div class="bub" data-k="commit">pushed ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
       break;
-    case "waiting":
+    case "waiting": {
       // Counted up client-side between heartbeats, so it ticks every second
       // rather than jumping in five-second steps.
+      // An agent that streamed and then went quiet says so: "working 6:12 ·
+      // quiet 2m" is the difference between thinking and wedged, and the
+      // heartbeat alone cannot express it.
+      const quiet = t.quietSeconds
+        ? ` <span class="q">· quiet ${esc(hms(t.quietSeconds))}</span>`
+        : "";
       body = `<div class="bub" data-k="waiting" data-since="${Date.now() - (t.seconds ?? 0) * 1000}"
-        >working <b class="tick">${esc(hms(t.seconds ?? 0))}</b></div>`;
+        >working <b class="tick">${esc(hms(t.seconds ?? 0))}</b>${quiet}</div>`;
       break;
+    }
     case "streaming":
       // The tail only: a live agent's stdout is the transcript so far, and the
       // interesting part is always the end of it.
@@ -1410,7 +1418,7 @@ function foldConversation(events) {
         // every alternation and a nine-minute round grew 81 bubbles instead of
         // one.
         const w = t.turns.find((x) => x.kind === "waiting" && x.round === e.round);
-        if (w) { w.seconds = e.seconds; break; }
+        if (w) { w.seconds = e.seconds; w.quietSeconds = e.quietSeconds ?? null; break; }
         // Real output already supersedes it; do not regress to a placeholder.
         if (t.turns.some((x) => (x.kind === "streaming" || x.kind === "report") && x.round === e.round)) break;
         t.turns.push({ who: e.agent, kind: "waiting", round: e.round, seconds: e.seconds, ts: e.ts });

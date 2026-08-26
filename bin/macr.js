@@ -221,13 +221,21 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
       // wedged process, so a heartbeat says what is knowable: it is alive, and
       // how long it has been going. A streaming agent never needs one.
       const heartStart = Date.now();
-      let spoke = false;
+      let lastSpoke = 0;
       const heart = setInterval(() => {
-        if (spoke) return; // it started talking; the real output supersedes this
+        // Silence is what needs reporting, not never-having-spoken. Suppressing
+        // the beat permanently once an agent streamed left a gap with no signal
+        // at all: grok streamed for three minutes, went quiet for four while
+        // waiting on the model, and the console could not tell that from
+        // wedged. Resume after 15s of nothing.
+        if (lastSpoke && Date.now() - lastSpoke < 15000) return;
         appendEvent(dir, {
           t: "agent.alive", agent: a.name, round,
           seconds: Math.round((Date.now() - heartStart) / 1000),
-        }).catch(() => {}); // a missed heartbeat must never fail the review
+          // So the console can say "quiet for 2m" rather than implying it never
+          // said anything.
+          quietSeconds: lastSpoke ? Math.round((Date.now() - lastSpoke) / 1000) : null,
+        }).catch(() => {});
       }, 5000);
 
       // Chunks reach the console through the event log as well as the
@@ -474,6 +482,7 @@ async function cmdAgent(argv) {
   console.log(`run      ${path.basename(dir)}${values.resume ? "  (resumed)" : ""}`);
   console.log(`watch    macr web  →  the conversation streams live\n`);
 
+  let pushFailed = false;
   for (let i = 0; i < maxRounds; i++) {
     const round = first + i;
 
@@ -490,7 +499,7 @@ async function cmdAgent(argv) {
       return;
     }
 
-    const findings = await findingsIn(dir);
+    let findings = await findingsIn(dir);
     const events = await readEvents(dir);
     const todo = outstanding(findings, events);
 
@@ -550,6 +559,12 @@ async function cmdAgent(argv) {
           t: "finding.reproduced", id: f.id, evidence: v.reproduced, test: v.test ?? null,
         });
       }
+      // Refold BEFORE recording, not after. gate() checks the finding it is
+      // handed, and the map was folded before the reproduction above was
+      // appended — so every accepted finding was refused for having no
+      // reproduction, moments after one was written for it. The comment above
+      // described the right order; the code did not implement it.
+      findings = await findingsIn(dir);
       const res = await record(dir, findings, f.id, {
         verdict: v.verdict, reason: v.reason, test: v.test,
       });
@@ -561,15 +576,19 @@ async function cmdAgent(argv) {
       }
       console.log(`          ${v.verdict.toUpperCase()}${v.reason ? ` — ${v.reason.slice(0, 60)}` : ""}`);
       if (v.verdict === "accepted") fixed++;
-      // findings must be refolded for the next iteration's gate check.
-      findings.set(f.id, (await findingsIn(dir)).get(f.id));
     }
 
     if (fixed && !values["dry-run"]) {
-      const sha = await commitFixes(worktree, round, values.push ? git.branch : null);
-      if (sha) {
-        await appendEvent(dir, { t: "commit.pushed", sha, subject: `round ${round} fixes` });
-        console.log(`commit   ${sha}${values.push ? ` → pushed to ${git.branch}` : ""}`);
+      const c = await commitFixes(worktree, round, values.push ? git.branch : null);
+      if (c?.sha) {
+        await appendEvent(dir, {
+          t: "commit.pushed", sha: c.sha, pushed: c.pushed, subject: `round ${round} fixes`,
+        });
+        console.log(`commit   ${c.sha}${
+          c.pushed === null ? "" : c.pushed ? ` → pushed to ${git.branch}` : "  (NOT pushed)"}`);
+        // A run whose fixes never reached the branch cannot converge: the
+        // reviewers would be signing off on code the PR does not contain.
+        if (c.pushed === false) pushFailed = true;
       }
     }
 
@@ -601,7 +620,7 @@ async function cmdAgent(argv) {
     const settled = await findingsIn(dir);
     const stillOpen = [...settled.values()].filter((f) => f.status === "open");
     const broke = answers.filter((a) => a.failed);
-    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length) {
+    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed) {
       console.log(`\nCONVERGED — every reviewer signed off after round ${round}.`);
       await publishRun(dir, {
         ...target, state: "converged", stateNote: `converged after round ${round}`,
@@ -614,10 +633,30 @@ async function cmdAgent(argv) {
     if (broke.length) {
       console.log(`${broke.map((a) => a.agent).join(", ")} could not run — this run cannot converge.`);
     }
+    if (pushFailed) {
+      console.log("a push failed — the reviewers are reading code the PR does not have.");
+    }
   }
 
   console.log(`\nstopped at the ${maxRounds}-round limit without full agreement.`);
   await publishRun(dir, { ...target, state: "human", stateNote: `hit the ${maxRounds}-round limit` });
+}
+
+/**
+ * A heartbeat for the main agent while it triages.
+ *
+ * Triage is the longest single step in a round — read, reproduce, fix, run the
+ * suite — and without this the console shows nothing between the last report
+ * and the reply, which is when the interesting work happens.
+ */
+function beat(dir, agent, round) {
+  const started = Date.now();
+  return setInterval(() => {
+    appendEvent(dir, {
+      t: "agent.alive", agent, round,
+      seconds: Math.round((Date.now() - started) / 1000),
+    }).catch(() => {});
+  }, 5000);
 }
 
 /**
@@ -646,14 +685,18 @@ async function commitFixes(worktree, round, branch) {
   await run("git", ["commit", "-m", `fix: round ${round} review findings`], { cwd: worktree });
   const { stdout } = await run("git", ["rev-parse", "--short", "HEAD"], { cwd: worktree });
   const sha = stdout.trim();
+  let pushed = false;
   if (branch) {
     try {
       await run("git", ["push", "origin", `HEAD:${branch}`], { cwd: worktree });
+      pushed = true;
     } catch (err) {
-      console.error(`push failed (${err.message.split("\n")[0]}) — the commit is local`);
+      // Swallowing this reported a local commit as pushed, so later rounds
+      // reviewed code the PR never received — and could sign off on it.
+      console.error(`push FAILED (${err.message.split("\n")[0]}) — the commit is local only`);
     }
   }
-  return sha;
+  return { sha, pushed: branch ? pushed : null };
 }
 
 async function cmdWeb(argv) {
