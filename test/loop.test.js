@@ -300,6 +300,31 @@ test("each invocation is its own run, so re-reviewing a PR does not merge into t
   assert.equal(bare, "acme-api-48");
 });
 
+test("the main agent's triage heartbeat survives the reviewer's report, in production order", async () => {
+  const dir = await tmp();
+  // The real order for a round: the reviewer streams, reports, its findings are
+  // raised, and only THEN does the main agent start triaging. Keying the
+  // "real output supersedes the placeholder" rule on the thread rather than the
+  // speaker meant the report suppressed every triage heartbeat — the events
+  // were written and the fold ignored them, so the console was blank for the
+  // longest stretch of the round.
+  await appendEvent(dir, { t: "agent.chunk", agent: "codex", round: 1, text: "reading" });
+  await appendEvent(dir, { t: "agent.report", agent: "codex", round: 1, verdict: "found", report: "FINDING: x" });
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
+  await appendEvent(dir, { t: "agent.alive", agent: "claude", forAgent: "codex", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.alive", agent: "claude", forAgent: "codex", round: 1, seconds: 10 });
+
+  const threads = conversation(await readEvents(dir));
+  assert.deepEqual(threads.map((t) => t.agent), ["codex"], "no thread of its own");
+  const waiting = threads[0].turns.filter((t) => t.kind === "waiting");
+  assert.equal(waiting.length, 1, "one waiting turn, collapsed, not one per beat");
+  assert.equal(waiting[0].who, "claude", "attributed to the main agent");
+  assert.equal(waiting[0].seconds, 10, "and kept up to date");
+  // The reviewer's own report must still be there, not replaced.
+  assert.ok(threads[0].turns.some((t) => t.kind === "report"), "report survives");
+  await rm(dir, { recursive: true, force: true });
+});
+
 test("the main agent's triage heartbeat lands in the reviewer's thread, not its own", async () => {
   const dir = await tmp();
   await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
@@ -325,4 +350,62 @@ test("a reviewer's own heartbeat still opens its own thread", async () => {
   assert.deepEqual(threads.map((t) => t.agent), ["codex"]);
   assert.equal(threads[0].turns[0].who, "codex");
   await rm(dir, { recursive: true, force: true });
+});
+
+// A clean round is not convergence while a finding from an earlier round is
+// still open. `runRound` returning clean used to exit the loop immediately,
+// ahead of the still-open check at the end of the round body — so a finding
+// that triage left open, or one a reply raised after the round's last triage,
+// was never answered. The reviewers cannot re-raise it either: settled.md
+// lists only findings that already have a verdict, so an open one is invisible
+// to them and they sign off in good faith.
+test("a clean round does not converge while an earlier finding is still open", async () => {
+  const repo = await tmp();
+  const g = async (...a) => run("git", ["-C", repo, ...a]);
+  await g("init", "-q", "-b", "master");
+  await g("config", "user.email", "t@example.com");
+  await g("config", "user.name", "t");
+  await writeFile(path.join(repo, "a.txt"), "one\n");
+  await g("add", "-A");
+  await g("commit", "-qm", "base");
+  await g("checkout", "-q", "-b", "feature");
+  await writeFile(path.join(repo, "a.txt"), "two\n");
+  await g("commit", "-qam", "change");
+
+  // One reviewer, one main agent. Both are dry-run: the reviewer emits the stop
+  // token (clean), which is exactly the round this bug needs.
+  await writeFile(path.join(repo, "macr.config.json"), JSON.stringify({
+    agents: [
+      { name: "claude", role: "main", command: "true", args: [] },
+      { name: "codex", command: "true", args: [] },
+    ],
+  }));
+
+  // Seed a run whose previous round left a finding open — no finding.resolved.
+  const runDir = path.join(repo, "runs", "acme-api-1");
+  await appendEvent(runDir, { t: "round.start", n: 1, sha: "deadbee" });
+  await appendEvent(runDir, {
+    t: "finding.raised", id: "1-codex-reply-1", round: 1, agent: "codex",
+    claim: "the reply raised this and nobody triaged it", loc: "a.txt:1",
+  });
+  await appendEvent(runDir, { t: "round.end", n: 1 });
+
+  const r = await run(process.execPath, [
+    path.resolve("bin/macr.js"), "agent",
+    "--dir", repo, "--resume", runDir, "--trunk", "master",
+    "--rounds", "1", "--no-push", "--dry-run",
+  ], { cwd: repo });
+
+  // Round 2's reviewer is clean. Exiting there would announce convergence with
+  // the round-1 finding untouched.
+  assert.doesNotMatch(r.stdout, /CONVERGED after 1 round\(s\)/,
+    "a clean round must not converge past a finding nobody answered");
+  assert.match(r.stdout, /still open/,
+    "the loop must say why it is not stopping");
+  // And it must actually deal with it rather than merely refusing to stop.
+  const f = await findingsIn(runDir);
+  assert.notEqual(f.get("1-codex-reply-1").status, "open",
+    "the open finding must reach triage");
+
+  await rm(repo, { recursive: true, force: true });
 });
