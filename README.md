@@ -32,10 +32,68 @@ Two properties make it terminate rather than churn:
   round, forever.
 - **A literal stop token.** Termination is a `grep`, not a judgement call.
 
+## Who writes, and who only reads
+
+Exactly one agent has role `main` — **Claude Code**, the session driving the loop. It owns the working
+tree and the commit, triages every finding, and is the only writer. Its registry entry carries an
+empty `argv` because it is never spawned; `macr agents` shows it as in-process:
+
+```
+ok      claude   main     (in-process)
+ok      codex    reviewer /usr/local/bin/codex
+ok      agy      reviewer /usr/local/bin/agy
+```
+
+Reviewers only read and report. A registry with two `main` entries is refused outright — two agents
+both believing they own the commit corrupts a run rather than merely failing it.
+
+The main agent then holds **one conversation per reviewer**, concurrently, each about that reviewer's
+own findings and nothing else:
+
+```
+claude ──▶ codex   its 5 findings, resumed session
+       └──▶ agy     its 5 findings, fresh run with its own words quoted back
+```
+
+Never a broadcast. Two reviewers that see each other's findings stop being independent, and their
+agreement stops being evidence — which is the only reason to run more than one. On aigit #48 both
+independently found the same Windows `os.Rename` bug; neither was told the other had. `macr reply`
+redacts other agents' names and finding ids out of the verdict text, so independence does not depend
+on the operator remembering.
+
+## More than one PR
+
+Each PR is its own run directory — `runs/<repo>-<id>/` — with its own event log, findings, and settled
+list. Nothing is shared, so reviewing several at once needs no coordination:
+
+```
+macr runs                                  # every PR under review, with its slug
+macr finding list --run agentsdance-aigit-48
+```
+
+With one run, `--run` is optional. With several it is required, and the commands that need it refuse
+with the available slugs rather than guessing. The console serves them all and shows a chip per PR;
+picking one does not disturb a review running on another.
+
+The one thing genuinely shared is the machine: reviewers are subprocesses, so two PRs reviewing at
+once run two of every agent. The slowest still sets each round's wall clock.
+
 ## Agents are configuration
 
 The loop is agent-agnostic; `codex` and `droid` are just the two entries that happen to be enabled.
 Adding a third is a config change, not a code change. See [config.example.yaml](config.example.yaml).
+
+Adding `agy` for the aigit #48 run was exactly that — a `macr.config.json` entry, no code:
+
+```json
+{ "name": "agy", "promptDelivery": "argv", "cwd": "worktree",
+  "argv": ["agy", "--dangerously-skip-permissions", "--add-dir", "{{worktree}}", "--print", "{{promptText}}"],
+  "report": "whole", "expectSeconds": 300 }
+```
+
+Two of its quirks are worth knowing, because both cost a wasted run: its permission flag must precede
+`--print` or every file read is auto-denied and it returns an empty report, and it picks its own
+working directory, so the worktree needs `--add-dir` *and* a mention in the prompt.
 
 Only three things actually vary between agents, and all three bit during the reference run:
 
@@ -122,6 +180,12 @@ Rules that earned their place:
   iteration silently kept the real implementation in the reference run (mockey).
 - **Agents recycle suggestions when they have nothing left.** A verbatim repeat of a prior cosmetic note
   is a decent signal of convergence.
+- **Skipping fenced text to avoid quoted material will also skip real findings.** The prompt shows the
+  `FINDING:`/`WHERE:` header inside a fence, so agents answer in the same shape — on aigit #48 that
+  silently dropped all five of one reviewer's findings while its report sat there in full. A fence
+  containing *only* the header pair is the reviewer speaking; one holding a diff or code is not.
+- **Two review processes on one round corrupt the record.** Relaunching without killing the first run
+  gave round 1 two codex reports and merged their findings. Kill the prior run, or start a new round.
 
 ## What a system built on this would need
 
