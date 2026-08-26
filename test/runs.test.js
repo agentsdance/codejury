@@ -14,7 +14,7 @@ import { findingsIn, settledList } from "../lib/findings.js";
 import { buildPrompt } from "../lib/prompt.js";
 
 async function scratch() {
-  const dir = await mkdtemp(path.join(tmpdir(), "macr-runs-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "cr-runs-"));
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
@@ -98,6 +98,51 @@ test("listRuns reports every PR, and a broken one is skipped not hidden", async 
     // Silently omitting it would read as "that PR was never reviewed".
     assert.equal(skipped.length, 1);
     assert.match(skipped[0].dir, /99/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("listRuns puts the newest run first, across PRs as well as within one", async () => {
+  const { dir, cleanup } = await scratch();
+  const { writeRun } = await import("../lib/store.js");
+  try {
+    const mk = (id, attempt) => writeRun(
+      path.join(dir, `agentsdance-aigit-${id.slice(1)}-${attempt}`),
+      { target: { repo: "agentsdance/aigit", id, state: "review", attempt }, rounds: [], exchanges: [] },
+    );
+    // An older review of #3 and a newer one of #5. Sorting on the id first put
+    // #3 on top, so bare `cr web` opened the stale run.
+    await mk("#3", "20260826-1000");
+    await mk("#5", "20260826-1200");
+    await mk("#5", "20260826-1100");
+
+    const { runs } = await listRuns(dir);
+    assert.deepEqual(
+      runs.map((r) => r.target.attempt),
+      ["20260826-1200", "20260826-1100", "20260826-1000"],
+    );
+    // The console's fallback is runs[0]; it must be the most recent review.
+    assert.equal(runs[0].target.id, "#5");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("listRuns still ranks by state before recency", async () => {
+  const { dir, cleanup } = await scratch();
+  const { writeRun } = await import("../lib/store.js");
+  try {
+    const mk = (id, state, attempt) => writeRun(
+      path.join(dir, `agentsdance-aigit-${id.slice(1)}-${attempt}`),
+      { target: { repo: "agentsdance/aigit", id, state, attempt }, rounds: [], exchanges: [] },
+    );
+    // A newer merged run must not outrank an older one still awaiting a human.
+    await mk("#7", "merged", "20260826-1200");
+    await mk("#8", "human", "20260826-1000");
+
+    const { runs } = await listRuns(dir);
+    assert.deepEqual(runs.map((r) => r.target.state), ["human", "merged"]);
   } finally {
     await cleanup();
   }
