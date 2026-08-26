@@ -119,7 +119,52 @@ test("the conversation puts claude and the reviewer on their own sides, one thre
   // A reviewer must never see another reviewer's findings: two that read each
   // other stop being independent, and their agreement stops being evidence.
   assert.equal(codex.turns.some((t) => t.id === "B"), false);
-  assert.deepEqual(codex.turns.map((t) => t.who), ["codex", "claude", "claude", "claude"]);
+  // A raised finding is not a turn: the reviewer already said it in its own
+  // report, and a parsed copy underneath is the same words twice. What claude
+  // did about it still is.
+  assert.deepEqual(codex.turns.map((t) => t.who), ["claude", "claude", "claude"]);
+  assert.equal(codex.turns.some((t) => t.kind === "finding"), false);
+  // The verdict names the claim it answers, so it does not float free.
+  assert.equal(codex.turns.find((t) => t.kind === "verdict").claim, "a");
+  // A reviewer whose only event was a finding still gets a thread.
+  assert.ok(threads.find((t) => t.agent === "agy"), "agy must not vanish");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("a reviewer's rebuttal is not the same words as the reply it was cut from", async () => {
+  const dir = await tmp();
+  // The shape replyRound writes: the whole answer, then an excerpt of that same
+  // answer recorded against the finding it re-argues.
+  const report = [
+    "I checked the fix and it is still wrong.",
+    "The validator does not normalize the path before comparing.",
+  ].join("\n");
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex",
+    claim: "the validator does not normalize the path", loc: "lib/x.js:10" });
+  await appendEvent(dir, { t: "finding.resolved", id: "A", verdict: "rejected", reason: "misread" });
+  await appendEvent(dir, { t: "reply.sent", agent: "codex", text: "here is what I did" });
+  await appendEvent(dir, { t: "reply.answered", agent: "codex", verdict: "found", report });
+  await appendEvent(dir, { t: "finding.turn", id: "A", agent: "codex", who: "codex", text: report });
+
+  const [t] = conversation(await readEvents(dir));
+  const answer = t.turns.find((x) => x.kind === "answer");
+  const rebuttal = t.turns.find((x) => x.kind === "rebuttal");
+  assert.equal(answer.text, report, "the reply itself is still shown whole");
+  // The excerpt was a slice of the report directly above it; rendering both put
+  // the reviewer's words on screen twice.
+  assert.ok(!rebuttal.text, "a reviewer's rebuttal must not repeat the reply it was cut from");
+  // What it is for: naming the claim that is being re-argued.
+  assert.equal(rebuttal.claim, "the validator does not normalize the path");
+  assert.equal(rebuttal.id, "A");
+  // The event still has to reach findingsIn, or the turn limit is dead code.
+  assert.equal((await findingsIn(dir)).get("A").contested, true);
+
+  // Claude's own turn is not an excerpt of anything else on screen, so it keeps
+  // its text.
+  await appendEvent(dir, { t: "finding.turn", id: "A", who: "claude", text: "here is why it is right" });
+  const mine = conversation(await readEvents(dir))[0].turns
+    .filter((x) => x.kind === "rebuttal").at(-1);
+  assert.equal(mine.text, "here is why it is right");
   await rm(dir, { recursive: true, force: true });
 });
 
