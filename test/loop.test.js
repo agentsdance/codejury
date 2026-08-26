@@ -279,3 +279,23 @@ test("a heartbeat arriving after the report does not resurrect the placeholder",
   assert.equal(turns[0].kind, "report");
   await rm(dir, { recursive: true, force: true });
 });
+
+test("each invocation is its own run, so re-reviewing a PR does not merge into the last one", async () => {
+  const { slugFor, attemptStamp } = await import("../lib/store.js");
+  const target = { repo: "acme/api", id: "48" };
+
+  // Without an attempt, three `macr review <same-pr>` invocations all wrote to
+  // one directory: three separate reviews merged into rounds 1-5 of a single
+  // run, and a killed run's open rounds interleaved with the next one's.
+  const bare = slugFor(target);
+  const a = slugFor({ ...target, attempt: attemptStamp(new Date(2026, 7, 26, 10, 24)) });
+  const b = slugFor({ ...target, attempt: attemptStamp(new Date(2026, 7, 26, 10, 27)) });
+
+  assert.notEqual(a, b, "two invocations must not share a run directory");
+  assert.match(a, /-20260826-1024$/);
+  assert.match(b, /-20260826-1027$/);
+  // Stamps sort chronologically, so the directory listing reads in order.
+  assert.ok(a < b);
+  // Resuming still targets the original, attempt-less shape.
+  assert.equal(bare, "acme-api-48");
+});

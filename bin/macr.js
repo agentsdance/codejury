@@ -14,7 +14,7 @@ import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
-import { appendEvent, writeRun, readEvents, foldEvents, slugFor, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
+import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn } from "../lib/loop.js";
 
@@ -23,8 +23,8 @@ const VERSION = "0.1.0";
 
 const USAGE = `macr — multi-agent code review
 
-  macr agent [<pr-url>]   autonomous loop: review, triage, fix, reply, repeat
-  macr review [flags]     run rounds until convergence or --max-rounds
+  macr review [<pr-url>]  review a PR: rounds until convergence, one conversation per reviewer
+  macr review-once [flags]  a single round, no triage or reply
   macr web [flags]        serve the console (default http://127.0.0.1:3080)
   macr finding <cmd>      list | reproduce | resolve | settled — appends events, enforces the gate
   macr reply [flags]      send each reviewer your verdicts on ITS findings, one conversation each
@@ -32,8 +32,8 @@ const USAGE = `macr — multi-agent code review
   macr agents             check which configured agents are installed
   macr version
 
-agent                            (drives itself; no operator between rounds)
-  macr agent https://github.com/owner/repo/pull/1
+review                           (drives itself; no operator between rounds)
+  macr review https://github.com/owner/repo/pull/1
 
   --dir <path>       repo/worktree                            (default .)
   --pr <url>         same as the positional argument
@@ -41,10 +41,11 @@ agent                            (drives itself; no operator between rounds)
   --title <text>     what the change does         (default: read from the PR)
   --summary <text>   intent, passed to reviewers  (default: the PR description)
   --rounds <n>       maximum rounds                           (default 10)
+  --resume <slug>    continue an existing run instead of starting a new one
   --push             push each round's fixes to the PR branch (default: commit only)
   --dry-run          exercise the pipeline, spawn nothing
 
-review flags
+review-once flags
   --dir <path>       repo/worktree the reviewers read        (default .)
   --pr <url>         pull request URL, recorded on the run
   --title <text>     what the change does, shown in the console
@@ -70,8 +71,12 @@ const [, , cmd, ...rest] = process.argv;
 
 try {
   switch (cmd) {
-    case "agent": await cmdAgent(rest); break;
-    case "review": await cmdReview(rest); break;
+    // `agent` collided with both --agents and `macr agents`, three different
+    // things reading the same. Reviewing is what this tool does, so `review` is
+    // the loop; the old single-round behaviour is --rounds 1, which it already
+    // supported. `agent` stays as a hidden alias.
+    case "review": case "agent": await cmdAgent(rest); break;
+    case "review-once": await cmdReview(rest); break;
     case "web": await cmdWeb(rest); break;
     case "finding": case "findings": await cmdFinding(rest); break;
     case "reply": await cmdReply(rest); break;
@@ -358,6 +363,7 @@ async function cmdAgent(argv) {
       rounds: { type: "string", default: "10" },
       agents: { type: "string" },
       push: { type: "boolean", default: false },
+      resume: { type: "string" },
       "dry-run": { type: "boolean", default: false },
     },
   });
@@ -429,8 +435,18 @@ async function cmdAgent(argv) {
   };
   values.summary = values.summary ?? pr.summary ?? "";
 
-  const dir = path.join(runsDir(), slugFor(target));
+  // Each invocation is its own run unless you explicitly resume one. Appending
+  // to whatever ran before meant three separate reviews of the same PR merged
+  // into rounds 1-5 of a single run, and a killed run's open rounds interleaved
+  // with the next one's.
+  target.attempt = values.resume ? "" : attemptStamp();
+  const dir = values.resume
+    ? path.join(runsDir(), path.basename(values.resume))
+    : path.join(runsDir(), slugFor(target));
   const prior = await readEvents(dir);
+  if (values.resume && !prior.length) {
+    throw new Error(`no run at ${path.relative(process.cwd(), dir)} — check \`macr runs\``);
+  }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
   console.log(`target   ${target.repo} ${target.id}`);
@@ -441,6 +457,7 @@ async function cmdAgent(argv) {
   console.log(`agents   ${pool.map((a) => a.name).join(", ")}${values["dry-run"] ? "  (dry run)" : ""}`);
   console.log(`rounds   ${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`);
   console.log(`fixes    ${values.push ? `pushed to ${git.branch}` : "committed to the worktree only"}`);
+  console.log(`run      ${path.basename(dir)}${values.resume ? "  (resumed)" : ""}`);
   console.log(`watch    macr web  →  the conversation streams live\n`);
 
   for (let i = 0; i < maxRounds; i++) {

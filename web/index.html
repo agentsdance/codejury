@@ -100,6 +100,7 @@
   .sw-i[aria-pressed="true"] { background:var(--accent-soft); }
   .sw-i .d { width:7px; height:7px; border-radius:50%; flex:none; }
   .sw-i .id { font-family:var(--mono); font-size:11.5px; flex:none; }
+  .sw-i .at { font:400 10.5px/1 var(--mono); color:var(--accent); flex:none; }
   .sw-i .ti { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .sw-i .rt { margin-left:auto; flex:none; font:400 10.5px/1 var(--mono); color:var(--muted); }
   .sw-none { padding:18px 13px; text-align:center; color:var(--muted); font:400 12px/1 var(--sans); }
@@ -843,6 +844,24 @@ function runLabel(r) {
   return `${repo} · ${t.id ?? "?"}`;
 }
 
+/**
+ * Which attempt this is, when the same PR has been reviewed more than once.
+ *
+ * Every run of PR #2 is labelled "#2", so without this three separate reviews
+ * are three identical rows. Shown only when there IS more than one — a lone run
+ * does not need to defend its uniqueness.
+ */
+function attemptOf(r) {
+  const m = /-(\d{8})-(\d{4})$/.exec(r.slug ?? "");
+  if (!m) return "";
+  const [, d, hm] = m;
+  return `${d.slice(4, 6)}/${d.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2)}`;
+}
+function hasSiblings(r, all) {
+  const key = `${r.target?.repo}#${r.target?.id}`;
+  return all.filter((x) => `${x.target?.repo}#${x.target?.id}` === key).length > 1;
+}
+
 // "16h", "3d" — a run's age is glanceable, an ISO timestamp is not.
 function ago(r) {
   const last = lastActivity(r);
@@ -881,6 +900,13 @@ function drawSwitcher() {
   };
 
   const hits = ALL.filter(match);
+  // Attempts of one PR belong next to each other, newest first, so comparing
+  // this morning's review with this afternoon's is one glance rather than a
+  // hunt through the list.
+  hits.sort((a, b) => {
+    const k = (x) => `${x.target?.repo}#${x.target?.id}`;
+    return k(a).localeCompare(k(b)) || (attemptOf(b) || "").localeCompare(attemptOf(a) || "");
+  });
   const live = hits.filter(isLive);
   const rest = hits.filter((r) => !isLive(r));
 
@@ -890,7 +916,8 @@ function drawSwitcher() {
     return `<button class="sw-i" role="option" data-slug="${esc(r.slug ?? "")}" aria-pressed="${on}"
       ><span class="d" style="background:${isLive(r) ? "var(--warn)" : t.state === "converged" ? "var(--ok)" : "var(--muted)"}"></span
       ><span class="id">${esc(runLabel(r))}</span
-      ><span class="ti">${esc(runSummary(r))}</span
+      >${hasSiblings(r, ALL) && attemptOf(r) ? `<span class="at">${esc(attemptOf(r))}</span>` : ""
+      }<span class="ti">${esc(runSummary(r))}</span
       ><span class="rt">${esc(ago(r))}</span></button>`;
   };
 
@@ -901,7 +928,8 @@ function drawSwitcher() {
     <button class="sw-btn" id="sw-btn" aria-expanded="${SW_OPEN}"
       ><span class="d" style="width:7px;height:7px;border-radius:50%;background:${
         isLive(RUN) ? "var(--warn)" : "var(--ok)"};flex:none"></span
-      ><span class="nm">${esc(runLabel(RUN))}</span
+      ><span class="nm">${esc(runLabel(RUN))}${
+        hasSiblings(RUN, ALL) && attemptOf(RUN) ? ` · ${attemptOf(RUN)}` : ""}</span
       ><span class="cnt">of ${ALL.length}</span><span class="car">▼</span></button>
     <div class="sw-pop" id="sw-pop" ${SW_OPEN ? "" : "hidden"} role="listbox">
       <input id="sw-q" type="search" placeholder="filter by repo, number, title, branch…"
