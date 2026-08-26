@@ -387,6 +387,10 @@
      bubbles of their own. Quiet: the reviewer already said it in full. */
   .bub .re { display:block; font:500 11px/1.45 var(--sans); color:var(--muted);
     border-left:2px solid var(--line); padding-left:7px; margin-bottom:5px; }
+  .bub .re:last-child { margin-bottom:0; }
+  /* A re-argued claim. Deliberately quiet and textless: the words are in the
+     reply bubble above it, and this only marks that the argument continues. */
+  .bub[data-k="rebuttal"] { border-left:3px solid var(--warn); }
   .bub[data-k="verdict"] { border-left:3px solid var(--accent); }
   .bub[data-k="verdict"][data-v="accepted"] { border-left-color:var(--ok); background:var(--ok-soft); }
   .bub[data-k="verdict"][data-v="rejected"] { border-left-color:var(--bad); background:var(--bad-soft); }
@@ -1115,13 +1119,19 @@ const VERDICT_TEXT = {
 // Long reports collapse. A twenty-minute reviewer turn can be thousands of
 // lines, and an un-collapsed one buries every exchange after it.
 const CLAMP = 700;
-function bubble(text, k, attrs = "") {
+/* The collapsing half of a bubble, on its own so that bubbles which lead with a
+   header — a verdict, a named claim — can clamp their body without clamping the
+   header along with it. */
+function clamped(text) {
   const t = text ?? "";
-  if (t.length <= CLAMP) return `<div class="bub" data-k="${k}" ${attrs}>${esc(t)}</div>`;
+  if (t.length <= CLAMP) return esc(t);
   const id = `b${Math.abs(hash(t))}`;
-  return `<div class="bub" data-k="${k}" ${attrs}><span id="${id}-s">${esc(t.slice(0, CLAMP))}…</span
+  return `<span id="${id}-s">${esc(t.slice(0, CLAMP))}…</span
     ><span id="${id}-f" hidden>${esc(t)}</span
-    ><button class="more" data-more="${id}">show all ${bytes(t.length)}</button></div>`;
+    ><button class="more" data-more="${id}">show all ${bytes(t.length)}</button>`;
+}
+function bubble(text, k, attrs = "") {
+  return `<div class="bub" data-k="${k}" ${attrs}>${clamped(text)}</div>`;
 }
 /** m:ss, or h:mm:ss once a reviewer has been going that long. */
 function hms(sec) {
@@ -1185,8 +1195,11 @@ function turnHTML(t, agent) {
         >${t.loc ? `<span class="loc">${esc(t.loc)}</span>\n` : ""}${esc((t.body ?? "").slice(0, CLAMP))}</div>`;
       break;
     case "reproduced":
+      // Evidence is whatever the reviewer passed to `finding reproduce
+      // --evidence`, which is routinely a wall of captured command output. It
+      // collapses, or one reproduction buries every turn below it.
       body = `<div class="bub" data-k="reproduced"
-        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}Reproduced. ${esc(t.text ?? "")}</div>`;
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}Reproduced. ${clamped(t.text ?? "")}</div>`;
       break;
     case "verdict":
       // The claim is named here because the findings are no longer bubbles of
@@ -1194,6 +1207,15 @@ function turnHTML(t, agent) {
       body = `<div class="bub" data-k="verdict" data-v="${esc(t.verdict ?? "")}"
         ><span class="hd">${esc(VERDICT_TEXT[t.verdict] ?? t.verdict ?? "")}</span
         >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}${esc(t.text ?? "")}${t.test ? `\n\nRegression test: ${esc(t.test)} — verified failing with the fix reverted.` : ""}</div>`;
+      break;
+    case "rebuttal":
+      // A reviewer's rebuttal carries no text of its own: it was an excerpt of
+      // the reply rendered directly above it. What it marks is that the claim is
+      // being re-argued, so it names the claim and leaves the words to the
+      // report. Claude's turn in the thread does carry text, and shows it.
+      body = `<div class="bub" data-k="rebuttal"
+        ><span class="hd">${t.who === "claude" ? "still open" : "not convinced"}</span
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>` : ""}${t.text ? `\n${esc(t.text)}` : ""}</div>`;
       break;
     case "commit":
       body = `<div class="bub" data-k="commit">pushed ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
@@ -1437,10 +1459,20 @@ function foldConversation(events) {
           id: e.id, claim: claimOf.get(e.id) ?? "",
           verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "", ts: e.ts });
         break;
-      case "finding.turn":
-        thread(owner.get(e.id) ?? e.agent ?? "?").turns.push({
-          who: e.who ?? "?", kind: "rebuttal", id: e.id, text: e.text ?? "", ts: e.ts });
+      case "finding.turn": {
+        // A reviewer's rebuttal is an excerpt cut from the reply it arrived in,
+        // and that reply is already rendered whole as its `answer` turn — so the
+        // text is deliberately dropped, exactly as a raised finding's is. What
+        // survives is the linkage: which claim is being re-argued, and by whom.
+        // Claude's own turn is the exception: it is not an excerpt of anything
+        // shown elsewhere, so dropping its text would lose it entirely.
+        const who = e.who ?? "?";
+        const turn = { who, kind: "rebuttal", id: e.id,
+          claim: claimOf.get(e.id) ?? "", ts: e.ts };
+        if (who === "claude") turn.text = e.text ?? "";
+        thread(owner.get(e.id) ?? e.agent ?? "?").turns.push(turn);
         break;
+      }
       // A reviewer that does not stream. codex writes nothing until it exits,
       // so without this its column is empty for nine minutes and "thinking" is
       // indistinguishable from "wedged".
