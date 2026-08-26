@@ -734,7 +734,7 @@ function draw(){
   const all = RUN.exchanges ?? [];
   const rows = all.filter(x => show.has(x.res ?? x.resolution));
   const t = RUN.target ?? {};
-  const cmd = t.url ? `macr review ${t.url}` : `macr review --dir . --trunk ${t.trunk ?? "master"}`;
+  const cmd = t.url ? `cr review ${t.url}` : `cr review --dir . --trunk ${t.trunk ?? "master"}`;
 
   // This copy has to describe THIS run. A line about the rejected finding was
   // being printed over a run that raised no findings at all.
@@ -1166,7 +1166,7 @@ const CLAMP = 700;
  * a button: reading a review should not mean clicking through it.
  *
  * The reason a clamp existed is still real — evidence arrives verbatim from
- * `macr finding reproduce --evidence` and is routinely thousands of lines, and
+ * `cr finding reproduce --evidence` and is routinely thousands of lines, and
  * one such turn inlined at full height buries every turn after it. So a long
  * message scrolls WITHIN ITS OWN BOX instead of being cut: the whole text is in
  * the DOM, selectable and searchable with the browser's own find, while the
