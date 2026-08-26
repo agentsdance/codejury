@@ -299,3 +299,30 @@ test("each invocation is its own run, so re-reviewing a PR does not merge into t
   // Resuming still targets the original, attempt-less shape.
   assert.equal(bare, "acme-api-48");
 });
+
+test("the main agent's triage heartbeat lands in the reviewer's thread, not its own", async () => {
+  const dir = await tmp();
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
+  // Threads are per reviewer; the main agent is a participant in each, not a
+  // thread of its own. Filing its heartbeat under "claude" opened a second
+  // conversation and split one exchange in two.
+  await appendEvent(dir, { t: "agent.alive", agent: "claude", forAgent: "codex", round: 1, seconds: 5 });
+
+  const threads = conversation(await readEvents(dir));
+  assert.deepEqual(threads.map((t) => t.agent), ["codex"], "no thread of its own");
+  const waiting = threads[0].turns.find((t) => t.kind === "waiting");
+  assert.ok(waiting, "the heartbeat must appear inside the reviewer's thread");
+  assert.equal(waiting.who, "claude", "but still attributed to the main agent");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("a reviewer's own heartbeat still opens its own thread", async () => {
+  const dir = await tmp();
+  // No forAgent: this is the reviewer itself working, not the main agent
+  // judging on its behalf.
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 5 });
+  const threads = conversation(await readEvents(dir));
+  assert.deepEqual(threads.map((t) => t.agent), ["codex"]);
+  assert.equal(threads[0].turns[0].who, "codex");
+  await rm(dir, { recursive: true, force: true });
+});

@@ -533,7 +533,10 @@ async function cmdAgent(argv) {
       // One finding at a time, deliberately. Judging them concurrently would
       // have several agents editing the same tree at once, and the second fix
       // would land on top of the first without having seen it.
-      const heart = beat(dir, main.name, round);
+      // Tagged with the reviewer whose finding this is: threads are per
+      // reviewer, and a heartbeat filed under "claude" opened a claude thread
+      // of its own, splitting one conversation in two.
+      const heart = beat(dir, main.name, round, f.agent);
       let v;
       try {
         v = await triageOne(main, f, {
@@ -649,11 +652,11 @@ async function cmdAgent(argv) {
  * suite — and without this the console shows nothing between the last report
  * and the reply, which is when the interesting work happens.
  */
-function beat(dir, agent, round) {
+function beat(dir, agent, round, forAgent = null) {
   const started = Date.now();
   return setInterval(() => {
     appendEvent(dir, {
-      t: "agent.alive", agent, round,
+      t: "agent.alive", agent, round, forAgent,
       seconds: Math.round((Date.now() - started) / 1000),
     }).catch(() => {});
   }, 5000);
