@@ -1,6 +1,6 @@
 // The CLI's own output. Run with `node --test`.
 //
-// The property that matters most here is the absence of colour: `macr … > log`
+// The property that matters most here is the absence of colour: `cr … > log`
 // and `| grep` have to stay readable, and a terminal that asked for no colour
 // has to get none.
 import { test } from "node:test";

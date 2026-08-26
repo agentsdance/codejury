@@ -64,11 +64,11 @@ A third of suggestions will not survive this. Do not skip it.
 Record each step, so the settled list generates itself and the gate can hold:
 
 ```bash
-macr finding list
-macr finding reproduce <id> --evidence "what demonstrated it"
-macr finding resolve <id> --verdict accepted --reason "..." --test "what failed without the fix"
-macr finding resolve <id> --verdict rejected --reason "NOT valid because ... Verified empirically."
-macr finding settled          # regenerates settled.md, which the next round's prompt carries
+cr finding list
+cr finding reproduce <id> --evidence "what demonstrated it"
+cr finding resolve <id> --verdict accepted --reason "..." --test "what failed without the fix"
+cr finding resolve <id> --verdict rejected --reason "NOT valid because ... Verified empirically."
+cr finding settled          # regenerates settled.md, which the next round's prompt carries
 ```
 
 `resolve --verdict accepted` is **refused** unless a reproduction was recorded and `--test` names
@@ -93,12 +93,12 @@ Reply to every finding — silence is not a resolution. Per finding:
 question. Template in `prompts/feedback.md`.
 
 ```bash
-macr reply --dir "$WT"           # one conversation per reviewer, concurrently
+cr reply --dir "$WT"           # one conversation per reviewer, concurrently
 ```
 
 You hold a **separate** conversation with each reviewer, about its own findings only. Never relay one
 reviewer's findings to another: two reviewers that read each other stop being independent, and their
-agreement stops being evidence. `macr reply` redacts the other agents' names out of your verdict text
+agreement stops being evidence. `cr reply` redacts the other agents' names out of your verdict text
 for you, so writing "agy raised this too" in a `--reason` is safe — but do not rely on it as licence
 to quote another thread.
 
@@ -126,4 +126,4 @@ that is a design decision, not a fact, and the loop should stop arguing.
 
 ## Viewing
 
-`macr web` serves the console. It displays a run; it does not create one.
+`cr web` serves the console. It displays a run; it does not create one.

@@ -10,9 +10,9 @@ import { appendEvent, readEvents, readArtifact } from "../lib/store.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record } from "../lib/loop.js";
 import { findingsIn } from "../lib/findings.js";
 
-const tmp = () => mkdtemp(path.join(tmpdir(), "macr-loop-"));
+const tmp = () => mkdtemp(path.join(tmpdir(), "cr-loop-"));
 
-// The CLI's own `run` is private to bin/macr.js. A non-zero exit is a result
+// The CLI's own `run` is private to bin/cr.js. A non-zero exit is a result
 // here, not a throw: the loop is allowed to fail, and the assertions are about
 // what it printed.
 const exec = promisify(execFile);
@@ -338,7 +338,7 @@ test("each invocation is its own run, so re-reviewing a PR does not merge into t
   const { slugFor, attemptStamp } = await import("../lib/store.js");
   const target = { repo: "acme/api", id: "48" };
 
-  // Without an attempt, three `macr review <same-pr>` invocations all wrote to
+  // Without an attempt, three `cr review <same-pr>` invocations all wrote to
   // one directory: three separate reviews merged into rounds 1-5 of a single
   // run, and a killed run's open rounds interleaved with the next one's.
   const bare = slugFor(target);
@@ -428,7 +428,7 @@ test("a clean round does not converge while an earlier finding is still open", a
 
   // One reviewer, one main agent. Both are dry-run: the reviewer emits the stop
   // token (clean), which is exactly the round this bug needs.
-  await writeFile(path.join(repo, "macr.config.json"), JSON.stringify({
+  await writeFile(path.join(repo, "cr.config.json"), JSON.stringify({
     agents: [
       { name: "claude", role: "main", command: "true", args: [] },
       { name: "codex", command: "true", args: [] },
@@ -445,7 +445,7 @@ test("a clean round does not converge while an earlier finding is still open", a
   await appendEvent(runDir, { t: "round.end", n: 1 });
 
   const r = await run(process.execPath, [
-    path.resolve("bin/macr.js"), "agent",
+    path.resolve("bin/cr.js"), "agent",
     "--dir", repo, "--resume", runDir, "--trunk", "master",
     "--rounds", "1", "--no-push", "--dry-run",
   ], { cwd: repo });
