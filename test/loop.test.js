@@ -1,14 +1,23 @@
 // The autonomous loop: what makes it terminate, and what it shows while it runs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { appendEvent, readEvents, readArtifact } from "../lib/store.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record } from "../lib/loop.js";
 import { findingsIn } from "../lib/findings.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "macr-loop-"));
+
+// The CLI's own `run` is private to bin/macr.js. A non-zero exit is a result
+// here, not a throw: the loop is allowed to fail, and the assertions are about
+// what it printed.
+const exec = promisify(execFile);
+const run = (cmd, args, opts) =>
+  exec(cmd, args, opts).catch((e) => ({ stdout: e.stdout ?? "", stderr: e.stderr ?? "" }));
 
 test("a finding is set down once it has been argued MAX_TURNS times", async () => {
   const dir = await tmp();
