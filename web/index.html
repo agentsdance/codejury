@@ -383,6 +383,10 @@
   .msg[data-side="r"] .bub { border-bottom-right-radius:4px; }
   .bub .hd { display:block; font:600 12px/1.4 var(--sans); margin-bottom:3px; }
   .bub .loc { font:500 11px/1.4 var(--mono); color:var(--muted); }
+  /* Names the finding a verdict answers, now that findings are not
+     bubbles of their own. Quiet: the reviewer already said it in full. */
+  .bub .re { display:block; font:500 11px/1.45 var(--sans); color:var(--muted);
+    border-left:2px solid var(--line); padding-left:7px; margin-bottom:5px; }
   .bub[data-k="verdict"] { border-left:3px solid var(--accent); }
   .bub[data-k="verdict"][data-v="accepted"] { border-left-color:var(--ok); background:var(--ok-soft); }
   .bub[data-k="verdict"][data-v="rejected"] { border-left-color:var(--bad); background:var(--bad-soft); }
@@ -1181,12 +1185,15 @@ function turnHTML(t, agent) {
         >${t.loc ? `<span class="loc">${esc(t.loc)}</span>\n` : ""}${esc((t.body ?? "").slice(0, CLAMP))}</div>`;
       break;
     case "reproduced":
-      body = bubble(`Reproduced. ${t.text ?? ""}`, "reproduced");
+      body = `<div class="bub" data-k="reproduced"
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}Reproduced. ${esc(t.text ?? "")}</div>`;
       break;
     case "verdict":
+      // The claim is named here because the findings are no longer bubbles of
+      // their own: without it a verdict floats free of what it answers.
       body = `<div class="bub" data-k="verdict" data-v="${esc(t.verdict ?? "")}"
         ><span class="hd">${esc(VERDICT_TEXT[t.verdict] ?? t.verdict ?? "")}</span
-        >${esc(t.text ?? "")}${t.test ? `\n\nRegression test: ${esc(t.test)} — verified failing with the fix reverted.` : ""}</div>`;
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}${esc(t.text ?? "")}${t.test ? `\n\nRegression test: ${esc(t.test)} — verified failing with the fix reverted.` : ""}</div>`;
       break;
     case "commit":
       body = `<div class="bub" data-k="commit">pushed ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
@@ -1404,20 +1411,31 @@ function foldConversation(events) {
     return t;
   };
   const owner = new Map();
+  const claimOf = new Map();
   for (const e of events) {
     switch (e.t) {
       case "finding.raised":
         owner.set(e.id, e.agent);
-        thread(e.agent).turns.push({ who: e.agent, kind: "finding", id: e.id,
-          claim: e.claim, loc: e.loc ?? "", body: e.body ?? "", ts: e.ts });
+        // Deliberately NOT a turn of its own. The reviewer already said this in
+        // its report, verbatim and in its own shape; a parsed copy underneath
+        // is the same words twice. The claim is kept only so a verdict further
+        // down can name what it is answering.
+        claimOf.set(e.id, e.claim ?? "");
+        // The reviewer still gets a thread even if this is the only thing it
+        // ever emitted: in production a report always precedes its findings,
+        // but a console that hides a reviewer entirely when it does not is
+        // worse than one that shows an empty column.
+        thread(e.agent);
         break;
       case "finding.reproduced":
         thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "reproduced",
-          id: e.id, text: typeof e.evidence === "string" ? e.evidence : "", ts: e.ts });
+          id: e.id, claim: claimOf.get(e.id) ?? "",
+          text: typeof e.evidence === "string" ? e.evidence : "", ts: e.ts });
         break;
       case "finding.resolved":
         thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "verdict",
-          id: e.id, verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "", ts: e.ts });
+          id: e.id, claim: claimOf.get(e.id) ?? "",
+          verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "", ts: e.ts });
         break;
       case "finding.turn":
         thread(owner.get(e.id) ?? e.agent ?? "?").turns.push({

@@ -119,7 +119,15 @@ test("the conversation puts claude and the reviewer on their own sides, one thre
   // A reviewer must never see another reviewer's findings: two that read each
   // other stop being independent, and their agreement stops being evidence.
   assert.equal(codex.turns.some((t) => t.id === "B"), false);
-  assert.deepEqual(codex.turns.map((t) => t.who), ["codex", "claude", "claude", "claude"]);
+  // A raised finding is not a turn: the reviewer already said it in its own
+  // report, and a parsed copy underneath is the same words twice. What claude
+  // did about it still is.
+  assert.deepEqual(codex.turns.map((t) => t.who), ["claude", "claude", "claude"]);
+  assert.equal(codex.turns.some((t) => t.kind === "finding"), false);
+  // The verdict names the claim it answers, so it does not float free.
+  assert.equal(codex.turns.find((t) => t.kind === "verdict").claim, "a");
+  // A reviewer whose only event was a finding still gets a thread.
+  assert.ok(threads.find((t) => t.agent === "agy"), "agy must not vanish");
   await rm(dir, { recursive: true, force: true });
 });
 
