@@ -14,17 +14,18 @@ import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
-import { appendEvent, writeRun, readEvents, foldEvents, slugFor, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
+import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings } from "../lib/loop.js";
+import { triageOne } from "../lib/triage.js";
 
 const run = promisify(execFile);
 const VERSION = "0.1.0";
 
 const USAGE = `macr — multi-agent code review
 
-  macr agent [<pr-url>]   autonomous loop: review, triage, fix, reply, repeat
-  macr review [flags]     run rounds until convergence or --max-rounds
+  macr <pr-url>           review a PR: rounds until convergence, one conversation per reviewer
+  macr review-once [flags]  a single round, no triage or reply
   macr web [flags]        serve the console (default http://127.0.0.1:3080)
   macr finding <cmd>      list | reproduce | resolve | settled — appends events, enforces the gate
   macr reply [flags]      send each reviewer your verdicts on ITS findings, one conversation each
@@ -32,8 +33,9 @@ const USAGE = `macr — multi-agent code review
   macr agents             check which configured agents are installed
   macr version
 
-agent                            (drives itself; no operator between rounds)
-  macr agent https://github.com/owner/repo/pull/1
+review                           (drives itself; no operator between rounds)
+  macr https://github.com/owner/repo/pull/1
+  macr --rounds 3                  the current branch, no PR
 
   --dir <path>       repo/worktree                            (default .)
   --pr <url>         same as the positional argument
@@ -41,10 +43,11 @@ agent                            (drives itself; no operator between rounds)
   --title <text>     what the change does         (default: read from the PR)
   --summary <text>   intent, passed to reviewers  (default: the PR description)
   --rounds <n>       maximum rounds                           (default 10)
-  --push             push each round's fixes to the PR branch (default: commit only)
+  --resume <slug>    continue an existing run instead of starting a new one
+  --no-push          commit fixes to the worktree without pushing
   --dry-run          exercise the pipeline, spawn nothing
 
-review flags
+review-once flags
   --dir <path>       repo/worktree the reviewers read        (default .)
   --pr <url>         pull request URL, recorded on the run
   --title <text>     what the change does, shown in the console
@@ -66,12 +69,26 @@ finding commands                                (--run <slug> picks the run)
   macr finding settled                          print the regenerated settled list
 `;
 
-const [, , cmd, ...rest] = process.argv;
+let [, , cmd, ...rest] = process.argv;
+
+// Reviewing is the only thing this tool does; `macr review <url>` on a program
+// named for multi-agent code review is a tautology. A bare URL — or a bare
+// flag, with the target implied by the working directory — means review.
+// Nothing else here takes a URL, so there is nothing to disambiguate.
+if (cmd && (/^https?:\/\//.test(cmd) || cmd.startsWith("-")) && cmd !== "-h" && cmd !== "--help"
+    && cmd !== "-v" && cmd !== "--version") {
+  rest = [cmd, ...rest];
+  cmd = "review";
+}
 
 try {
   switch (cmd) {
-    case "agent": await cmdAgent(rest); break;
-    case "review": await cmdReview(rest); break;
+    // `agent` collided with both --agents and `macr agents`, three different
+    // things reading the same. Reviewing is what this tool does, so `review` is
+    // the loop; the old single-round behaviour is --rounds 1, which it already
+    // supported. `agent` stays as a hidden alias.
+    case "review": case "agent": await cmdAgent(rest); break;
+    case "review-once": await cmdReview(rest); break;
     case "web": await cmdWeb(rest); break;
     case "finding": case "findings": await cmdFinding(rest); break;
     case "reply": await cmdReply(rest); break;
@@ -197,6 +214,30 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
       // minutes and "still thinking" is indistinguishable from "wedged".
       const rawName = `round-${round}.${a.name}.stdout.txt`;
       const sink = await openArtifact(dir, rawName);
+      // Not every agent streams. codex writes nothing until it exits — an
+      // 8.9-second run produced one 7-byte chunk at 8.5s — because it
+      // block-buffers when it is piped rather than attached to a terminal. For
+      // those, an empty column for nine minutes is indistinguishable from a
+      // wedged process, so a heartbeat says what is knowable: it is alive, and
+      // how long it has been going. A streaming agent never needs one.
+      const heartStart = Date.now();
+      let lastSpoke = 0;
+      const heart = setInterval(() => {
+        // Silence is what needs reporting, not never-having-spoken. Suppressing
+        // the beat permanently once an agent streamed left a gap with no signal
+        // at all: grok streamed for three minutes, went quiet for four while
+        // waiting on the model, and the console could not tell that from
+        // wedged. Resume after 15s of nothing.
+        if (lastSpoke && Date.now() - lastSpoke < 15000) return;
+        appendEvent(dir, {
+          t: "agent.alive", agent: a.name, round,
+          seconds: Math.round((Date.now() - heartStart) / 1000),
+          // So the console can say "quiet for 2m" rather than implying it never
+          // said anything.
+          quietSeconds: lastSpoke ? Math.round((Date.now() - lastSpoke) / 1000) : null,
+        }).catch(() => {});
+      }, 5000);
+
       // Chunks reach the console through the event log as well as the
       // artifact. Batched: an agent emits stdout a few bytes at a time, and one
       // event per write would bloat the log by orders of magnitude for no gain
@@ -219,15 +260,25 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
         );
         return writes;
       };
-      const r = await runAgent(a, {
-        worktree, prompt, stopToken: cfg.stopToken,
-        dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
-        onChunk: (text) => {
-          sink.write(text);
-          buf += text;
-          if (!flushing) flushing = setTimeout(flush, 700);
-        },
-      });
+      let r;
+      try {
+        r = await runAgent(a, {
+          worktree, prompt, stopToken: cfg.stopToken,
+          dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
+          onChunk: (text) => {
+            lastSpoke = Date.now();
+            sink.write(text);
+            buf += text;
+            if (!flushing) flushing = setTimeout(flush, 700);
+          },
+        });
+      } finally {
+        // In finally, not merely after the await: runAgent can throw, and a
+        // leaked interval keeps appending heartbeats for a round that is over.
+        // Rounds then interleave in the log, and the console grows a bubble per
+        // beat rather than one per round — 81 of them for a nine-minute round.
+        clearInterval(heart);
+      }
       if (flushing) clearTimeout(flushing);
       // Await the chain, not just this flush: an append queued earlier must
       // land before agent.report is written after it.
@@ -331,7 +382,9 @@ async function cmdAgent(argv) {
       trunk: { type: "string" },
       rounds: { type: "string", default: "10" },
       agents: { type: "string" },
-      push: { type: "boolean", default: false },
+      push: { type: "boolean", default: true },
+      "no-push": { type: "boolean", default: false },
+      resume: { type: "string" },
       "dry-run": { type: "boolean", default: false },
     },
   });
@@ -378,9 +431,10 @@ async function cmdAgent(argv) {
   const pr = await prDetails(values.pr, worktree);
   const git = await describe(worktree, trunk);
 
-  // Pushing rewrites a branch other people are reading, autonomously, once per
-  // round. It is opt-in, and it refuses trunk outright: an agent loop that can
-  // push to master is one bad triage away from a bad afternoon.
+  // The next round has to review NEW code or it is not a loop, so pushing is
+  // the default. It still refuses trunk outright: a loop that can push to
+  // master is one bad triage away from a bad afternoon.
+  values.push = values.push && !values["no-push"];
   if (values.push) {
     if (!git.branch || git.branch === "HEAD") {
       throw new Error("--push needs a checked-out branch; this worktree is detached");
@@ -403,8 +457,18 @@ async function cmdAgent(argv) {
   };
   values.summary = values.summary ?? pr.summary ?? "";
 
-  const dir = path.join(runsDir(), slugFor(target));
+  // Each invocation is its own run unless you explicitly resume one. Appending
+  // to whatever ran before meant three separate reviews of the same PR merged
+  // into rounds 1-5 of a single run, and a killed run's open rounds interleaved
+  // with the next one's.
+  target.attempt = values.resume ? "" : attemptStamp();
+  const dir = values.resume
+    ? path.join(runsDir(), path.basename(values.resume))
+    : path.join(runsDir(), slugFor(target));
   const prior = await readEvents(dir);
+  if (values.resume && !prior.length) {
+    throw new Error(`no run at ${path.relative(process.cwd(), dir)} — check \`macr runs\``);
+  }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
   console.log(`target   ${target.repo} ${target.id}`);
@@ -414,9 +478,11 @@ async function cmdAgent(argv) {
   console.log(`main     ${main.name}`);
   console.log(`agents   ${pool.map((a) => a.name).join(", ")}${values["dry-run"] ? "  (dry run)" : ""}`);
   console.log(`rounds   ${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`);
-  console.log(`fixes    ${values.push ? `pushed to ${git.branch}` : "committed to the worktree only"}`);
+  console.log(`fixes    ${values.push ? `committed and pushed to ${git.branch}` : "committed to the worktree only"}`);
+  console.log(`run      ${path.basename(dir)}${values.resume ? "  (resumed)" : ""}`);
   console.log(`watch    macr web  →  the conversation streams live\n`);
 
+  let pushFailed = false;
   for (let i = 0; i < maxRounds; i++) {
     const round = first + i;
 
@@ -429,11 +495,22 @@ async function cmdAgent(argv) {
       dir, round, pool, cfg, target, worktree, values, sha: head.sha,
     });
     if (converged) {
-      console.log(`\nCONVERGED after ${round - first + 1} round(s).`);
-      return;
+      // Clean is not enough on its own. A finding left open by the previous
+      // round — triage failed, the gate refused the verdict, or a reply raised
+      // it after the last triage had already run — is invisible to this round's
+      // reviewers, because settled.md lists only what has a verdict. They can
+      // all sign off in good faith while it sits unanswered. Fall through and
+      // triage it; the round-end check below is the one that may declare
+      // convergence.
+      const open = await openFindings(dir);
+      if (!open.length) {
+        console.log(`\nCONVERGED after ${round - first + 1} round(s).`);
+        return;
+      }
+      console.log(`\nevery reviewer is clean, but ${open.length} finding(s) from earlier are still open.`);
     }
 
-    const findings = await findingsIn(dir);
+    let findings = await findingsIn(dir);
     const events = await readEvents(dir);
     const todo = outstanding(findings, events);
 
@@ -447,7 +524,7 @@ async function cmdAgent(argv) {
       return;
     }
 
-    console.log(`\ntriage   ${todo.length} finding(s)`);
+    console.log(`\ntriage   ${todo.length} finding(s) → ${main.name}`);
     let fixed = 0;
     for (const f of todo) {
       // The turn limit ends an argument the loop cannot win. Both positions are
@@ -461,18 +538,71 @@ async function cmdAgent(argv) {
         console.log(`  ${f.id}  deferred (turn limit)${r.ok ? "" : ` — ${r.why}`}`);
         continue;
       }
-      // The judgement itself belongs to the main agent, which is why the CLI
-      // has no opinion here: it records what was decided and refuses an
-      // acceptance that never demonstrated a reproduction.
-      console.log(`  ${f.id}  ${f.claim.slice(0, 68)}${f.claim.length > 68 ? "…" : ""}`);
-      console.log(`          → awaiting ${main.name}: macr finding reproduce ${f.id} --evidence …`);
+
+      console.log(`  ${f.id}  ${f.claim.slice(0, 66)}${f.claim.length > 66 ? "…" : ""}`);
+
+      // One finding at a time, deliberately. Judging them concurrently would
+      // have several agents editing the same tree at once, and the second fix
+      // would land on top of the first without having seen it.
+      // Tagged with the reviewer whose finding this is: threads are per
+      // reviewer, and a heartbeat filed under "claude" opened a claude thread
+      // of its own, splitting one conversation in two.
+      const heart = beat(dir, main.name, round, f.agent);
+      let v;
+      try {
+        v = await triageOne(main, f, {
+          worktree, trunk, stopToken: cfg.stopToken, dryRun: values["dry-run"],
+          onLog: (m) => console.log(`          ${m}`),
+        });
+      } finally {
+        clearInterval(heart);
+      }
+
+      if (!v.verdict) {
+        // Left open on purpose: an unjudged finding must be raised again rather
+        // than silently disappearing into a round that reports convergence.
+        console.log(`          ${v.failed ? "main agent failed" : "no verdict parsed"} — left open`);
+        continue;
+      }
+
+      // The reproduction is recorded before the verdict, because gate() reads
+      // the folded log: an acceptance is checked against what is already on
+      // disk, not against what this function happens to know.
+      if (v.reproduced) {
+        await appendEvent(dir, {
+          t: "finding.reproduced", id: f.id, evidence: v.reproduced, test: v.test ?? null,
+        });
+      }
+      // Refold BEFORE recording, not after. gate() checks the finding it is
+      // handed, and the map was folded before the reproduction above was
+      // appended — so every accepted finding was refused for having no
+      // reproduction, moments after one was written for it. The comment above
+      // described the right order; the code did not implement it.
+      findings = await findingsIn(dir);
+      const res = await record(dir, findings, f.id, {
+        verdict: v.verdict, reason: v.reason, test: v.test,
+      });
+      if (!res.ok) {
+        // The gate refusing is the gate working. Downgrade rather than crash:
+        // an acceptance with nothing behind it becomes an open finding again.
+        console.log(`          refused: ${res.why} — left open`);
+        continue;
+      }
+      console.log(`          ${v.verdict.toUpperCase()}${v.reason ? ` — ${v.reason.slice(0, 60)}` : ""}`);
+      if (v.verdict === "accepted") fixed++;
     }
 
     if (fixed && !values["dry-run"]) {
-      const sha = await commitFixes(worktree, round, values.push ? git.branch : null);
-      if (sha) {
-        await appendEvent(dir, { t: "commit.pushed", sha, subject: `round ${round} fixes` });
-        console.log(`commit   ${sha}${values.push ? ` → pushed to ${git.branch}` : ""}`);
+      const c = await commitFixes(worktree, round, values.push ? git.branch : null);
+      if (c?.sha) {
+        await appendEvent(dir, {
+          t: "commit.pushed", sha: c.sha, pushed: c.pushed, subject: `round ${round} fixes`,
+        });
+        console.log(`commit   ${c.sha}${
+          c.pushed === null ? "" : c.pushed ? ` → pushed to ${git.branch}` : "  (NOT pushed)"}`);
+        // A run whose fixes never reached the branch cannot converge: the
+        // reviewers would be signing off on code the PR does not contain.
+        if (c.pushed === false) pushFailed = true;
       }
     }
 
@@ -504,7 +634,7 @@ async function cmdAgent(argv) {
     const settled = await findingsIn(dir);
     const stillOpen = [...settled.values()].filter((f) => f.status === "open");
     const broke = answers.filter((a) => a.failed);
-    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length) {
+    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed) {
       console.log(`\nCONVERGED — every reviewer signed off after round ${round}.`);
       await publishRun(dir, {
         ...target, state: "converged", stateNote: `converged after round ${round}`,
@@ -517,10 +647,30 @@ async function cmdAgent(argv) {
     if (broke.length) {
       console.log(`${broke.map((a) => a.agent).join(", ")} could not run — this run cannot converge.`);
     }
+    if (pushFailed) {
+      console.log("a push failed — the reviewers are reading code the PR does not have.");
+    }
   }
 
   console.log(`\nstopped at the ${maxRounds}-round limit without full agreement.`);
   await publishRun(dir, { ...target, state: "human", stateNote: `hit the ${maxRounds}-round limit` });
+}
+
+/**
+ * A heartbeat for the main agent while it triages.
+ *
+ * Triage is the longest single step in a round — read, reproduce, fix, run the
+ * suite — and without this the console shows nothing between the last report
+ * and the reply, which is when the interesting work happens.
+ */
+function beat(dir, agent, round, forAgent = null) {
+  const started = Date.now();
+  return setInterval(() => {
+    appendEvent(dir, {
+      t: "agent.alive", agent, round, forAgent,
+      seconds: Math.round((Date.now() - started) / 1000),
+    }).catch(() => {});
+  }, 5000);
 }
 
 /**
@@ -549,14 +699,18 @@ async function commitFixes(worktree, round, branch) {
   await run("git", ["commit", "-m", `fix: round ${round} review findings`], { cwd: worktree });
   const { stdout } = await run("git", ["rev-parse", "--short", "HEAD"], { cwd: worktree });
   const sha = stdout.trim();
+  let pushed = false;
   if (branch) {
     try {
       await run("git", ["push", "origin", `HEAD:${branch}`], { cwd: worktree });
+      pushed = true;
     } catch (err) {
-      console.error(`push failed (${err.message.split("\n")[0]}) — the commit is local`);
+      // Swallowing this reported a local commit as pushed, so later rounds
+      // reviewed code the PR never received — and could sign off on it.
+      console.error(`push FAILED (${err.message.split("\n")[0]}) — the commit is local only`);
     }
   }
-  return sha;
+  return { sha, pushed: branch ? pushed : null };
 }
 
 async function cmdWeb(argv) {
