@@ -235,17 +235,25 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
         );
         return writes;
       };
-      const r = await runAgent(a, {
-        worktree, prompt, stopToken: cfg.stopToken,
-        dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
-        onChunk: (text) => {
-          spoke = true;
-          sink.write(text);
-          buf += text;
-          if (!flushing) flushing = setTimeout(flush, 700);
-        },
-      });
-      clearInterval(heart);
+      let r;
+      try {
+        r = await runAgent(a, {
+          worktree, prompt, stopToken: cfg.stopToken,
+          dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
+          onChunk: (text) => {
+            spoke = true;
+            sink.write(text);
+            buf += text;
+            if (!flushing) flushing = setTimeout(flush, 700);
+          },
+        });
+      } finally {
+        // In finally, not merely after the await: runAgent can throw, and a
+        // leaked interval keeps appending heartbeats for a round that is over.
+        // Rounds then interleave in the log, and the console grows a bubble per
+        // beat rather than one per round — 81 of them for a nine-minute round.
+        clearInterval(heart);
+      }
       if (flushing) clearTimeout(flushing);
       // Await the chain, not just this flush: an append queued earlier must
       // land before agent.report is written after it.

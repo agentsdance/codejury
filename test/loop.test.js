@@ -249,3 +249,33 @@ test("an agent that takes an assigned session id resumes that exact conversation
   assert.equal(without.resumed, false);
   assert.ok(!without.argv.includes("--resume"));
 });
+
+test("interleaved heartbeats from two rounds collapse per round, not per beat", async () => {
+  const dir = await tmp();
+  // A killed run leaks its heartbeat interval, so an old round keeps beating
+  // while a new one starts. Matching "is it the last turn?" failed on every
+  // alternation: a nine-minute round grew 81 bubbles instead of one.
+  for (let i = 1; i <= 4; i++) {
+    await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: i * 5 });
+    await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 2, seconds: i * 5 + 500 });
+  }
+  const turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 2, "one waiting turn per round, however they interleave");
+  assert.deepEqual(turns.map((t) => t.round), [1, 2]);
+  assert.deepEqual(turns.map((t) => t.seconds), [20, 520], "each keeps its own latest elapsed");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("a heartbeat arriving after the report does not resurrect the placeholder", async () => {
+  const dir = await tmp();
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.report", agent: "codex", round: 1, verdict: "found", report: "FINDING: x" });
+  // A leaked interval can fire after the round is over; it must not replace the
+  // report with "working 0:10".
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 10 });
+
+  const turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].kind, "report");
+  await rm(dir, { recursive: true, force: true });
+});
