@@ -30,6 +30,15 @@ loop commits and pushes between rounds.
     deferred) in the same three colours the web view already uses. Respect
     `NO_COLOR` and a non-TTY stdout.
 
+- **The conversation should pop out to a page of its own.** It is the product,
+  and it currently shares a scroll with the timeline, the round table and the
+  exchange. A dedicated view — the thread and nothing else, on its own URL so it
+  can be opened in a second window beside the terminal, deep-linked, and left
+  running while a round works. Same live stream and thread switching as the
+  embedded one; it is a different frame around the same fold, not a second
+  implementation. Pairs with the two items above: given the whole viewport,
+  unfolded full-length messages are readable rather than overwhelming.
+
 ## Correctness
 
 - **Rebuttals are still displayed twice.** The same duplication that findings
