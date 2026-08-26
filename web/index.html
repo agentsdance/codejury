@@ -367,6 +367,11 @@
   .msg[data-side="l"] { align-self:flex-start; }
   .msg[data-side="r"] { align-self:flex-end; }
   .msg .nm { font:600 11px/1 var(--sans); color:var(--muted); padding:0 4px; }
+  .msg .nm time {
+    font:400 10px/1 var(--mono); color:var(--muted); opacity:.72; margin-left:6px;
+    cursor:help; letter-spacing:.02em;
+  }
+  .msg .nm time:hover { opacity:1; }
   .msg[data-side="r"] .nm { text-align:right; }
   .bub {
     border:1px solid var(--line); border-radius:12px; padding:9px 12px;
@@ -1090,6 +1095,27 @@ function hms(sec) {
 
 function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
+/**
+ * When a turn was spoken.
+ *
+ * Relative inline, absolute on hover. An offset ("+4m") is what you want when
+ * reading the exchange as a conversation; the wall clock is what you want when
+ * correlating against a log, and that is the rarer need. Pinned to SGT like
+ * everything else here: a review record should read the same wherever it is
+ * opened.
+ */
+let CONVO_T0 = null;
+function stampFor(t) {
+  if (!t?.ts) return "";
+  const at = Date.parse(t.ts);
+  if (Number.isNaN(at)) return "";
+  const abs = `${clockFmt.format(new Date(at))} ${TZ_LABEL}`;
+  if (CONVO_T0 === null) return `<time title="${esc(abs)}">${esc(clockFmt.format(new Date(at)))}</time>`;
+  const d = Math.max(0, Math.round((at - CONVO_T0) / 1000));
+  const rel = d < 60 ? `+${d}s` : d < 3600 ? `+${Math.round(d / 60)}m` : `+${(d / 3600).toFixed(1)}h`;
+  return `<time title="${esc(abs)}">${esc(rel)}</time>`;
+}
+
 function turnHTML(t, agent) {
   const side = SIDE(t.who);
   const nm = t.who === "claude" ? "claude" : agent;
@@ -1134,7 +1160,7 @@ function turnHTML(t, agent) {
       body = bubble(t.text ?? "", esc(t.kind ?? "turn"));
   }
   return `<div class="msg" data-side="${side}"><span class="nm"
-    ><span class="ic" style="color:${nm === "claude" ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}</span>${body}</div>`;
+    ><span class="ic" style="color:${nm === "claude" ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}${stampFor(t)}</span>${body}</div>`;
 }
 
 function drawConvo() {
@@ -1173,6 +1199,9 @@ function drawConvo() {
   grid.innerHTML = shown.map((t) => {
     const open = !CONVO_STACK || !CONVO_SHUT.has(t.agent);
     const l = live(t.agent);
+    // Offsets are measured from this thread's own first turn, not the run's:
+    // each conversation reads from its own beginning.
+    CONVO_T0 = t.turns.map((x) => x.ts).filter(Boolean).map(Date.parse).filter((n) => !Number.isNaN(n)).sort()[0] ?? null;
     const msgs = t.turns.length
       ? t.turns.map((x) => turnHTML(x, t.agent)).join("")
       : `<p class="empty">waiting for ${esc(t.agent)}…</p>`;
@@ -1312,19 +1341,19 @@ function foldConversation(events) {
       case "finding.raised":
         owner.set(e.id, e.agent);
         thread(e.agent).turns.push({ who: e.agent, kind: "finding", id: e.id,
-          claim: e.claim, loc: e.loc ?? "", body: e.body ?? "" });
+          claim: e.claim, loc: e.loc ?? "", body: e.body ?? "", ts: e.ts });
         break;
       case "finding.reproduced":
         thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "reproduced",
-          id: e.id, text: typeof e.evidence === "string" ? e.evidence : "" });
+          id: e.id, text: typeof e.evidence === "string" ? e.evidence : "", ts: e.ts });
         break;
       case "finding.resolved":
         thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "verdict",
-          id: e.id, verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "" });
+          id: e.id, verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "", ts: e.ts });
         break;
       case "finding.turn":
         thread(owner.get(e.id) ?? e.agent ?? "?").turns.push({
-          who: e.who ?? "?", kind: "rebuttal", id: e.id, text: e.text ?? "" });
+          who: e.who ?? "?", kind: "rebuttal", id: e.id, text: e.text ?? "", ts: e.ts });
         break;
       // A reviewer that does not stream. codex writes nothing until it exits,
       // so without this its column is empty for nine minutes and "thinking" is
@@ -1339,7 +1368,7 @@ function foldConversation(events) {
         if (w) { w.seconds = e.seconds; break; }
         // Real output already supersedes it; do not regress to a placeholder.
         if (t.turns.some((x) => (x.kind === "streaming" || x.kind === "report") && x.round === e.round)) break;
-        t.turns.push({ who: e.agent, kind: "waiting", round: e.round, seconds: e.seconds });
+        t.turns.push({ who: e.agent, kind: "waiting", round: e.round, seconds: e.seconds, ts: e.ts });
         break;
       }
       case "agent.chunk": {
@@ -1348,7 +1377,7 @@ function foldConversation(events) {
         if (last?.kind === "streaming" && last.round === e.round) last.text += e.text ?? "";
         else {
           const w = t.turns.findIndex((x) => x.kind === "waiting" && x.round === e.round);
-          const turn = { who: e.agent, kind: "streaming", round: e.round, text: e.text ?? "" };
+          const turn = { who: e.agent, kind: "streaming", round: e.round, text: e.text ?? "", ts: e.ts };
           if (w >= 0) t.turns.splice(w, 1, turn); else t.turns.push(turn);
         }
         break;
@@ -1359,20 +1388,20 @@ function foldConversation(events) {
           (x) => (x.kind === "streaming" || x.kind === "waiting") && x.round === e.round,
         );
         const turn = { who: e.agent, kind: "report", round: e.round,
-          verdict: e.verdict, text: e.report ?? "", seconds: e.seconds };
+          verdict: e.verdict, text: e.report ?? "", seconds: e.seconds, ts: e.ts };
         if (i >= 0) t.turns.splice(i, 1, turn); else t.turns.push(turn);
         break;
       }
       case "reply.sent":
-        thread(e.agent).turns.push({ who: "claude", kind: "reply", text: e.text ?? "" });
+        thread(e.agent).turns.push({ who: "claude", kind: "reply", text: e.text ?? "", ts: e.ts });
         break;
       case "reply.answered":
         thread(e.agent).turns.push({ who: e.agent, kind: "answer",
-          text: e.report ?? "", verdict: e.verdict, seconds: e.seconds });
+          text: e.report ?? "", verdict: e.verdict, seconds: e.seconds, ts: e.ts });
         break;
       case "commit.pushed":
         for (const t of threads.values()) {
-          t.turns.push({ who: "claude", kind: "commit", sha: e.sha, text: e.subject ?? "" });
+          t.turns.push({ who: "claude", kind: "commit", sha: e.sha, text: e.subject ?? "", ts: e.ts });
         }
         break;
     }
