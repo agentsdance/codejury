@@ -32,6 +32,21 @@ Two properties make it terminate rather than churn:
   round, forever.
 - **A literal stop token.** Termination is a `grep`, not a judgement call.
 
+## Watching it happen
+
+A round is a reviewer talking for several minutes and then a wall of text. `--web` starts the console
+in the same process as the run, so the conversation streams as it is spoken rather than arriving at
+the end:
+
+```
+macr --web https://github.com/owner/repo/pull/1   # review, with the console open on it
+macr --web --port 3099 --rounds 3                 # the current branch, on another port
+```
+
+The console outlives the loop — it stays up until you ctrl-c, which is the point: the run finishing
+is when there is finally something worth reading. `macr web` still serves the same console
+standalone, against runs that already exist.
+
 ## Who writes, and who only reads
 
 Exactly one agent has role `main` — **Claude Code**, the session driving the loop. It owns the working
