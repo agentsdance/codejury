@@ -61,3 +61,53 @@ test("the prompt demands a reproduction before an acceptance", () => {
   assert.match(p, /FAILS/);
   assert.match(p, /Do not commit/);
 });
+
+test("a reproduction recorded now is visible to the gate now", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const { appendEvent } = await import("../lib/store.js");
+  const { findingsIn, gate } = await import("../lib/findings.js");
+
+  const dir = await mkdtemp(path.join(tmpdir(), "macr-gate-"));
+  try {
+    await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
+
+    // The loop folds findings, then appends a reproduction, then records the
+    // verdict. Handing gate() the PRE-reproduction map refused every acceptance
+    // moments after writing the proof for it — the fix is real, the finding
+    // stays open, and the round reports nothing done.
+    const stale = await findingsIn(dir);
+    await appendEvent(dir, { t: "finding.reproduced", id: "A", evidence: "observed it", test: "T fails without the fix" });
+
+    assert.ok(gate(stale.get("A"), { verdict: "accepted", test: "T fails without the fix" }),
+      "a stale map cannot see the reproduction just written — this is the bug");
+
+    const fresh = await findingsIn(dir);
+    assert.equal(gate(fresh.get("A"), { verdict: "accepted", test: "T fails without the fix" }), null,
+      "refolded, the same acceptance must pass");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the CLI defines every helper the triage path calls", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("../bin/macr.js", import.meta.url), "utf8");
+  // `beat(...)` was called on the first trackable finding and never declared,
+  // so the loop died with a ReferenceError the moment triage began. Folding
+  // synthetic events in a test never touches that path.
+  for (const fn of ["beat", "commitFixes", "publishRun", "describe", "resolveRun"]) {
+    assert.match(src, new RegExp(`(function|const)\\s+${fn}\\b`), `${fn}() is called but never defined`);
+  }
+});
+
+test("a failed push is not reported as pushed", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("../bin/macr.js", import.meta.url), "utf8");
+  // commitFixes swallowed the push error and returned the sha anyway, so the
+  // caller emitted commit.pushed and later rounds reviewed a commit the PR
+  // never received — and could converge on it.
+  assert.match(src, /return \{ sha, pushed:/, "commitFixes must report whether the push happened");
+  assert.match(src, /pushFailed/, "a failed push must block convergence");
+});
