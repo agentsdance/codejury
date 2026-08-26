@@ -1,14 +1,23 @@
 // The autonomous loop: what makes it terminate, and what it shows while it runs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { appendEvent, readEvents, readArtifact } from "../lib/store.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record } from "../lib/loop.js";
 import { findingsIn } from "../lib/findings.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "macr-loop-"));
+
+// The CLI's own `run` is private to bin/macr.js. A non-zero exit is a result
+// here, not a throw: the loop is allowed to fail, and the assertions are about
+// what it printed.
+const exec = promisify(execFile);
+const run = (cmd, args, opts) =>
+  exec(cmd, args, opts).catch((e) => ({ stdout: e.stdout ?? "", stderr: e.stderr ?? "" }));
 
 test("a finding is set down once it has been argued MAX_TURNS times", async () => {
   const dir = await tmp();
@@ -195,4 +204,217 @@ test("an abandoned launch ends at its own round, not at the present moment", asy
   const live = codex.segs.find((s) => s.r === 3);
   assert.equal(live.open, true);
   assert.match(live.t, /still running/);
+});
+
+test("a non-streaming reviewer shows a heartbeat, and its report replaces it", async () => {
+  const dir = await tmp();
+  // codex writes nothing until it exits — an 8.9s run produced one 7-byte chunk
+  // at 8.5s — so without a heartbeat its column is empty for the whole round
+  // and "thinking" is indistinguishable from "wedged".
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 10 });
+
+  let turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1, "one waiting turn, not one per heartbeat");
+  assert.equal(turns[0].kind, "waiting");
+  assert.equal(turns[0].seconds, 10, "it counts up rather than restarting");
+
+  await appendEvent(dir, { t: "agent.report", agent: "codex", round: 1, verdict: "found", report: "FINDING: x" });
+  turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1, "the report replaces the heartbeat, not appends to it");
+  assert.equal(turns[0].kind, "report");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("an agent that does stream never shows a heartbeat", async () => {
+  const dir = await tmp();
+  await appendEvent(dir, { t: "agent.alive", agent: "agy", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.chunk", agent: "agy", round: 1, text: "reading the diff" });
+
+  const turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1, "real output supersedes the placeholder");
+  assert.equal(turns[0].kind, "streaming");
+  assert.equal(turns[0].text, "reading the diff");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("an agent that takes an assigned session id resumes that exact conversation", async () => {
+  const { replyArgv } = await import("../lib/reply.js");
+  const grok = {
+    name: "grok", argv: ["grok", "--session-id", "{{sessionId}}", "-p", "{{promptText}}"],
+    newSession: true,
+    resume: { supported: true, argv: ["grok", "--resume", "{{sessionId}}", "-p", "{{promptText}}"] },
+  };
+
+  const withId = replyArgv(grok, { promptText: "hi", sessionId: "abc-123" });
+  assert.equal(withId.resumed, true);
+  assert.ok(withId.argv.includes("abc-123"), "the reply must name the session it is answering");
+  assert.ok(!withId.argv.some((a) => a.includes("{{")), "no placeholder may survive into argv");
+
+  // With no session recorded, resuming would either blank the argument or —
+  // with a --last style flag — deliver the verdict into whichever conversation
+  // ran most recently. A fresh session is the honest fallback.
+  const without = replyArgv(grok, { promptText: "hi", sessionId: null });
+  assert.equal(without.resumed, false);
+  assert.ok(!without.argv.includes("--resume"));
+});
+
+test("interleaved heartbeats from two rounds collapse per round, not per beat", async () => {
+  const dir = await tmp();
+  // A killed run leaks its heartbeat interval, so an old round keeps beating
+  // while a new one starts. Matching "is it the last turn?" failed on every
+  // alternation: a nine-minute round grew 81 bubbles instead of one.
+  for (let i = 1; i <= 4; i++) {
+    await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: i * 5 });
+    await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 2, seconds: i * 5 + 500 });
+  }
+  const turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 2, "one waiting turn per round, however they interleave");
+  assert.deepEqual(turns.map((t) => t.round), [1, 2]);
+  assert.deepEqual(turns.map((t) => t.seconds), [20, 520], "each keeps its own latest elapsed");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("a heartbeat arriving after the report does not resurrect the placeholder", async () => {
+  const dir = await tmp();
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.report", agent: "codex", round: 1, verdict: "found", report: "FINDING: x" });
+  // A leaked interval can fire after the round is over; it must not replace the
+  // report with "working 0:10".
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 10 });
+
+  const turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].kind, "report");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("each invocation is its own run, so re-reviewing a PR does not merge into the last one", async () => {
+  const { slugFor, attemptStamp } = await import("../lib/store.js");
+  const target = { repo: "acme/api", id: "48" };
+
+  // Without an attempt, three `macr review <same-pr>` invocations all wrote to
+  // one directory: three separate reviews merged into rounds 1-5 of a single
+  // run, and a killed run's open rounds interleaved with the next one's.
+  const bare = slugFor(target);
+  const a = slugFor({ ...target, attempt: attemptStamp(new Date(2026, 7, 26, 10, 24)) });
+  const b = slugFor({ ...target, attempt: attemptStamp(new Date(2026, 7, 26, 10, 27)) });
+
+  assert.notEqual(a, b, "two invocations must not share a run directory");
+  assert.match(a, /-20260826-1024$/);
+  assert.match(b, /-20260826-1027$/);
+  // Stamps sort chronologically, so the directory listing reads in order.
+  assert.ok(a < b);
+  // Resuming still targets the original, attempt-less shape.
+  assert.equal(bare, "acme-api-48");
+});
+
+test("the main agent's triage heartbeat survives the reviewer's report, in production order", async () => {
+  const dir = await tmp();
+  // The real order for a round: the reviewer streams, reports, its findings are
+  // raised, and only THEN does the main agent start triaging. Keying the
+  // "real output supersedes the placeholder" rule on the thread rather than the
+  // speaker meant the report suppressed every triage heartbeat — the events
+  // were written and the fold ignored them, so the console was blank for the
+  // longest stretch of the round.
+  await appendEvent(dir, { t: "agent.chunk", agent: "codex", round: 1, text: "reading" });
+  await appendEvent(dir, { t: "agent.report", agent: "codex", round: 1, verdict: "found", report: "FINDING: x" });
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
+  await appendEvent(dir, { t: "agent.alive", agent: "claude", forAgent: "codex", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.alive", agent: "claude", forAgent: "codex", round: 1, seconds: 10 });
+
+  const threads = conversation(await readEvents(dir));
+  assert.deepEqual(threads.map((t) => t.agent), ["codex"], "no thread of its own");
+  const waiting = threads[0].turns.filter((t) => t.kind === "waiting");
+  assert.equal(waiting.length, 1, "one waiting turn, collapsed, not one per beat");
+  assert.equal(waiting[0].who, "claude", "attributed to the main agent");
+  assert.equal(waiting[0].seconds, 10, "and kept up to date");
+  // The reviewer's own report must still be there, not replaced.
+  assert.ok(threads[0].turns.some((t) => t.kind === "report"), "report survives");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("the main agent's triage heartbeat lands in the reviewer's thread, not its own", async () => {
+  const dir = await tmp();
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
+  // Threads are per reviewer; the main agent is a participant in each, not a
+  // thread of its own. Filing its heartbeat under "claude" opened a second
+  // conversation and split one exchange in two.
+  await appendEvent(dir, { t: "agent.alive", agent: "claude", forAgent: "codex", round: 1, seconds: 5 });
+
+  const threads = conversation(await readEvents(dir));
+  assert.deepEqual(threads.map((t) => t.agent), ["codex"], "no thread of its own");
+  const waiting = threads[0].turns.find((t) => t.kind === "waiting");
+  assert.ok(waiting, "the heartbeat must appear inside the reviewer's thread");
+  assert.equal(waiting.who, "claude", "but still attributed to the main agent");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("a reviewer's own heartbeat still opens its own thread", async () => {
+  const dir = await tmp();
+  // No forAgent: this is the reviewer itself working, not the main agent
+  // judging on its behalf.
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 5 });
+  const threads = conversation(await readEvents(dir));
+  assert.deepEqual(threads.map((t) => t.agent), ["codex"]);
+  assert.equal(threads[0].turns[0].who, "codex");
+  await rm(dir, { recursive: true, force: true });
+});
+
+// A clean round is not convergence while a finding from an earlier round is
+// still open. `runRound` returning clean used to exit the loop immediately,
+// ahead of the still-open check at the end of the round body — so a finding
+// that triage left open, or one a reply raised after the round's last triage,
+// was never answered. The reviewers cannot re-raise it either: settled.md
+// lists only findings that already have a verdict, so an open one is invisible
+// to them and they sign off in good faith.
+test("a clean round does not converge while an earlier finding is still open", async () => {
+  const repo = await tmp();
+  const g = async (...a) => run("git", ["-C", repo, ...a]);
+  await g("init", "-q", "-b", "master");
+  await g("config", "user.email", "t@example.com");
+  await g("config", "user.name", "t");
+  await writeFile(path.join(repo, "a.txt"), "one\n");
+  await g("add", "-A");
+  await g("commit", "-qm", "base");
+  await g("checkout", "-q", "-b", "feature");
+  await writeFile(path.join(repo, "a.txt"), "two\n");
+  await g("commit", "-qam", "change");
+
+  // One reviewer, one main agent. Both are dry-run: the reviewer emits the stop
+  // token (clean), which is exactly the round this bug needs.
+  await writeFile(path.join(repo, "macr.config.json"), JSON.stringify({
+    agents: [
+      { name: "claude", role: "main", command: "true", args: [] },
+      { name: "codex", command: "true", args: [] },
+    ],
+  }));
+
+  // Seed a run whose previous round left a finding open — no finding.resolved.
+  const runDir = path.join(repo, "runs", "acme-api-1");
+  await appendEvent(runDir, { t: "round.start", n: 1, sha: "deadbee" });
+  await appendEvent(runDir, {
+    t: "finding.raised", id: "1-codex-reply-1", round: 1, agent: "codex",
+    claim: "the reply raised this and nobody triaged it", loc: "a.txt:1",
+  });
+  await appendEvent(runDir, { t: "round.end", n: 1 });
+
+  const r = await run(process.execPath, [
+    path.resolve("bin/macr.js"), "agent",
+    "--dir", repo, "--resume", runDir, "--trunk", "master",
+    "--rounds", "1", "--no-push", "--dry-run",
+  ], { cwd: repo });
+
+  // Round 2's reviewer is clean. Exiting there would announce convergence with
+  // the round-1 finding untouched.
+  assert.doesNotMatch(r.stdout, /CONVERGED after 1 round\(s\)/,
+    "a clean round must not converge past a finding nobody answered");
+  assert.match(r.stdout, /still open/,
+    "the loop must say why it is not stopping");
+  // And it must actually deal with it rather than merely refusing to stop.
+  const f = await findingsIn(runDir);
+  assert.notEqual(f.get("1-codex-reply-1").status, "open",
+    "the open finding must reach triage");
+
+  await rm(repo, { recursive: true, force: true });
 });
