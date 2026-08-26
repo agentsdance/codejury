@@ -60,8 +60,49 @@
                 border:1px solid var(--line); padding:4px 12px; border-radius:999px;
                 font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
   .badge-warn .d,.badge-mute .d { width:7px; height:7px; border-radius:50%; background:currentColor; }
-  .switcher { display:flex; gap:6px; flex-wrap:wrap; }
+  /* One control, not a chip per run. A row of chips is fine for five runs and
+     a wall for a hundred: it wrapped to two lines at seven, and the page header
+     stopped being a header. */
+  .switcher { position:relative; display:inline-block; }
   .switcher:empty { display:none; }
+  .sw-btn {
+    display:inline-flex; align-items:center; gap:8px; max-width:min(560px, 90vw);
+    font:500 12px/1 var(--mono); color:var(--ink); background:var(--surface);
+    border:1px solid var(--line); border-radius:8px; padding:8px 11px; cursor:pointer;
+  }
+  .sw-btn:hover { border-color:var(--accent); }
+  .sw-btn .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sw-btn .cnt { color:var(--muted); font-size:11px; padding-left:8px;
+    margin-left:2px; border-left:1px solid var(--line-soft); }
+  .sw-btn .car { color:var(--muted); font-size:9px; margin-left:auto; }
+  .sw-pop {
+    position:absolute; top:calc(100% + 6px); left:0; z-index:40;
+    width:min(460px, 92vw); background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .sw-pop[hidden] { display:none; }
+  .sw-pop input {
+    width:100%; box-sizing:border-box; border:0; border-bottom:1px solid var(--line-soft);
+    background:transparent; color:var(--ink); font:400 13px/1 var(--sans); padding:11px 13px;
+  }
+  .sw-pop input:focus { outline:none; background:var(--surface-alt); }
+  .sw-list { max-height:min(52vh, 420px); overflow-y:auto; padding:5px; }
+  .sw-h {
+    font:600 10px/1 var(--sans); letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); padding:9px 9px 5px;
+  }
+  .sw-i {
+    display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+    background:none; border:0; border-radius:7px; padding:7px 9px; cursor:pointer;
+    font:400 12px/1.35 var(--sans); color:var(--ink);
+  }
+  .sw-i:hover, .sw-i[data-on="1"] { background:var(--surface-alt); }
+  .sw-i[aria-pressed="true"] { background:var(--accent-soft); }
+  .sw-i .d { width:7px; height:7px; border-radius:50%; flex:none; }
+  .sw-i .id { font-family:var(--mono); font-size:11.5px; flex:none; }
+  .sw-i .ti { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sw-i .rt { margin-left:auto; flex:none; font:400 10.5px/1 var(--mono); color:var(--muted); }
+  .sw-none { padding:18px 13px; text-align:center; color:var(--muted); font:400 12px/1 var(--sans); }
   .pr-chip { font-family:var(--mono); font-size:11.5px; padding:5px 11px; border-radius:3px; cursor:pointer;
              border:1px solid var(--line); background:var(--surface); color:var(--muted);
              display:inline-flex; align-items:center; gap:7px; }
@@ -341,6 +382,15 @@
   .bub[data-k="verdict"][data-v="rejected"] { border-left-color:var(--bad); background:var(--bad-soft); }
   .bub[data-k="verdict"][data-v="deferred"] { border-left-color:var(--warn); background:var(--warn-soft); }
   .bub[data-k="commit"] { font:500 12px/1.5 var(--mono); background:transparent; border-style:dashed; }
+  .bub[data-k="waiting"] {
+    font:500 12px/1.5 var(--sans); color:var(--muted);
+    background:transparent; border-style:dashed;
+  }
+  .bub[data-k="waiting"] .tick { font-family:var(--mono); color:var(--ink-2); }
+  .bub[data-k="waiting"]::after {
+    content:"●"; margin-left:6px; font-size:9px; color:var(--warn);
+    animation:blip 1.4s ease-in-out infinite;
+  }
   .bub[data-k="streaming"] { font:400 12px/1.5 var(--mono); color:var(--ink-2); }
   .bub[data-k="streaming"]::after {
     content:"▍"; animation:blip 1s steps(2) infinite; color:var(--accent);
@@ -706,20 +756,150 @@ function renderHeader(){
   // The repo name is carried whenever more than one is on screen; with a single
   // repo it is redundant, and the title is what actually tells them apart.
   const repos = new Set(ALL.map(r => r.target?.repo).filter(Boolean));
-  $("switcher").innerHTML = ALL.length > 1
-    ? ALL.map((r,i)=>{
-        const t = r.target ?? {};
-        const name = (t.repo ?? "").split("/").pop();
-        // The slug, not the index: a positional key silently points at a
-        // different PR the moment a run is added or the list re-sorts, which is
-        // exactly how a reader ends up on a run they did not pick.
-        return `<button class="pr-chip" data-i="${i}" data-slug="${esc(r.slug ?? "")}" aria-pressed="${r===RUN}"
-           title="${esc(t.repo ?? "")} ${esc(t.id ?? "")}${t.title ? ` — ${esc(t.title)}` : ""}">
-         <span class="d" style="background:${t.state==="review"||t.state==="human"?"var(--warn)":"var(--ok)"}"></span>
-         ${repos.size > 1 && name ? `<span class="repo">${esc(name)}</span>` : ""}${esc(t.id ?? "?")}</button>`;
-      }).join("")
-    : "";
+  drawSwitcher();
 }
+
+/* ── Run switcher ───────────────────────────────────────────────────────
+   A chip per run wrapped to two rows at seven runs; at a hundred it is a
+   wall. One control names the current run, and opening it gives a filterable
+   list with whatever is LIVE first — a running review is the thing you came
+   to look at, and it must never be somewhere down a list of two hundred. */
+let SW_OPEN = false;
+let SW_Q = "";
+
+// "Live" cannot be the state field alone. A run that was killed keeps whatever
+// state it was last written with, so six abandoned runs all claimed to be
+// under review — and the one actually running was lost among them. A run is
+// live if it says it is reviewing AND something happened in the last few
+// minutes.
+const LIVE_WINDOW_MS = 6 * 60 * 1000;
+function lastActivity(r) {
+  const at = (r.rounds ?? []).flatMap((x) => x.verdicts ?? []).map((v) => v.at).filter(Boolean).pop();
+  return at ? Date.parse(at) : null;
+}
+function isLive(r) {
+  if (r.target?.state !== "review") return false;
+  // A launched round with no verdict yet is live by definition: the reviewer
+  // has not reported, which is exactly the case worth watching.
+  if (r === RUN && EVENTS.length) {
+    const last = EVENTS[EVENTS.length - 1];
+    if (last?.ts && Date.now() - Date.parse(last.ts) < LIVE_WINDOW_MS) return true;
+  }
+  const at = lastActivity(r);
+  return at !== null && Date.now() - at < LIVE_WINDOW_MS;
+}
+
+function runLabel(r) {
+  const t = r.target ?? {};
+  const repo = (t.repo ?? "").split("/").pop() || "run";
+  return `${repo} · ${t.id ?? "?"}`;
+}
+
+// "16h", "3d" — a run's age is glanceable, an ISO timestamp is not.
+function ago(r) {
+  const last = lastActivity(r);
+  if (!last) return "";
+  const s = (Date.now() - last) / 1000;
+  if (!Number.isFinite(s) || s < 0) return "";
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)}m`;
+  if (s < 172800) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+
+function runSummary(r) {
+  const t = r.target ?? {};
+  if (isLive(r) && t.stateNote) return t.stateNote;
+  const n = (r.exchanges ?? []).length;
+  if (t.state === "converged") return "converged";
+  const found = n ? `${n} finding${n === 1 ? "" : "s"}` : "";
+  // A stale "review" is a run that stopped without finishing. Saying "review"
+  // would repeat the claim that misled the grouping in the first place.
+  if (t.state === "review") return found ? `${found} · stopped` : "stopped";
+  return found || t.stateNote || t.state || "";
+}
+
+function drawSwitcher() {
+  const el = $("switcher");
+  if (!el) return;
+  if (ALL.length < 2) { el.innerHTML = ""; return; }
+
+  const q = SW_Q.trim().toLowerCase();
+  const match = (r) => {
+    if (!q) return true;
+    const t = r.target ?? {};
+    return [t.repo, t.id, t.title, t.branch, r.slug]
+      .filter(Boolean).join(" ").toLowerCase().includes(q);
+  };
+
+  const hits = ALL.filter(match);
+  const live = hits.filter(isLive);
+  const rest = hits.filter((r) => !isLive(r));
+
+  const item = (r) => {
+    const t = r.target ?? {};
+    const on = r === RUN;
+    return `<button class="sw-i" role="option" data-slug="${esc(r.slug ?? "")}" aria-pressed="${on}"
+      ><span class="d" style="background:${isLive(r) ? "var(--warn)" : t.state === "converged" ? "var(--ok)" : "var(--muted)"}"></span
+      ><span class="id">${esc(runLabel(r))}</span
+      ><span class="ti">${esc(runSummary(r))}</span
+      ><span class="rt">${esc(ago(r))}</span></button>`;
+  };
+
+  const group = (label, rows) =>
+    rows.length ? `<div class="sw-h">${label}</div>${rows.map(item).join("")}` : "";
+
+  el.innerHTML = `
+    <button class="sw-btn" id="sw-btn" aria-expanded="${SW_OPEN}"
+      ><span class="d" style="width:7px;height:7px;border-radius:50%;background:${
+        isLive(RUN) ? "var(--warn)" : "var(--ok)"};flex:none"></span
+      ><span class="nm">${esc(runLabel(RUN))}</span
+      ><span class="cnt">of ${ALL.length}</span><span class="car">▼</span></button>
+    <div class="sw-pop" id="sw-pop" ${SW_OPEN ? "" : "hidden"} role="listbox">
+      <input id="sw-q" type="search" placeholder="filter by repo, number, title, branch…"
+        value="${esc(SW_Q)}" autocomplete="off">
+      <div class="sw-list">${
+        hits.length
+          ? group(live.length ? `running now · ${live.length}` : "", live)
+            + group(`recent · ${rest.length}`, rest)
+          : `<div class="sw-none">nothing matches “${esc(SW_Q)}”</div>`
+      }</div>
+    </div>`;
+
+  if (SW_OPEN) {
+    const input = $("sw-q");
+    input?.focus();
+    input?.setSelectionRange(SW_Q.length, SW_Q.length);
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#sw-btn")) { SW_OPEN = !SW_OPEN; SW_Q = ""; drawSwitcher(); return; }
+  const pick = e.target.closest("#sw-pop .sw-i");
+  if (pick) {
+    const next = ALL.find((r) => r.slug === pick.dataset.slug);
+    if (next) { RUN = next; setRunParam(next.slug); SW_OPEN = false; SW_Q = ""; render(); }
+    return;
+  }
+  // Anywhere else closes it — including the page behind.
+  if (SW_OPEN && !e.target.closest("#sw-pop")) { SW_OPEN = false; drawSwitcher(); }
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id !== "sw-q") return;
+  SW_Q = e.target.value;
+  drawSwitcher();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (!SW_OPEN) return;
+  if (e.key === "Escape") { SW_OPEN = false; drawSwitcher(); return; }
+  if (e.key !== "Enter") return;
+  // Enter takes the first match, so filtering to one run and pressing Enter is
+  // the whole interaction.
+  const first = document.querySelector("#sw-pop .sw-i");
+  if (first) { e.preventDefault(); first.click(); }
+});
 
 // Every reviewer's report in full, plus the prompt it answered. A round where
 // nobody found anything still has to show what was checked — the first line
@@ -853,6 +1033,15 @@ function bubble(text, k, attrs = "") {
     ><span id="${id}-f" hidden>${esc(t)}</span
     ><button class="more" data-more="${id}">show all ${bytes(t.length)}</button></div>`;
 }
+/** m:ss, or h:mm:ss once a reviewer has been going that long. */
+function hms(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h
+    ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`
+    : `${m}:${String(r).padStart(2, "0")}`;
+}
+
 function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
 function turnHTML(t, agent) {
@@ -874,6 +1063,12 @@ function turnHTML(t, agent) {
       break;
     case "commit":
       body = `<div class="bub" data-k="commit">pushed ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
+      break;
+    case "waiting":
+      // Counted up client-side between heartbeats, so it ticks every second
+      // rather than jumping in five-second steps.
+      body = `<div class="bub" data-k="waiting" data-since="${Date.now() - (t.seconds ?? 0) * 1000}"
+        >working <b class="tick">${esc(hms(t.seconds ?? 0))}</b></div>`;
       break;
     case "streaming":
       // The tail only: a live agent's stdout is the transcript so far, and the
@@ -993,6 +1188,18 @@ document.addEventListener("scroll", (e) => {
    then follows in real time. Reconnects on drop — a run outlives any one
    connection, and a console that silently stops updating is worse than one
    that never started. */
+// One timer for every waiting bubble on the page. The heartbeat lands every
+// five seconds; this makes the display move every second in between, so a
+// reviewer that is alive looks alive rather than frozen.
+setInterval(() => {
+  for (const el of document.querySelectorAll('.bub[data-k="waiting"]')) {
+    const since = Number(el.dataset.since);
+    if (!since) continue;
+    const b = el.querySelector(".tick");
+    if (b) b.textContent = hms((Date.now() - since) / 1000);
+  }
+}, 1000);
+
 let ES = null;
 let ES_SLUG = null;
 let EVENTS = [];
@@ -1073,16 +1280,34 @@ function foldConversation(events) {
         thread(owner.get(e.id) ?? e.agent ?? "?").turns.push({
           who: e.who ?? "?", kind: "rebuttal", id: e.id, text: e.text ?? "" });
         break;
+      // A reviewer that does not stream. codex writes nothing until it exits,
+      // so without this its column is empty for nine minutes and "thinking" is
+      // indistinguishable from "wedged".
+      case "agent.alive": {
+        const t = thread(e.agent);
+        const last = t.turns[t.turns.length - 1];
+        if (last?.kind === "waiting" && last.round === e.round) last.seconds = e.seconds;
+        else if (!(last?.kind === "streaming" && last.round === e.round)) {
+          t.turns.push({ who: e.agent, kind: "waiting", round: e.round, seconds: e.seconds });
+        }
+        break;
+      }
       case "agent.chunk": {
         const t = thread(e.agent);
         const last = t.turns[t.turns.length - 1];
         if (last?.kind === "streaming" && last.round === e.round) last.text += e.text ?? "";
-        else t.turns.push({ who: e.agent, kind: "streaming", round: e.round, text: e.text ?? "" });
+        else {
+          const w = t.turns.findIndex((x) => x.kind === "waiting" && x.round === e.round);
+          const turn = { who: e.agent, kind: "streaming", round: e.round, text: e.text ?? "" };
+          if (w >= 0) t.turns.splice(w, 1, turn); else t.turns.push(turn);
+        }
         break;
       }
       case "agent.report": {
         const t = thread(e.agent);
-        const i = t.turns.findIndex((x) => x.kind === "streaming" && x.round === e.round);
+        const i = t.turns.findIndex(
+          (x) => (x.kind === "streaming" || x.kind === "waiting") && x.round === e.round,
+        );
         const turn = { who: e.agent, kind: "report", round: e.round,
           verdict: e.verdict, text: e.report ?? "", seconds: e.seconds };
         if (i >= 0) t.turns.splice(i, 1, turn); else t.turns.push(turn);
@@ -1109,23 +1334,6 @@ let ALL = [RUN];
 let sig = null;          // last payload seen, so an unchanged poll costs nothing
 let assetStamp = null;   // index.html mtime; a change means reload, not re-render
 let served = false;
-
-document.addEventListener("click", (e) => {
-  // Scoped to the PR switcher, not any .pr-chip on the page. The reviewer tabs
-  // reuse that class for its styling, and an unscoped match sent their clicks
-  // here: dataset.i is undefined on them, so RUN became ALL[NaN] — undefined —
-  // and every subsequent render threw on RUN.target.
-  const c = e.target.closest("#switcher .pr-chip");
-  if (!c) return;
-  const next = ALL.find((r) => r.slug && r.slug === c.dataset.slug) ?? ALL[Number(c.dataset.i)];
-  if (!next) return;
-  RUN = next;
-  // Which PR you are reading belongs in the URL. Without it the console is one
-  // address for six runs: a reload lands somewhere else, a link shares the
-  // wrong thing, and back does nothing.
-  setRunParam(next.slug);
-  render();
-});
 
 /** Put the selected run in the query string, as a history entry you can go back through. */
 function setRunParam(slug, { replace = false } = {}) {
