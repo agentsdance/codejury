@@ -14,7 +14,7 @@ import { openArtifact } from "../lib/store.js";
 import { runAgent } from "../lib/agents.js";
 
 async function scratch() {
-  const dir = await mkdtemp(path.join(tmpdir(), "macr-stream-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "cr-stream-"));
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 

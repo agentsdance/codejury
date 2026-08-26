@@ -151,7 +151,7 @@
 <div class="wrap">
 
   <header class="hd">
-    <nav class="nav"><a href="index.html">&larr; console</a><span class="kicker">macr &middot; reference</span></nav>
+    <nav class="nav"><a href="index.html">&larr; console</a><span class="kicker">cr &middot; reference</span></nav>
     <div class="kicker">plan and method</div>
     <h1>Run a commit past several independent reviewers until they stop finding things</h1>
     <div class="meta">
@@ -394,7 +394,7 @@
 
     <div class="scroll">
       <table>
-        <thead><tr><th></th><th class="mono">macr</th><th>the skill</th></tr></thead>
+        <thead><tr><th></th><th class="mono">cr</th><th>the skill</th></tr></thead>
         <tbody>
           <tr><td><b>owns</b></td><td><b>mechanics</b></td><td><b>judgement</b></td></tr>
           <tr><td>worktree, merge-base pinning</td><td class="yes">&check;</td><td></td></tr>
@@ -412,7 +412,7 @@
     </div>
 
     <div class="callout"><strong>Hard rule: the CLI must work without the skill.</strong> If
-      <code>macr review</code> only functions inside a session reading SKILL.md, it is not a tool &mdash;
+      <code>cr review</code> only functions inside a session reading SKILL.md, it is not a tool &mdash;
       it is a prompt with a binary attached, and it cannot run in CI or for anyone on a different agent.</div>
   </section>
 
@@ -437,7 +437,7 @@
       skipped; a check cannot. Enforce the mechanical half &mdash; an accepted finding must have a
       recorded reproduction, a fix must have a test that was observed failing without it &mdash; and leave
       the judgement half to the skill.</p>
-    <pre>macr finding resolve X1 --verdict accepted
+    <pre>cr finding resolve X1 --verdict accepted
   → refused: no finding.reproduced event for X1</pre>
   </section>
 
@@ -452,10 +452,10 @@
       <table>
         <thead><tr><th>command</th><th>state</th></tr></thead>
         <tbody>
-          <tr><td class="mono">macr review [flags]</td><td>runs <b>one</b> round: every reviewer reads the diff, findings are recorded. Iterating to convergence is still manual. <code>--dry-run</code> exercises the pipeline without spawning anything.</td></tr>
-          <tr><td class="mono">macr web [flags]</td><td>serves the console and this page</td></tr>
-          <tr><td class="mono">macr agents</td><td>checks which configured agents are installed</td></tr>
-          <tr><td class="mono">macr finding &lt;cmd&gt;</td><td><span class="verdict" data-v="ours">not built</span> raise | reproduce | resolve, appending events and enforcing the gate</td></tr>
+          <tr><td class="mono">cr review [flags]</td><td>runs <b>one</b> round: every reviewer reads the diff, findings are recorded. Iterating to convergence is still manual. <code>--dry-run</code> exercises the pipeline without spawning anything.</td></tr>
+          <tr><td class="mono">cr web [flags]</td><td>serves the console and this page</td></tr>
+          <tr><td class="mono">cr agents</td><td>checks which configured agents are installed</td></tr>
+          <tr><td class="mono">cr finding &lt;cmd&gt;</td><td><span class="verdict" data-v="ours">not built</span> raise | reproduce | resolve, appending events and enforcing the gate</td></tr>
         </tbody>
       </table>
     </div>
