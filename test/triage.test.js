@@ -111,3 +111,56 @@ test("a failed push is not reported as pushed", async () => {
   assert.match(src, /return \{ sha, pushed:/, "commitFixes must report whether the push happened");
   assert.match(src, /pushFailed/, "a failed push must block convergence");
 });
+
+test("the triage path executes end to end without an undefined name", async () => {
+  // Two crashes shipped in a row from names that existed only in one place:
+  // `beat` was called and never defined, then `spoke` survived a rename to
+  // `lastSpoke`. Both are invisible to `node --check` and to any test that
+  // folds synthetic events — they only appear when the code actually RUNS.
+  // This drives the real loop against a fake reviewer that emits one finding.
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+
+  const dir = await mkdtemp(path.join(tmpdir(), "macr-e2e-"));
+  try {
+    await run("git", ["init", "-q", "-b", "work"], { cwd: dir });
+    await run("git", ["config", "user.email", "t@example.com"], { cwd: dir });
+    await run("git", ["config", "user.name", "t"], { cwd: dir });
+    await writeFile(path.join(dir, "a.txt"), "hello\n");
+    await run("git", ["add", "-A"], { cwd: dir });
+    await run("git", ["commit", "-qm", "init"], { cwd: dir });
+    await run("git", ["branch", "-q", "master"], { cwd: dir });
+
+    // A reviewer that raises one finding, and a main agent that rejects it.
+    // Both are `node -e`, so no real agent is spawned and the test is fast.
+    await writeFile(path.join(dir, "macr.config.json"), JSON.stringify({
+      agents: [
+        { name: "codex", enabled: false }, { name: "grok", enabled: false },
+        { name: "droid", enabled: false }, { name: "agy", enabled: false },
+        {
+          name: "claude", role: "main", promptDelivery: "argv", cwd: "worktree",
+          argv: ["node", "-e", `console.log('{"reproduced":null,"verdict":"rejected","reason":"not real","test":null}')`],
+          resume: { supported: false }, report: "whole", expectSeconds: 30,
+        },
+        {
+          name: "fake", role: "reviewer", promptDelivery: "argv", cwd: "worktree",
+          argv: ["node", "-e", `console.log("FINDING: something is wrong\\nWHERE: a.txt:1\\n\\nprose")`],
+          resume: { supported: false }, report: "whole", expectSeconds: 30,
+        },
+      ],
+    }));
+
+    const cli = path.join(process.cwd(), "bin", "macr.js");
+    const { stdout } = await run("node", [cli, "--rounds", "1", "--no-push"], { cwd: dir });
+
+    // The whole point: it got past launch, raised a finding, and TRIAGED it.
+    assert.match(stdout, /triage\s+1 finding/, `triage never ran:\n${stdout}`);
+    assert.match(stdout, /REJECTED/, `no verdict was recorded:\n${stdout}`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
