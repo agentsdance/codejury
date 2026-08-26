@@ -196,3 +196,35 @@ test("an abandoned launch ends at its own round, not at the present moment", asy
   assert.equal(live.open, true);
   assert.match(live.t, /still running/);
 });
+
+test("a non-streaming reviewer shows a heartbeat, and its report replaces it", async () => {
+  const dir = await tmp();
+  // codex writes nothing until it exits — an 8.9s run produced one 7-byte chunk
+  // at 8.5s — so without a heartbeat its column is empty for the whole round
+  // and "thinking" is indistinguishable from "wedged".
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 10 });
+
+  let turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1, "one waiting turn, not one per heartbeat");
+  assert.equal(turns[0].kind, "waiting");
+  assert.equal(turns[0].seconds, 10, "it counts up rather than restarting");
+
+  await appendEvent(dir, { t: "agent.report", agent: "codex", round: 1, verdict: "found", report: "FINDING: x" });
+  turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1, "the report replaces the heartbeat, not appends to it");
+  assert.equal(turns[0].kind, "report");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("an agent that does stream never shows a heartbeat", async () => {
+  const dir = await tmp();
+  await appendEvent(dir, { t: "agent.alive", agent: "agy", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.chunk", agent: "agy", round: 1, text: "reading the diff" });
+
+  const turns = conversation(await readEvents(dir))[0].turns;
+  assert.equal(turns.length, 1, "real output supersedes the placeholder");
+  assert.equal(turns[0].kind, "streaming");
+  assert.equal(turns[0].text, "reading the diff");
+  await rm(dir, { recursive: true, force: true });
+});

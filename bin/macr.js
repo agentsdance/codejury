@@ -197,6 +197,22 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
       // minutes and "still thinking" is indistinguishable from "wedged".
       const rawName = `round-${round}.${a.name}.stdout.txt`;
       const sink = await openArtifact(dir, rawName);
+      // Not every agent streams. codex writes nothing until it exits — an
+      // 8.9-second run produced one 7-byte chunk at 8.5s — because it
+      // block-buffers when it is piped rather than attached to a terminal. For
+      // those, an empty column for nine minutes is indistinguishable from a
+      // wedged process, so a heartbeat says what is knowable: it is alive, and
+      // how long it has been going. A streaming agent never needs one.
+      const heartStart = Date.now();
+      let spoke = false;
+      const heart = setInterval(() => {
+        if (spoke) return; // it started talking; the real output supersedes this
+        appendEvent(dir, {
+          t: "agent.alive", agent: a.name, round,
+          seconds: Math.round((Date.now() - heartStart) / 1000),
+        }).catch(() => {}); // a missed heartbeat must never fail the review
+      }, 5000);
+
       // Chunks reach the console through the event log as well as the
       // artifact. Batched: an agent emits stdout a few bytes at a time, and one
       // event per write would bloat the log by orders of magnitude for no gain
@@ -223,11 +239,13 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
         worktree, prompt, stopToken: cfg.stopToken,
         dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
         onChunk: (text) => {
+          spoke = true;
           sink.write(text);
           buf += text;
           if (!flushing) flushing = setTimeout(flush, 700);
         },
       });
+      clearInterval(heart);
       if (flushing) clearTimeout(flushing);
       // Await the chain, not just this flush: an append queued earlier must
       // land before agent.report is written after it.
