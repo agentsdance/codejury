@@ -1139,12 +1139,20 @@ function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s
  * opened.
  */
 let CONVO_T0 = null;
+let CONVO_SPREAD = 0;
 function stampFor(t) {
   if (!t?.ts) return "";
   const at = Date.parse(t.ts);
   if (Number.isNaN(at)) return "";
-  const abs = `${clockFmt.format(new Date(at))} ${TZ_LABEL}`;
-  if (CONVO_T0 === null) return `<time title="${esc(abs)}">${esc(clockFmt.format(new Date(at)))}</time>`;
+  const clock = clockFmt.format(new Date(at));
+  const abs = `${clock} ${TZ_LABEL}`;
+  // Offsets only say something when the thread actually spans time. Every
+  // finding parsed from one report is appended in the same millisecond, so a
+  // whole batch reads "+0s" — truthful and useless. Below a minute of spread
+  // the wall clock is the more informative of the two.
+  if (CONVO_T0 === null || CONVO_SPREAD < 60000) {
+    return `<time title="${esc(abs)}">${esc(clock)}</time>`;
+  }
   const d = Math.max(0, Math.round((at - CONVO_T0) / 1000));
   const rel = d < 60 ? `+${d}s` : d < 3600 ? `+${Math.round(d / 60)}m` : `+${(d / 3600).toFixed(1)}h`;
   return `<time title="${esc(abs)}">${esc(rel)}</time>`;
@@ -1235,7 +1243,10 @@ function drawConvo() {
     const l = live(t.agent);
     // Offsets are measured from this thread's own first turn, not the run's:
     // each conversation reads from its own beginning.
-    CONVO_T0 = t.turns.map((x) => x.ts).filter(Boolean).map(Date.parse).filter((n) => !Number.isNaN(n)).sort()[0] ?? null;
+    const times = t.turns.map((x) => x.ts).filter(Boolean).map(Date.parse)
+      .filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+    CONVO_T0 = times[0] ?? null;
+    CONVO_SPREAD = times.length > 1 ? times[times.length - 1] - times[0] : 0;
     const msgs = t.turns.length
       ? t.turns.map((x) => turnHTML(x, t.agent)).join("")
       : `<p class="empty">waiting for ${esc(t.agent)}…</p>`;
