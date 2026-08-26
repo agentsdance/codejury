@@ -23,7 +23,7 @@ const VERSION = "0.1.0";
 
 const USAGE = `macr — multi-agent code review
 
-  macr review [<pr-url>]  review a PR: rounds until convergence, one conversation per reviewer
+  macr <pr-url>           review a PR: rounds until convergence, one conversation per reviewer
   macr review-once [flags]  a single round, no triage or reply
   macr web [flags]        serve the console (default http://127.0.0.1:3080)
   macr finding <cmd>      list | reproduce | resolve | settled — appends events, enforces the gate
@@ -33,7 +33,8 @@ const USAGE = `macr — multi-agent code review
   macr version
 
 review                           (drives itself; no operator between rounds)
-  macr review https://github.com/owner/repo/pull/1
+  macr https://github.com/owner/repo/pull/1
+  macr --rounds 3                  the current branch, no PR
 
   --dir <path>       repo/worktree                            (default .)
   --pr <url>         same as the positional argument
@@ -67,7 +68,17 @@ finding commands                                (--run <slug> picks the run)
   macr finding settled                          print the regenerated settled list
 `;
 
-const [, , cmd, ...rest] = process.argv;
+let [, , cmd, ...rest] = process.argv;
+
+// Reviewing is the only thing this tool does; `macr review <url>` on a program
+// named for multi-agent code review is a tautology. A bare URL — or a bare
+// flag, with the target implied by the working directory — means review.
+// Nothing else here takes a URL, so there is nothing to disambiguate.
+if (cmd && (/^https?:\/\//.test(cmd) || cmd.startsWith("-")) && cmd !== "-h" && cmd !== "--help"
+    && cmd !== "-v" && cmd !== "--version") {
+  rest = [cmd, ...rest];
+  cmd = "review";
+}
 
 try {
   switch (cmd) {
