@@ -35,7 +35,9 @@ const USAGE = `macr — multi-agent code review
 agent flags                      (drives itself; no operator between rounds)
   --dir <path>       repo/worktree                            (default .)
   --pr <url>         pull request URL, recorded on the run
-  --trunk <branch>   diff base branch                         (default master)
+  --trunk <branch>   diff base branch          (default: the remote's own HEAD)
+  --title <text>     what the change does         (default: read from the PR)
+  --summary <text>   intent, passed to reviewers  (default: the PR description)
   --rounds <n>       maximum rounds                           (default 10)
   --push             push each round's fixes to the PR branch (default: commit only)
   --dry-run          exercise the pipeline, spawn nothing
@@ -93,7 +95,7 @@ async function cmdReview(argv) {
       pr: { type: "string" },
       title: { type: "string" },
       summary: { type: "string", default: "" },
-      trunk: { type: "string", default: "master" },
+      trunk: { type: "string" },
       round: { type: "string" },
       agents: { type: "string" },
       "max-rounds": { type: "string", default: "1" },
@@ -308,8 +310,8 @@ async function cmdAgent(argv) {
       dir: { type: "string", default: "." },
       pr: { type: "string" },
       title: { type: "string" },
-      summary: { type: "string", default: "" },
-      trunk: { type: "string", default: "master" },
+      summary: { type: "string" },
+      trunk: { type: "string" },
       rounds: { type: "string", default: "10" },
       agents: { type: "string" },
       push: { type: "boolean", default: false },
@@ -339,7 +341,15 @@ async function cmdAgent(argv) {
   if (!pool.length) throw new Error("no reviewers configured — nothing would review anything");
 
   const worktree = path.resolve(values.dir);
-  const git = await describe(worktree, values.trunk);
+  // Both asked for rather than assumed: the trunk from the remote's own HEAD,
+  // the title and intent from the PR itself. Every one of these was a flag you
+  // had to get right, and getting the trunk wrong is silent — the diff is taken
+  // against a branch that does not exist.
+  const trunkGiven = Boolean(values.trunk);
+  const trunk = values.trunk ?? (await defaultTrunk(worktree));
+  values.trunk = trunk;
+  const pr = await prDetails(values.pr, worktree);
+  const git = await describe(worktree, trunk);
 
   // Pushing rewrites a branch other people are reading, autonomously, once per
   // round. It is opt-in, and it refuses trunk outright: an agent loop that can
@@ -357,12 +367,14 @@ async function cmdAgent(argv) {
     repo: values.pr ? repoFromUrl(values.pr) : git.repo,
     id: values.pr ? idFromUrl(values.pr) : git.branch,
     url: values.pr ?? "",
-    title: values.title ?? git.subject,
+    // An explicit flag still wins; the PR is only consulted when you did not say.
+    title: values.title ?? pr.title ?? git.subject,
     branch: git.branch,
-    trunk: values.trunk,
+    trunk,
     state: "review",
     stateNote: "",
   };
+  values.summary = values.summary ?? pr.summary ?? "";
 
   const dir = path.join(runsDir(), slugFor(target));
   const prior = await readEvents(dir);
@@ -370,6 +382,8 @@ async function cmdAgent(argv) {
 
   console.log(`target   ${target.repo} ${target.id}`);
   console.log(`worktree ${worktree} @ ${git.sha} (${git.branch})`);
+  console.log(`trunk    ${trunk}${trunkGiven ? "" : "  (detected)"}`);
+  if (target.title) console.log(`title    ${target.title.slice(0, 72)}`);
   console.log(`main     ${main.name}`);
   console.log(`agents   ${pool.map((a) => a.name).join(", ")}${values["dry-run"] ? "  (dry run)" : ""}`);
   console.log(`rounds   ${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`);
@@ -752,6 +766,61 @@ async function cmdAgents() {
   if (missing.length) {
     console.log(`\n${missing.length} agent(s) not installed. Install them, or disable in macr.config.json.`);
     process.exitCode = 1;
+  }
+}
+
+/**
+ * The repository's default branch, asked of the remote rather than assumed.
+ *
+ * "master" was a guess that is wrong on most repositories made in the last few
+ * years, and getting it wrong is not a visible failure: the diff is taken
+ * against a branch that does not exist, so reviewers read the wrong change.
+ * The remote's own HEAD is the authority; a repo with no remote falls back to
+ * whichever local branch exists.
+ */
+async function defaultTrunk(dir) {
+  const g = async (...a) => (await run("git", ["-C", dir, ...a])).stdout.trim();
+  try {
+    // origin/HEAD -> origin/main
+    const ref = await g("symbolic-ref", "--short", "refs/remotes/origin/HEAD");
+    const name = ref.replace(/^origin\//, "");
+    if (name) return name;
+  } catch { /* not set locally; ask the remote */ }
+  try {
+    const out = await g("ls-remote", "--symref", "origin", "HEAD");
+    const m = out.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD/m);
+    if (m) return m[1];
+  } catch { /* offline or no remote */ }
+  for (const name of ["main", "master"]) {
+    try {
+      await g("rev-parse", "--verify", `refs/heads/${name}`);
+      return name;
+    } catch { /* try the next */ }
+  }
+  return "master";
+}
+
+/**
+ * The PR's own title and body, asked of GitHub rather than retyped.
+ *
+ * These reach the reviewers: the summary is what tells them what the change is
+ * for, and a reviewer given "(no summary supplied — read the diff)" reviews
+ * mechanics without intent. Retyping it on the command line is both work and a
+ * chance to describe something other than what the PR says. Best-effort: no gh,
+ * no auth, or a URL that is not a PR all fall back silently.
+ */
+async function prDetails(url, dir) {
+  if (!url) return {};
+  try {
+    const { stdout } = await run("gh", ["pr", "view", url, "--json", "title,body"], { cwd: dir });
+    const { title, body } = JSON.parse(stdout);
+    return {
+      title: title || undefined,
+      // A PR body can be enormous; reviewers need the intent, not the checklist.
+      summary: body ? body.replace(/\r/g, "").trim().slice(0, 4000) : undefined,
+    };
+  } catch {
+    return {};
   }
 }
 
