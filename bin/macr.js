@@ -510,14 +510,17 @@ async function cmdAgent(argv) {
   console.log(st.field("fixes", st.muted(values.push
     ? `committed and pushed to ${git.branch}` : "committed to the worktree only")));
   console.log(st.field("run", st.muted(path.basename(dir) + (values.resume ? "  (resumed)" : ""))));
+  // Announce the run before reviewing it. Nothing wrote run.json until the
+  // first round published one, which left two marks: a browser opened at
+  // ?run=<slug> found nothing to match and fell back to an older run, and a
+  // run interrupted during round 1 stayed on disk permanently unreadable,
+  // listed by the console as "no run.json" rather than as the review it was.
+  await writeRun(dir, foldEvents(prior, { target }));
+
   // The console, in this same process. The loop and the server share the run
   // directory and nothing else: the server re-reads it per request and tails
   // the event log, so it sees each round land without the loop telling it.
   if (values.web) {
-    // Publish before serving. A fresh run has no directory on disk until the
-    // first round publishes one, so a browser opened at ?run=<slug> would find
-    // nothing to match and fall back to whichever run sorts first — an old one.
-    await writeRun(dir, foldEvents(prior, { target }));
     const { url } = await serve({ port: Number(values.port), onLog: (m) => console.log(st.field("console", st.muted(m))) });
     // Named, not guessed. The console falls back to whichever run sorts first
     // when nothing says otherwise, and that is an old one as often as not —
