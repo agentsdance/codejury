@@ -69,6 +69,9 @@
   .pr-chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .pr-chip[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
   .pr-chip .d { width:7px; height:7px; border-radius:50%; }
+  /* Repo qualifier, shown only when more than one repo is on screen. Dimmed so
+     the PR number stays the thing you scan for. */
+  .pr-chip .repo { opacity:.65; margin-right:4px; }
 
   h2 { font-family:var(--serif); font-size:22px; font-weight:600; margin:0; letter-spacing:-.01em; }
   section { display:flex; flex-direction:column; gap:14px; }
@@ -189,6 +192,36 @@
         overflow:hidden; box-shadow:var(--shadow); font-family:var(--mono); }
   .io-body { padding:13px 16px 18px; font-size:12.6px; line-height:1.6; color:var(--t-fg);
              max-height:640px; overflow:auto; }
+
+  /* One column per reviewer. They are side by side to make the independence
+     legible at a glance; below the breakpoint they stack, which is the same
+     claim in one dimension. */
+  /* Full width, one at a time — a report needs the room to be readable. */
+  .convo-grid { display:block; }
+  /* The selected tab has to be unmistakable. When it was only tinted, clicking
+     the already-selected first tab looked like a dead button rather than a
+     no-op — the state was there, it just was not legible enough. */
+  .convo-switch { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px; }
+  .convo-switch .pr-chip { font-weight:600; }
+  /* Literal, not var(--t-bg): that variable is scoped to .term/.io, so on a
+     chip it resolves to nothing and left white text on a transparent
+     background — invisible, and only a screenshot showed it. */
+  .convo-switch .pr-chip[aria-pressed="true"] {
+    background:#0F1419; color:#fff; border-color:#0F1419;
+    box-shadow:inset 0 -2px 0 var(--accent); }
+  .convo-switch .pr-chip[aria-pressed="true"]:hover { color:#fff; }
+  .convo-switch .pr-chip[aria-pressed="false"] { opacity:.7; }
+  .convo-note { margin:0 0 10px; font-size:12.5px; color:var(--muted); }
+  .convo .io-body { max-height:none; }
+  /* A long unbroken report must scroll inside its own column rather than
+     widening the grid and pushing the other conversation off-screen. */
+  .convo .stream { white-space:pre-wrap; overflow-wrap:anywhere; }
+
+  /* Findings carry the same grouping as the transcripts above: one block per
+     reviewer, so a claim is always read next to who raised it. */
+  .xgroup { margin:0 0 6px; }
+  .xgroup + .xgroup { margin-top:18px; padding-top:4px; border-top:1px dashed var(--t-line); }
+  .xgroup > .rule { margin-bottom:8px; }
   .io .cmdline { margin:0 0 4px; white-space:pre-wrap; word-break:break-all; }
   .io .cmdline .p { color:var(--t-ok); margin-right:7px; }
 
@@ -410,6 +443,11 @@ const pct = m => (m / RUN.totalMin) * 100;
 // exchanges. "open" is a finding the main agent has not answered yet, and it is
 // the state a live run spends most of its time in — leaving it out of the
 // filters hid every finding the CLI recorded.
+// Which reviewer's conversation is on screen. Sticky across polls so a live
+// round does not yank the reader back to the first reviewer mid-read.
+let CONVO = null;
+let CONVO_RUN = null;   // which run CONVO belongs to; selection resets across PRs
+
 const STATES = ["open","accepted","deferred","rejected"];
 let show = new Set(STATES);
 $("filters").innerHTML = STATES
@@ -435,7 +473,7 @@ function draw(){
     : allClean ? "no findings raised — every reviewer reported clean"
     : "no findings recorded yet";
 
-  const body = rows.length ? rows.map(x => `
+  const card = x => `
     <div class="xb">
       <div class="xb-head">
         <span class="claim">${esc(x.claim)}</span>
@@ -452,8 +490,38 @@ function draw(){
           </span>
         </div>`).join("")}
       ${x.outcome ? `<div class="out" data-r="${x.res ?? x.resolution}"><b>${x.res ?? x.resolution}</b> — ${esc(x.outcome)}</div>` : ""}
-    </div>`).join("")
-    : `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`;
+    </div>`;
+
+  // Grouped by reviewer, in the order they first spoke. A single flat list
+  // reads as one debate among everyone; these were N separate conversations,
+  // and which reviewer raised a claim is most of what makes it worth weighing.
+  // An unattributed finding still has to appear somewhere, or grouping would
+  // silently drop it — a finding nobody can see is worse than an ugly heading.
+  const who = [];
+  for (const x of all) {
+    const k = x.with || "unattributed";
+    if (!who.includes(k)) who.push(k);
+  }
+
+  const body = !rows.length
+    ? `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`
+    // Follows the conversation picked above, so the findings on screen are the
+    // ones raised in the transcript you are reading. With only one reviewer
+    // there is nothing to follow, so everything shows.
+    : who.filter(a => who.length < 2 || a === CONVO || !who.includes(CONVO)).map(agent => {
+        const is = x => (x.with || "unattributed") === agent;
+        const mine = rows.filter(is);
+        if (!mine.length) return "";
+        const shown = all.filter(is).length;
+        return `
+          <div class="xgroup">
+            <div class="rule" data-who="${esc(agent)}">
+              <span class="lbl">${icon(agent)}claude ⇄ ${esc(agent)}</span><i></i>
+              <span class="rt">${mine.length} of ${shown} finding(s)</span>
+            </div>
+            ${mine.map(card).join("")}
+          </div>`;
+      }).join("") || `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`;
 
   $("thread").innerHTML = `
     <div class="term">
@@ -481,9 +549,13 @@ const BADGE = { merged:"badge-ok", converged:"badge-ok", review:"badge-warn", hu
 
 function renderHeader(){
   const t = RUN.target ?? {};
+  // Name the repo here, next to the switcher, rather than only in the meta row
+  // below the title: the chips read "#46 / #48" and a bare number does not say
+  // what project it belongs to.
+  const scope = [...new Set(ALL.map(r => r.target?.repo).filter(Boolean))];
   $("t-kicker").textContent = ALL.length > 1
-    ? `Multi-agent review · ${ALL.length} pull requests`
-    : "Multi-agent review · single pull request";
+    ? `${scope.length === 1 ? scope[0] : `${scope.length} repos`} · ${ALL.length} pull requests`
+    : `${t.repo ? `${t.repo} · ` : ""}single pull request`;
   $("t-title").textContent = t.title ?? "(untitled change)";
   $("t-summary").textContent = t.summary ?? "";
 
@@ -498,10 +570,21 @@ function renderHeader(){
   $("t-meta").innerHTML = [link, branch, stat, badge].filter(Boolean).join("");
 
   // Only worth showing when there is something to switch between.
+  //
+  // A bare "#48" does not say which project it belongs to, and PR numbers
+  // collide across repos — two chips reading #48 would be indistinguishable.
+  // The repo name is carried whenever more than one is on screen; with a single
+  // repo it is redundant, and the title is what actually tells them apart.
+  const repos = new Set(ALL.map(r => r.target?.repo).filter(Boolean));
   $("switcher").innerHTML = ALL.length > 1
-    ? ALL.map((r,i)=>`<button class="pr-chip" data-i="${i}" aria-pressed="${r===RUN}">
-         <span class="d" style="background:${r.target?.state==="review"||r.target?.state==="human"?"var(--warn)":"var(--ok)"}"></span>
-         ${esc(r.target?.id ?? "?")}</button>`).join("")
+    ? ALL.map((r,i)=>{
+        const t = r.target ?? {};
+        const name = (t.repo ?? "").split("/").pop();
+        return `<button class="pr-chip" data-i="${i}" aria-pressed="${r===RUN}"
+           title="${esc(t.repo ?? "")} ${esc(t.id ?? "")}${t.title ? ` — ${esc(t.title)}` : ""}">
+         <span class="d" style="background:${t.state==="review"||t.state==="human"?"var(--warn)":"var(--ok)"}"></span>
+         ${repos.size > 1 && name ? `<span class="repo">${esc(name)}</span>` : ""}${esc(t.id ?? "?")}</button>`;
+      }).join("")
     : "";
 }
 
@@ -511,57 +594,111 @@ function renderHeader(){
 // tests at all.
 const bytes = n => n < 1024 ? `${n} B` : `${(n/1024).toFixed(1)} kB`;
 
+// One column per reviewer, because that is what actually happened: the main
+// agent held a separate conversation with each. Interleaving them into a single
+// stream implies they saw each other — the exact opposite of the guarantee the
+// loop depends on, and it reads as one debate rather than two.
 function renderSaid(){
   const slug = RUN.slug ?? "";
   const t = RUN.target ?? {};
   const rounds = (RUN.rounds ?? []).filter(r => r.prompt || (r.verdicts ?? []).some(v => v.report));
   if (!rounds.length) { $("said").innerHTML = ""; return; }
 
-  const panes = rounds.map(r => {
-    const who = (r.verdicts ?? []).map(v => v.a).join(", ") || "reviewers";
+  // Ordered by launch, not by who happened to finish first: the chips should
+  // sit in the same order as the timeline lanes above them, and a fast
+  // reviewer overtaking a slow one must not reshuffle the tabs mid-round.
+  const spoke = new Set();
+  for (const r of rounds) for (const v of (r.verdicts ?? [])) if (v.report) spoke.add(v.a);
+  const launched = (RUN.lanes ?? []).map(l => l.who).filter(a => spoke.has(a));
+  const who = [...launched, ...[...spoke].filter(a => !launched.includes(a))];
+  if (!who.length) { $("said").innerHTML = ""; return; }
 
-    // stdin first: every reviewer in the round got this same text.
-    const stdin = r.prompt ? `
+  const replyOf = new Map((RUN.replies ?? []).map(x => [x.agent, x]));
+
+  // One conversation at a time, full width. Side by side, each column was too
+  // narrow to actually read a report in — and reading the reports is the point.
+  // The chips carry the same shape as the PR switcher above them.
+  // Reset when the PR changes. CONVO is sticky so a live poll does not yank the
+  // reader mid-read, but stickiness must not cross runs: carrying "agy" onto a
+  // PR whose first tab is codex left the pressed tab and the visible pane
+  // disagreeing, and made that tab's own click a silent no-op.
+  if (CONVO_RUN !== (RUN.slug ?? RUN.target?.id)) {
+    CONVO_RUN = RUN.slug ?? RUN.target?.id;
+    CONVO = null;
+  }
+  if (!who.includes(CONVO)) CONVO = who[0];
+
+  const chips = who.map(a => {
+    const v = rounds.flatMap(r => r.verdicts ?? []).find(x => x.a === a);
+    const bad = v && v.s !== "clean";
+    return `<button class="pr-chip" data-convo="${esc(a)}" aria-pressed="${a === CONVO}">
+      <span class="d" style="background:${bad ? "var(--warn)" : "var(--ok)"}"></span>
+      claude ⇄ ${esc(a)}</button>`;
+  }).join("");
+
+  const columns = who.filter(a => a === CONVO).map(agent => {
+    const turns = rounds.flatMap(r => {
+      const v = (r.verdicts ?? []).find(x => x.a === agent && x.report);
+      if (!v) return [];
+      return [`
+        <div class="rule" data-who="stdin">
+          <span class="lbl">claude → ${esc(agent)} · round ${r.n}</span><i></i>
+          <span class="rt">${esc(r.sha || "")}${r.prompt ? ` · ${esc(bytes(r.prompt.length))}` : ""}</span>
+        </div>
+        ${r.prompt ? `
+          <div class="tabs"><button class="fold" data-fold="p${r.n}-${esc(agent)}" aria-pressed="false">show prompt</button></div>
+          <pre class="stream stdin" id="p${r.n}-${esc(agent)}" hidden>${esc(r.prompt)}</pre>` : ""}
+        <div class="rule" data-who="${esc(agent)}">
+          <span class="lbl">${icon(agent)}${esc(agent)} → claude</span><i></i>
+          <span class="rt">${v.seconds ? `${esc(v.seconds)}s · ` : ""}<b data-s="${esc(v.s)}">${esc(v.s)}</b>${v.rawBytes ? ` · ${esc(bytes(v.rawBytes))}` : ""}</span>
+        </div>
+        <pre class="stream">${esc(v.report)}</pre>
+        ${v.rawFile && slug ? `
+          <div class="tabs">
+            <button data-view="report" data-for="${esc(v.rawFile)}" aria-pressed="true">report</button>
+            <button data-view="raw" data-for="${esc(v.rawFile)}" data-slug="${esc(slug)}" aria-pressed="false">raw stream</button>
+          </div>` : ""}`];
+    });
+
+    // The reply exchange is a later turn in this same conversation, so it
+    // belongs in this column rather than a section of its own.
+    const rep = replyOf.get(agent);
+    const replyTurn = rep ? `
       <div class="rule" data-who="stdin">
-        <span class="lbl">stdin</span><i></i>
-        <span class="rt">all reviewers · ${esc(bytes(r.prompt.length))}</span>
+        <span class="lbl">claude → ${esc(agent)} · verdicts</span><i></i>
+        <span class="rt">its findings only</span>
       </div>
-      <div class="tabs"><button class="fold" data-fold="p${r.n}" aria-pressed="false">show prompt</button></div>
-      <pre class="stream stdin" id="p${r.n}" hidden>${esc(r.prompt)}</pre>` : "";
-
-    const outs = (r.verdicts ?? []).filter(v => v.report).map(v => `
-      <div class="rule" data-who="${esc(v.a)}">
-        <span class="lbl">${icon(v.a)}${esc(v.a)} · stdout</span><i></i>
-        <span class="rt">${v.seconds ? `${esc(v.seconds)}s · ` : ""}<b data-s="${esc(v.s)}">${esc(v.s)}</b>${v.rawBytes ? ` · ${esc(bytes(v.rawBytes))}` : ""}</span>
+      <div class="rule" data-who="${esc(agent)}">
+        <span class="lbl">${icon(agent)}${esc(agent)} → claude · answer</span><i></i>
+        <span class="rt">${rep.seconds ? `${esc(rep.seconds)}s · ` : ""}<b data-s="${esc(rep.verdict)}">${esc(rep.verdict)}</b></span>
       </div>
-      <pre class="stream">${esc(v.report)}</pre>
-      ${v.rawFile && slug ? `
-        <div class="tabs">
-          <button data-view="report" data-for="${esc(v.rawFile)}" aria-pressed="true">report</button>
-          <button data-view="raw" data-for="${esc(v.rawFile)}" data-slug="${esc(slug)}" aria-pressed="false">raw stream</button>
-        </div>` : ""}`).join("");
+      <pre class="stream">${esc(rep.report)}</pre>` : "";
 
     return `
-      <div class="rule"><span class="lbl">round ${r.n}</span><i></i>
-        <span class="rt">${esc(r.sha || "")}</span></div>
-      <div class="cmdline"><span class="p">❯</span>macr review${t.url ? ` ${esc(t.url)}` : ""} --round ${r.n} --agents ${esc(who)}</div>
-      ${stdin}
-      ${outs}`;
+      <div class="io convo">
+        <div class="term-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="t">claude ⇄ ${esc(agent)}</span>
+        </div>
+        <div class="io-body">${turns.join("")}${replyTurn}</div>
+      </div>`;
   }).join("");
 
   $("said").innerHTML = `
-    <div class="io">
-      <div class="term-bar">
-        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-        <span class="t">${esc(t.repo ?? "")} ${esc(t.id ?? "")} — reviewer i/o</span>
-      </div>
-      <div class="io-body">${panes}</div>
-    </div>`;
+    ${who.length > 1 ? `<div class="convo-switch">${chips}</div>` : ""}
+    <div class="convo-note">${who.length} independent conversation${who.length > 1 ? "s" : ""} —
+      ${esc(who.join(" and "))} never saw each other's findings.</div>
+    <div class="convo-grid">${columns}</div>`;
 }
 
 // The prompt is long and identical for every reviewer, so it stays folded until
 // asked for. The report is the thing you came to read, so it does not.
 $("said").addEventListener("click", (e) => {
+  // Both halves follow the same selection: the findings below are the ones
+  // raised in the transcript above, so they must move together.
+  const c = e.target.closest("button[data-convo]");
+  if (c) { CONVO = c.dataset.convo; renderSaid(); draw(); return; }
+
   const f = e.target.closest("button.fold");
   if (!f) return;
   const pre = $(f.dataset.fold);
@@ -650,9 +787,15 @@ let assetStamp = null;   // index.html mtime; a change means reload, not re-rend
 let served = false;
 
 document.addEventListener("click", (e) => {
-  const c = e.target.closest(".pr-chip");
+  // Scoped to the PR switcher, not any .pr-chip on the page. The reviewer tabs
+  // reuse that class for its styling, and an unscoped match sent their clicks
+  // here: dataset.i is undefined on them, so RUN became ALL[NaN] — undefined —
+  // and every subsequent render threw on RUN.target.
+  const c = e.target.closest("#switcher .pr-chip");
   if (!c) return;
-  RUN = ALL[Number(c.dataset.i)];
+  const next = ALL[Number(c.dataset.i)];
+  if (!next) return;
+  RUN = next;
   render();
 });
 

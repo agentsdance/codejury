@@ -1,6 +1,7 @@
 # Design: how the CLI and the skill split the work
 
-Target architecture. **The POC does not follow this yet** — see the last section.
+Target architecture. The CLI now implements it; see the last section for what is still deliberately
+left to the operator.
 
 ## The asymmetry this is built around
 
@@ -77,20 +78,58 @@ judgement half to the skill.
 ```
 macr review <pr-url>     run rounds until convergence or --max-rounds
 macr web [--runs dir]    serve the console
-macr finding <cmd>       raise | reproduce | resolve — appends events, enforces the gate
+macr finding <cmd>       list | reproduce | resolve | settled — appends events, enforces the gate
+macr reply               one conversation per reviewer, about its own findings only
 macr agents              probe configured agents: present, authenticated, version
 ```
 
-`macr web` exists. The rest does not.
+`macr agents` prints the role, so who owns the commit is visible rather than implied:
+
+```
+ok      claude   main     (in-process)
+ok      codex    reviewer /usr/local/bin/codex
+ok      agy      reviewer /usr/local/bin/agy
+```
+
+The main agent carries an empty `argv` because it is the session driving the loop, not a subprocess
+it spawns — `probe` reports it in-process rather than missing, and `reviewers()` keeps it out of
+every round. Loading a registry with two `main` entries is refused: two agents both believing they
+own the commit corrupts a run rather than merely failing it.
+
+## One conversation per reviewer
+
+`macr reply` opens a **separate** thread with each reviewer, concurrently, containing only that
+reviewer's own findings and the main agent's verdicts on them. Reviewers never see each other's
+findings — two that read each other stop being independent, and their agreement stops being evidence,
+which is the only reason to run more than one.
+
+Independence is enforced in code, not left to whoever writes the verdict: another reviewer's name and
+finding ids are redacted out of the reply text before it is sent. On aigit #48 both reviewers found
+the same Windows rename bug independently; each was told only that it was agreed, never that it was
+corroborated.
+
+Delivery follows `resume.supported`, and the difference is not cosmetic:
+
+| | codex | agy |
+|---|---|---|
+| session | resumes (`exec resume --last`) | fresh process each run |
+| the reply is | a turn in a thread that already holds its review | addressed to an agent with no memory of it |
+| so | verdicts alone | verdicts **plus its own findings quoted back** |
+
+All four exist. `macr agents` probes presence only — it does not yet check authentication or
+version.
 
 ---
 
-## POC deviation
+## What is built, and what is not
 
-The proof of concept does **not** build the orchestrator. The main agent drives the loop by hand, as
-it did for !1158, and writes the run file the console already reads. That keeps the POC to the
-question actually worth answering — *is a second PR's review useful?* — rather than spending the time
-on process supervision.
+Built: `macr review` (rounds until convergence or `--max-rounds`), the append-only event log,
+`macr finding` with the enforcement gate, the self-generating settled list, and the console.
 
-What that means concretely: no `macr review`, no event log, no enforcement gate. Those land only once
-the loop has proven worth automating on more than one PR.
+Still the operator's job, on purpose:
+
+- **Deciding a finding reproduces.** The CLI records the claim and refuses an unproven acceptance; it
+  cannot judge the claim. That gate is where the value was.
+- **Pushing between rounds.** `review --max-rounds n` re-reads HEAD each round, so the fix-and-push
+  step sits between rounds rather than inside the tool. Nothing here amends anyone's branch.
+- **`macr agents`** probes presence only, not authentication or version.
