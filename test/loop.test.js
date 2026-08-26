@@ -228,3 +228,24 @@ test("an agent that does stream never shows a heartbeat", async () => {
   assert.equal(turns[0].text, "reading the diff");
   await rm(dir, { recursive: true, force: true });
 });
+
+test("an agent that takes an assigned session id resumes that exact conversation", async () => {
+  const { replyArgv } = await import("../lib/reply.js");
+  const grok = {
+    name: "grok", argv: ["grok", "--session-id", "{{sessionId}}", "-p", "{{promptText}}"],
+    newSession: true,
+    resume: { supported: true, argv: ["grok", "--resume", "{{sessionId}}", "-p", "{{promptText}}"] },
+  };
+
+  const withId = replyArgv(grok, { promptText: "hi", sessionId: "abc-123" });
+  assert.equal(withId.resumed, true);
+  assert.ok(withId.argv.includes("abc-123"), "the reply must name the session it is answering");
+  assert.ok(!withId.argv.some((a) => a.includes("{{")), "no placeholder may survive into argv");
+
+  // With no session recorded, resuming would either blank the argument or —
+  // with a --last style flag — deliver the verdict into whichever conversation
+  // ran most recently. A fresh session is the honest fallback.
+  const without = replyArgv(grok, { promptText: "hi", sessionId: null });
+  assert.equal(without.resumed, false);
+  assert.ok(!without.argv.includes("--resume"));
+});
