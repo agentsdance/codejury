@@ -823,8 +823,13 @@ let SW_Q = "";
 // minutes.
 const LIVE_WINDOW_MS = 6 * 60 * 1000;
 function lastActivity(r) {
-  const at = (r.rounds ?? []).flatMap((x) => x.verdicts ?? []).map((v) => v.at).filter(Boolean).pop();
-  return at ? Date.parse(at) : null;
+  // A verdict is the best signal, but a run whose reviewer never reported has
+  // none — and those are exactly the runs you just started and want at the top.
+  // Fall back to the newest round, so nothing sorts as "no activity ever".
+  const verdict = (r.rounds ?? []).flatMap((x) => x.verdicts ?? []).map((v) => v.at).filter(Boolean).pop();
+  if (verdict) return Date.parse(verdict);
+  const started = (r.rounds ?? []).map((x) => x.startedAt).filter(Boolean).pop();
+  return started ? Date.parse(started) : null;
 }
 function isLive(r) {
   if (r.target?.state !== "review") return false;
@@ -900,13 +905,11 @@ function drawSwitcher() {
   };
 
   const hits = ALL.filter(match);
-  // Attempts of one PR belong next to each other, newest first, so comparing
-  // this morning's review with this afternoon's is one glance rather than a
-  // hunt through the list.
-  hits.sort((a, b) => {
-    const k = (x) => `${x.target?.repo}#${x.target?.id}`;
-    return k(a).localeCompare(k(b)) || (attemptOf(b) || "").localeCompare(attemptOf(a) || "");
-  });
+  // Newest first, full stop. Grouping by repo read well in the abstract and
+  // badly in practice: it floated 9-day-old runs above ones from ten minutes
+  // ago, so the list did not answer "what was I just looking at?" — which is
+  // the only question this control gets asked.
+  hits.sort((a, b) => (lastActivity(b) ?? 0) - (lastActivity(a) ?? 0));
   const live = hits.filter(isLive);
   const rest = hits.filter((r) => !isLive(r));
 
