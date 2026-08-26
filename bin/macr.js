@@ -16,7 +16,7 @@ import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
 
 const run = promisify(execFile);
@@ -495,8 +495,19 @@ async function cmdAgent(argv) {
       dir, round, pool, cfg, target, worktree, values, sha: head.sha,
     });
     if (converged) {
-      console.log(`\nCONVERGED after ${round - first + 1} round(s).`);
-      return;
+      // Clean is not enough on its own. A finding left open by the previous
+      // round — triage failed, the gate refused the verdict, or a reply raised
+      // it after the last triage had already run — is invisible to this round's
+      // reviewers, because settled.md lists only what has a verdict. They can
+      // all sign off in good faith while it sits unanswered. Fall through and
+      // triage it; the round-end check below is the one that may declare
+      // convergence.
+      const open = await openFindings(dir);
+      if (!open.length) {
+        console.log(`\nCONVERGED after ${round - first + 1} round(s).`);
+        return;
+      }
+      console.log(`\nevery reviewer is clean, but ${open.length} finding(s) from earlier are still open.`);
     }
 
     let findings = await findingsIn(dir);
