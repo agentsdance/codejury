@@ -60,6 +60,10 @@ test("the prompt demands a reproduction before an acceptance", () => {
   assert.match(p, /third of review findings do not survive/);
   assert.match(p, /FAILS/);
   assert.match(p, /Do not commit/);
+  // A fix recorded as "deferred" tells the reviewer its finding was waved
+  // through, and leaves the loop believing there is still work to do.
+  assert.match(p, /If you edited a file, the verdict is "accepted"/);
+  assert.match(p, /deferred\s+real, pre-existing, out of scope, and you changed nothing/);
 });
 
 test("a reproduction recorded now is visible to the gate now", async () => {
