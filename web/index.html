@@ -1141,20 +1141,32 @@ function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s
  */
 let CONVO_T0 = null;
 let CONVO_SPREAD = 0;
+let CONVO_PREV = null;
 function stampFor(t) {
   if (!t?.ts) return "";
   const at = Date.parse(t.ts);
   if (Number.isNaN(at)) return "";
   const clock = clockFmt.format(new Date(at));
   const abs = `${clock} ${TZ_LABEL}`;
-  // Offsets only say something when the thread actually spans time. Every
-  // finding parsed from one report is appended in the same millisecond, so a
-  // whole batch reads "+0s" — truthful and useless. Below a minute of spread
-  // the wall clock is the more informative of the two.
+  // Offsets only say something when the turn is actually separated from what
+  // came before it. Every finding parsed from one report is appended in the
+  // same millisecond, so a whole batch reads "+0s" — truthful and useless.
+  //
+  // Decided per turn, not per thread. Keying it on the thread's total spread
+  // was all-or-nothing: one slow triage pushed the spread over a minute and
+  // then the same-instant batch of findings ABOVE it rendered "+0s" anyway,
+  // which is the case this rule exists to avoid.
   if (CONVO_T0 === null || CONVO_SPREAD < 60000) {
     return `<time title="${esc(abs)}">${esc(clock)}</time>`;
   }
   const d = Math.max(0, Math.round((at - CONVO_T0) / 1000));
+  // Within a minute of the turn before it, this one carries no offset worth
+  // reading; the wall clock is the more informative of the two.
+  const gap = CONVO_PREV === null ? d * 1000 : at - CONVO_PREV;
+  CONVO_PREV = at;
+  if (d === 0 || gap < 60000) {
+    return `<time title="${esc(abs)}">${esc(clock)}</time>`;
+  }
   const rel = d < 60 ? `+${d}s` : d < 3600 ? `+${Math.round(d / 60)}m` : `+${(d / 3600).toFixed(1)}h`;
   return `<time title="${esc(abs)}">${esc(rel)}</time>`;
 }
@@ -1255,6 +1267,9 @@ function drawConvo() {
       .filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
     CONVO_T0 = times[0] ?? null;
     CONVO_SPREAD = times.length > 1 ? times[times.length - 1] - times[0] : 0;
+    // Per thread: turns render in order, so each stamp compares against the
+    // previous turn of THIS conversation.
+    CONVO_PREV = null;
     const msgs = t.turns.length
       ? t.turns.map((x) => turnHTML(x, t.agent)).join("")
       : `<p class="empty">waiting for ${esc(t.agent)}…</p>`;

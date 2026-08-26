@@ -1,0 +1,466 @@
+<meta charset="utf-8">
+<title>Anatomy of a Round</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#faf9f7; --raise:#ffffff; --sunk:#f2f1ee;
+  --ink:#14161c; --ink-2:#3d434f; --ink-3:#6b7280; --ink-4:#9aa1ad;
+  --rule:#e0dedb; --rule-2:#cfccc8;
+  --accent:#3f5d8c; --accent-soft:#eaeff7;
+  --wait:#a8762c; --wait-soft:#f8f0e2;
+  --ok:#4a6b47; --ok-soft:#eaf0e9;
+  --no:#9c4a3f; --no-soft:#f8ebe9;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:"Newsreader",Georgia,"Times New Roman",serif;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#101216; --raise:#171a20; --sunk:#1c2027;
+  --ink:#e8e6e3; --ink-2:#b8bcc4; --ink-3:#878d98; --ink-4:#5f6672;
+  --rule:#272b33; --rule-2:#363b45;
+  --accent:#8fabd6; --accent-soft:#1a2230;
+  --wait:#d5a558; --wait-soft:#2a2114;
+  --ok:#8fb48a; --ok-soft:#182016;
+  --no:#d08b80; --no-soft:#241614;
+}}
+:root[data-theme="dark"]{
+  --paper:#101216; --raise:#171a20; --sunk:#1c2027;
+  --ink:#e8e6e3; --ink-2:#b8bcc4; --ink-3:#878d98; --ink-4:#5f6672;
+  --rule:#272b33; --rule-2:#363b45;
+  --accent:#8fabd6; --accent-soft:#1a2230;
+  --wait:#d5a558; --wait-soft:#2a2114;
+  --ok:#8fb48a; --ok-soft:#182016;
+  --no:#d08b80; --no-soft:#241614;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--serif); font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 32px}
+.col{max-width:660px}
+h1,h2,h3{text-wrap:balance;margin:0}
+a{color:var(--accent)}
+
+/* ---------- masthead ---------- */
+.mast{border-bottom:1px solid var(--rule);padding:64px 0 34px;margin-bottom:52px}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;gap:10px;align-items:center;flex-wrap:wrap
+}
+.eyebrow .dot{width:4px;height:4px;border-radius:50%;background:var(--ink-4)}
+h1{font-size:52px;line-height:1.06;font-weight:500;letter-spacing:-.02em;margin:18px 0 0}
+h1 em{font-style:italic;color:var(--ink-2)}
+.standfirst{font-size:20px;line-height:1.55;color:var(--ink-2);margin:20px 0 0;max-width:600px}
+.standfirst code{font-family:var(--mono);font-size:.85em;background:var(--sunk);padding:1px 5px;border-radius:3px}
+
+/* ---------- sections ---------- */
+section{margin:0 0 56px}
+.snum{
+  font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.14em;
+  color:var(--accent);text-transform:uppercase;margin-bottom:10px
+}
+h2{font-size:31px;font-weight:500;letter-spacing:-.015em;line-height:1.2}
+h2 + .sub{color:var(--ink-3);font-size:17px;margin:8px 0 0}
+p{margin:16px 0}
+.col p:first-of-type{margin-top:18px}
+code{font-family:var(--mono);font-size:.87em;background:var(--sunk);padding:1px 5px;border-radius:3px;color:var(--ink-2)}
+strong{font-weight:600}
+
+/* ---------- the round diagram ---------- */
+.stage{
+  background:var(--raise);border:1px solid var(--rule);border-radius:6px;
+  margin:30px 0;overflow-x:auto
+}
+.stage-h{
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:13px 20px;border-bottom:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)
+}
+.track{padding:22px 20px;min-width:620px}
+.band{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center;margin-bottom:9px}
+.band:last-child{margin-bottom:0}
+.who{
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-2);text-align:right;
+  display:flex;align-items:center;justify-content:flex-end;gap:7px
+}
+.who i{width:7px;height:7px;border-radius:2px;display:inline-block;flex:none}
+.bar{
+  height:30px;border-radius:3px;display:flex;align-items:center;padding:0 11px;
+  font-family:var(--mono);font-size:11.5px;white-space:nowrap;color:var(--ink-2)
+}
+.bar.codex{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent);width:38%}
+.bar.grok{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent);width:100%}
+.bar.agy{background:var(--no-soft);border:1px solid color-mix(in srgb,var(--no) 30%,transparent);width:7%;color:var(--no);overflow:visible}
+.bar.agy span{position:relative;left:6px}
+.bar.idle{background:repeating-linear-gradient(-45deg,transparent,transparent 5px,var(--sunk) 5px,var(--sunk) 10px);border:1px dashed var(--rule-2);color:var(--ink-4)}
+.barrier{
+  border-left:2px solid var(--ink);margin:16px 0 16px 110px;padding:2px 0 2px 14px;
+  font-family:var(--mono);font-size:11.5px;color:var(--ink-2)
+}
+.barrier b{font-weight:600;color:var(--ink)}
+.serial{display:flex;gap:5px;flex-wrap:wrap;margin-left:110px}
+.chip{
+  font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:3px;
+  background:var(--sunk);border:1px solid var(--rule);color:var(--ink-2)
+}
+.chip.c{border-color:color-mix(in srgb,var(--accent) 34%,transparent)}
+.legend{
+  display:flex;gap:18px;flex-wrap:wrap;padding:11px 20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;color:var(--ink-3)
+}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:16px;height:8px;border-radius:2px;display:inline-block}
+
+/* ---------- ordering callout ---------- */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:26px 0}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.card{background:var(--raise);border:1px solid var(--rule);border-radius:6px;padding:20px 22px}
+.card h4{
+  margin:0 0 6px;font-family:var(--mono);font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600
+}
+.card .lede{font-size:19px;line-height:1.35;margin:0 0 10px;color:var(--ink)}
+.card p{font-size:15px;color:var(--ink-2);margin:0}
+.card.warn{border-left:3px solid var(--wait)}
+.card.stop{border-left:3px solid var(--no)}
+
+/* ---------- code ---------- */
+pre{
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--sunk);
+  border:1px solid var(--rule);border-radius:6px;padding:16px 18px;overflow-x:auto;margin:22px 0;
+  color:var(--ink-2)
+}
+pre b{color:var(--ink);font-weight:600}
+pre .c{color:var(--ink-4)}
+pre .k{color:var(--accent)}
+pre .g{color:var(--ok)}
+pre .r{color:var(--no)}
+
+/* ---------- gate ---------- */
+.gate{margin:26px 0;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--raise)}
+.gate-row{display:grid;grid-template-columns:118px 1fr;border-bottom:1px solid var(--rule)}
+.gate-row:last-child{border-bottom:0}
+.gate-k{
+  font-family:var(--mono);font-size:11.5px;padding:14px 16px;background:var(--sunk);
+  color:var(--ink-2);border-right:1px solid var(--rule);display:flex;align-items:center
+}
+.gate-v{padding:14px 18px;font-size:15.5px;color:var(--ink-2)}
+.gate-v b{color:var(--ink);font-weight:600}
+.tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 7px;border-radius:3px;margin-right:8px;font-weight:600;white-space:nowrap
+}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.tag.no{background:var(--no-soft);color:var(--no)}
+.tag.wait{background:var(--wait-soft);color:var(--wait)}
+
+/* ---------- convergence ---------- */
+.conv{margin:26px 0;display:flex;flex-direction:column;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.conv-i{background:var(--raise);padding:15px 20px;display:grid;grid-template-columns:24px 1fr auto;gap:14px;align-items:center}
+.conv-i .n{font-family:var(--mono);font-size:11px;color:var(--ink-4)}
+.conv-i .t{font-size:16px}
+.conv-i .t code{font-size:.84em}
+.conv-i .s{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.s.pass{color:var(--ok)} .s.fail{color:var(--no)}
+.conv-f{background:var(--sunk);padding:13px 20px;font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+
+/* ---------- aside ---------- */
+.aside{
+  border-left:3px solid var(--accent);background:var(--accent-soft);
+  padding:18px 22px;border-radius:0 6px 6px 0;margin:26px 0
+}
+.aside h4{margin:0 0 6px;font-size:17px;font-weight:600}
+.aside p{margin:0;font-size:15.5px;color:var(--ink-2)}
+
+footer{border-top:1px solid var(--rule);margin-top:64px;padding:26px 0 72px;font-family:var(--mono);font-size:11.5px;color:var(--ink-4);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">
+    <span>macr</span><span class="dot"></span><span>bin/macr.js</span><span class="dot"></span><span>lib/loop.js</span>
+  </div>
+  <h1>Anatomy of a <em>Round</em></h1>
+  <p class="standfirst">
+    Three reviewers read the same commit and never see each other. What happens
+    between their reports and the next round — the barrier, the serial triage,
+    and the four conditions that let the loop stop.
+  </p>
+</header>
+
+<section class="col">
+  <div class="snum">The shape</div>
+  <h2>Concurrent, then serial, then concurrent</h2>
+  <p>
+    A round has three movements, and they do not share a rhythm. Reviewers run
+    all at once. Triage runs strictly one finding at a time. Replies go out all
+    at once again. The two barriers between them are ordinary
+    <code>await Promise.all</code> calls, and almost everything surprising about
+    the loop's behaviour falls out of where they sit.
+  </p>
+</section>
+
+<div class="stage">
+  <div class="stage-h">
+    <span>Round 1 · PR #3 · 17294b9</span>
+    <span>measured, not illustrative</span>
+  </div>
+  <div class="track">
+    <div class="band"><div class="who"><i style="background:var(--accent)"></i>codex</div>
+      <div class="bar codex">reports at 2:30 · 6 findings</div></div>
+    <div class="band"><div class="who"><i style="background:var(--accent)"></i>grok</div>
+      <div class="bar grok">streams 35 chunks · reports at 6:40 · 4 findings</div></div>
+    <div class="band"><div class="who"><i style="background:var(--no)"></i>agy</div>
+      <div class="bar agy"><span>quota error at 0:20 — counted as failed, not clean</span></div></div>
+
+    <div class="barrier"><b>barrier</b> — <code>await Promise.all(pool.map(…))</code> · bin/macr.js:208<br>
+      the slowest reviewer sets the round's wall clock. codex idles four minutes.</div>
+
+    <div class="band"><div class="who"><i style="background:var(--ink-3)"></i>claude</div>
+      <div class="bar idle">triage — one finding at a time, in the order they were raised</div></div>
+    <div class="serial">
+      <span class="chip c">C1</span><span class="chip c">C2</span><span class="chip c">C3</span>
+      <span class="chip c">C4</span><span class="chip c">C5</span><span class="chip c">C6</span>
+      <span class="chip">G1</span><span class="chip">G2</span><span class="chip">G3</span><span class="chip">G4</span>
+    </div>
+
+    <div class="barrier"><b>commit</b> — one commit per round, pushed unless <code>--no-push</code></div>
+
+    <div class="band"><div class="who"><i style="background:var(--accent)"></i>codex</div><div class="bar codex" style="width:22%">reply</div></div>
+    <div class="band"><div class="who"><i style="background:var(--accent)"></i>grok</div><div class="bar grok" style="width:26%">reply</div></div>
+    <div class="band"><div class="who"><i style="background:var(--no)"></i>agy</div><div class="bar agy" style="width:7%"><span>fails again</span></div></div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>running</span>
+    <span><i class="idle" style="background:var(--sunk);border:1px dashed var(--rule-2)"></i>main agent working alone</span>
+    <span><i style="background:var(--no-soft);border:1px solid var(--no)"></i>could not run</span>
+  </div>
+</div>
+
+<section class="col">
+  <div class="snum">Ordering</div>
+  <h2>Triage is per finding. Replies are per agent.</h2>
+  <p>
+    These are easy to conflate, and they behave differently. Triage never talks
+    to a reviewer at all — the main agent is reading code and reproducing bugs
+    alone. The conversation happens later, in the reply step.
+  </p>
+</section>
+
+<div class="two">
+  <div class="card">
+    <h4>Triage · serial</h4>
+    <p class="lede">Ordered by the event log, not by agent.</p>
+    <p>
+      <code>findingsIn()</code> replays <code>finding.raised</code> events into a
+      Map; <code>outstanding()</code> iterates its values, so insertion order wins.
+      Findings appear agent-clustered only because codex finished first — had grok
+      reported first, grok's would be judged first.
+    </p>
+  </div>
+  <div class="card">
+    <h4>Reply · concurrent</h4>
+    <p class="lede">One thread each, scoped to its own findings.</p>
+    <p>
+      <code>threadFor(agent, findings)</code> filters to that reviewer's items.
+      Another reviewer's name and finding ids are stripped by <code>scrub()</code>
+      before sending — isolation enforced in code, not trusted to whoever wrote
+      the verdict text.
+    </p>
+  </div>
+</div>
+
+<section class="col">
+  <p>
+    Independence is the whole reason for running more than one reviewer. Two
+    that read each other stop being independent, and their agreement stops
+    counting as evidence — so a verdict saying <em>"grok raised this too"</em>
+    would quietly destroy the thing being measured.
+  </p>
+</section>
+
+<section class="col">
+  <div class="snum">Why serial</div>
+  <h2>The bottleneck is deliberate</h2>
+  <p>
+    Judging findings concurrently would put several agents in one worktree at
+    once, and the second fix would land on top of the first without having seen
+    it. Correct, but it makes a round with twenty findings long — the first
+    entry in <code>TODO.md</code>, and still open.
+  </p>
+</section>
+
+<pre><span class="c">// bin/macr.js — the triage loop, one finding at a time</span>
+<span class="k">for</span> (<span class="k">const</span> f <span class="k">of</span> todo) {
+  <span class="k">if</span> (deadlocked(events, f.id)) <span class="c">// 3 turns per claim → defer, never accept</span>
+    <span class="k">continue</span>;
+
+  <span class="k">const</span> heart = beat(dir, main.name, round, <b>f.agent</b>); <span class="c">// tagged: whose thread</span>
+  <span class="k">const</span> v = <span class="k">await</span> triageOne(main, f, { worktree, trunk });
+
+  <span class="c">// reproduction recorded BEFORE the verdict — gate() reads the folded log,</span>
+  <span class="c">// so an acceptance is checked against disk, not against what we know here</span>
+  <span class="k">if</span> (v.reproduced) <span class="k">await</span> appendEvent(dir, { t: <span class="g">"finding.reproduced"</span>, … });
+  findings = <span class="k">await</span> findingsIn(dir);  <span class="c">// refold, THEN record</span>
+  <span class="k">const</span> res = <span class="k">await</span> record(dir, findings, f.id, v);
+  <span class="k">if</span> (!res.ok) <span class="k">continue</span>;  <span class="c">// the gate refusing is the gate working</span>
+}</pre>
+
+<section class="col">
+  <p>
+    That refold ordering is not incidental. The map is folded before the
+    reproduction is appended, so recording first meant every accepted finding was
+    refused for having no reproduction, moments after one had been written for it.
+  </p>
+</section>
+
+<section class="col">
+  <div class="snum">The gate</div>
+  <h2>What a verdict has to survive</h2>
+  <p>
+    A skill can be skipped; this check cannot. The mechanical half of triage
+    discipline is enforced in <code>lib/findings.js</code>, and a refusal
+    downgrades the finding back to open rather than crashing the run.
+  </p>
+</section>
+
+<div class="gate">
+  <div class="gate-row">
+    <div class="gate-k">rejected</div>
+    <div class="gate-v">Passes freely. <b>Say what you checked</b> and why the claim is wrong.</div>
+  </div>
+  <div class="gate-row">
+    <div class="gate-k">deferred</div>
+    <div class="gate-v">Real, pre-existing, out of scope — and <b>you changed nothing</b>. If you edited a file, this is the wrong verdict.</div>
+  </div>
+  <div class="gate-row">
+    <div class="gate-k">accepted</div>
+    <div class="gate-v">
+      <span class="tag ok">needs</span><b>a recorded reproduction</b> — no <code>finding.reproduced</code> event, no acceptance.<br>
+      <span class="tag ok" style="margin-top:8px;display:inline-block">needs</span><b>proof the test failed without the fix</b> — a test that passes either way is decoration.
+    </div>
+  </div>
+  <div class="gate-row">
+    <div class="gate-k">no verdict</div>
+    <div class="gate-v"><span class="tag wait">left open</span>Deliberately not silent. An unjudged finding must be raised again rather than vanishing into a round that reports convergence.</div>
+  </div>
+</div>
+
+<div class="aside">
+  <h4>Deferring is not agreeing</h4>
+  <p>
+    After three turns on one claim the main agent stops arguing and defers —
+    both positions are already in the log. Defer, never accept: fixing something
+    nobody demonstrated is how a stubborn false positive gets code written for it,
+    and it would require bypassing the gate to do it.
+  </p>
+</div>
+
+<section class="col">
+  <div class="snum">Stopping</div>
+  <h2>Convergence is four conditions</h2>
+  <p>
+    Every one is required, and the third is the one that was missing at first.
+    A round that raised findings nobody triaged used to report success: every
+    thread had nothing to answer, and <em>nothing to answer</em> counted as clean.
+  </p>
+</section>
+
+<div class="conv">
+  <div class="conv-i"><span class="n">1</span><span class="t"><code>answers.every(a =&gt; a.clean)</code> — every reviewer signed off</span><span class="s pass">held</span></div>
+  <div class="conv-i"><span class="n">2</span><span class="t"><code>!broke.length</code> — no reviewer failed to run</span><span class="s fail">agy · quota</span></div>
+  <div class="conv-i"><span class="n">3</span><span class="t"><code>!stillOpen.length</code> — nothing left open from any earlier round</span><span class="s pass">held</span></div>
+  <div class="conv-i"><span class="n">4</span><span class="t"><code>!pushFailed</code> — the fixes actually reached the branch</span><span class="s pass">held</span></div>
+  <div class="conv-f">→ one condition fails ⇒ round N+1, up to <b>--rounds</b> (default 10)</div>
+</div>
+
+<div class="two">
+  <div class="card stop">
+    <h4>Consequence</h4>
+    <p class="lede">A blocked reviewer caps every run at max rounds.</p>
+    <p>
+      agy's quota error is <code>failed</code>, not clean, so condition 2 can never
+      hold while it is enrolled. The run burns all ten rounds and never converges.
+      That is the design working — a reviewer that cannot run is not evidence of
+      agreement — but drop it from <code>--agents</code> until the quota resets.
+    </p>
+  </div>
+  <div class="card warn">
+    <h4>Consequence</h4>
+    <p class="lede">One wedged reviewer stalls the whole round.</p>
+    <p>
+      The barrier joins on the slowest. In the measured run codex sat idle for
+      four minutes waiting on grok before triage could begin. Bounded only by
+      each agent's own timeout — <code>--print-timeout 20m</code> for agy.
+    </p>
+  </div>
+</div>
+
+<section class="col">
+  <div class="snum">Between rounds</div>
+  <h2>The settled list, refreshed first</h2>
+  <p>
+    <code>refreshSettled(dir)</code> runs <strong>before</strong> the round, not
+    after. <code>buildPrompt</code> reads <code>settled.md</code>, so a list
+    written afterwards would take effect one round too late, and the next
+    reviewer would re-raise something already decided.
+  </p>
+  <p>
+    It is regenerated from the log rather than hand-maintained, which is what
+    makes the loop terminate at all: without it, every fresh reviewer
+    rediscovers the same deferred issues, round after round, forever.
+  </p>
+</section>
+
+<div class="aside">
+  <h4>One known gap</h4>
+  <p>
+    A rejected finding can still be re-raised once by the next reviewer, because
+    it only reaches the settled list after the round it was rejected in. The turn
+    limit bounds the argument; it does not prevent the first repeat.
+  </p>
+</div>
+
+<section class="col">
+  <div class="snum">Underneath</div>
+  <h2>Everything is a fold over one file</h2>
+  <p>
+    There is no stored state to drift. <code>runs/&lt;id&gt;/events.ndjson</code> is
+    append-only, two writers are safe, and every view — the findings map, the
+    conversation threads, the timeline, convergence itself — is derived by
+    replaying it.
+  </p>
+</section>
+
+<pre><span class="c">{"t":"round.start","n":1,"sha":"17294b9"}</span>
+{"t":<span class="g">"agent.launch"</span>,"agent":"codex","round":1}
+{"t":<span class="g">"agent.chunk"</span>,"agent":"grok","round":1,"text":"reading the diff…"}
+{"t":<span class="g">"agent.report"</span>,"agent":"codex","round":1,"verdict":"found"}
+{"t":<span class="g">"finding.raised"</span>,"id":"r1-codex-1","agent":"codex","claim":"…"}
+{"t":<span class="g">"agent.alive"</span>,"agent":"claude",<b>"forAgent":"codex"</b>,"seconds":110}
+{"t":<span class="g">"finding.reproduced"</span>,"id":"r1-codex-1","evidence":"…"}
+{"t":<span class="g">"finding.resolved"</span>,"id":"r1-codex-1","verdict":"accepted"}
+{"t":<span class="g">"commit.pushed"</span>,"sha":"f6b9285","pushed":true}
+<span class="c">{"t":"round.end","n":1}</span></pre>
+
+<section class="col">
+  <p>
+    <code>forAgent</code> is the newest field, and it exists because threads are
+    per reviewer while the main agent is a participant in each. Filing its
+    triage heartbeat under its own name opened a fourth thread and split one
+    exchange in two — and once routed correctly, the fold still dropped it,
+    because the rule suppressing placeholders keyed on the thread rather than
+    the speaker. In production order the reviewer's report always lands first,
+    so the heartbeat never rendered at all.
+  </p>
+</section>
+
+<footer>
+  <span>macr · multi-agent code review</span>
+  <span>measured on PR #3, round 1</span>
+</footer>
+
+</div>
