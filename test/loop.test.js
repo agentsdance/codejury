@@ -165,3 +165,34 @@ test("a reviewer that could not run is never counted as agreement", async () => 
   assert.equal(out[0].clean, false, "a reviewer that never ran agreed to nothing");
   await rm(dir, { recursive: true, force: true });
 });
+
+test("an abandoned launch ends at its own round, not at the present moment", async () => {
+  const { foldEvents } = await import("../lib/store.js");
+  // Round 1 is killed mid-flight; rounds 2 and 3 run later. Running round 1's
+  // unfinished span to the newest event drew it across the whole timeline —
+  // "963.7 min · unfinished" over every round that followed.
+  const t = (min) => new Date(Date.parse("2026-08-25T09:00:00Z") + min * 60000).toISOString();
+  const run = foldEvents([
+    { ts: t(0), t: "round.start", n: 1, sha: "a" },
+    { ts: t(0), t: "agent.launch", agent: "codex", round: 1 },
+    { ts: t(0), t: "agent.launch", agent: "agy", round: 1 },
+    { ts: t(3), t: "agent.report", agent: "agy", round: 1, verdict: "found" },
+    // codex never reports: killed.
+    { ts: t(960), t: "round.start", n: 2, sha: "b" },
+    { ts: t(960), t: "agent.launch", agent: "codex", round: 2 },
+    { ts: t(970), t: "agent.report", agent: "codex", round: 2, verdict: "found" },
+    { ts: t(980), t: "round.start", n: 3, sha: "c" },
+    { ts: t(980), t: "agent.launch", agent: "codex", round: 3 },
+  ]);
+
+  const codex = run.lanes.find((l) => l.who === "codex");
+  const dead = codex.segs.find((s) => s.r === 1);
+  assert.equal(dead.abandoned, true, "an earlier round's unfinished launch is abandoned, not live");
+  assert.ok(dead.e <= 3, `abandoned span must end with its own round, got ${dead.e}`);
+  assert.equal(dead.open, undefined, "abandoned is not the same as still running");
+
+  // The newest round genuinely is still going, and must still be drawn.
+  const live = codex.segs.find((s) => s.r === 3);
+  assert.equal(live.open, true);
+  assert.match(live.t, /still running/);
+});
