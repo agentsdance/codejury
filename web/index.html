@@ -82,6 +82,10 @@
         padding:18px 20px 14px; display:flex; flex-direction:column; gap:12px; overflow-x:auto; }
   .tl-inner { min-width:660px; display:flex; flex-direction:column; gap:10px; }
   .tl-rounds { position:relative; height:20px; }
+  /* An abandoned span is drawn hollow: it happened, but it produced nothing,
+     and filling it the same as a completed round overstates the run. */
+  .seg[data-abandoned="1"] { opacity:.45; background:repeating-linear-gradient(
+    45deg, var(--line) 0 4px, transparent 4px 8px); color:var(--muted); }
   .tl-rounds span { position:absolute; top:0; font-family:var(--mono); font-size:10.5px;
                     letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
                     border-left:1px solid var(--line); padding-left:7px; }
@@ -348,7 +352,10 @@
     display:inline-flex; align-items:center; vertical-align:-2px; margin-right:4px;
   }
   .msg .nm .ic svg { width:11px; height:11px; }
-  .msg[data-side="r"] .nm { display:flex; justify-content:flex-end; align-items:center; }
+  /* Inline-flex, not flex: a full-width flex row on the right side rendered as
+     an empty box beside the name. */
+  .msg[data-side="r"] .nm { display:inline-flex; align-items:center; align-self:flex-end; }
+  .msg[data-side="l"] .nm { display:inline-flex; align-items:center; align-self:flex-start; }
   .convo > header .who { display:inline-flex; align-items:center; gap:2px; }
   .convo > header .sw { margin:0 4px; color:var(--muted); font-weight:400; }
   .convo .empty { padding:26px 14px; text-align:center; font:400 13px/1.5 var(--sans); color:var(--muted); }
@@ -537,6 +544,32 @@ const esc = s => String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt
 const rich = s => esc(s).replace(/&lt;strong&gt;/g,"<strong>").replace(/&lt;\/strong&gt;/g,"</strong>")
                         .replace(/&lt;b&gt;/g,"<b>").replace(/&lt;\/b&gt;/g,"</b>");
 const pct = m => (m / RUN.totalMin) * 100;
+
+/**
+ * Merge timeline marks too close together to render side by side.
+ *
+ * A label is roughly 8% of the track at the widths this is read at, so marks
+ * nearer than that collide. Rather than dropping the later one — which would
+ * misreport how many rounds ran — they collapse into a range: "rounds 3-6",
+ * with the full list on hover.
+ */
+function collapseMarks(marks = []) {
+  const sorted = [...marks].sort((a, b) => a.at - b.at);
+  const out = [];
+  const MIN_GAP = 8; // percent of the track
+  for (const m of sorted) {
+    const last = out[out.length - 1];
+    if (last && pct(m.at) - pct(last.at) < MIN_GAP) {
+      last.group.push(m.l);
+      const ns = last.group.map((l) => String(l).replace(/\D+/g, "")).filter(Boolean);
+      last.l = ns.length > 1 ? `rounds ${ns[0]}-${ns[ns.length - 1]}` : last.group[0];
+      last.title = last.group.join(", ");
+      continue;
+    }
+    out.push({ at: m.at, l: m.l, title: m.l, group: [m.l] });
+  }
+  return out;
+}
 
 // exchanges. "open" is a finding the main agent has not answered yet, and it is
 // the state a live run spends most of its time in — leaving it out of the
@@ -731,14 +764,21 @@ function render(){
   renderHeader();
   // timeline
   $("tl").innerHTML =
-    `<div class="tl-rounds">${RUN.marks.map(m=>`<span style="left:${pct(m.at)}%">${esc(m.l)}</span>`).join("")}</div>` +
+    // Marks that land within a label's width of each other are drawn as one.
+    // Absolute positioning with no collision handling rendered six rounds a
+    // few seconds apart as "ROUNDROUNDROUND23" — unreadable, and it hid how
+    // many rounds there actually were.
+    `<div class="tl-rounds">${collapseMarks(RUN.marks).map(m=>
+      `<span style="left:${pct(m.at)}%" title="${esc(m.title ?? m.l)}">${esc(m.l)}</span>`).join("")}</div>` +
     RUN.lanes.map(l=>`
       <div class="lane">
         <span class="who"><span class="ic" style="color:${l.who==="main"?"var(--main-hue)":l.who==="codex"?"var(--codex)":"var(--droid)"}">${icon(l.label)}</span>${esc(l.label)}</span>
         <div class="track">${l.segs.map(s=>{
-          const w = pct(s.e - s.s), mins = s.e - s.s;
+          // Rounded at the point of display: these are differences of floats,
+          // so a span reads "8.300000000000004 min" without it.
+          const w = pct(s.e - s.s), mins = +(s.e - s.s).toFixed(1);
           return `<div class="seg" data-a="${l.who}"${s.open ? ' data-open="1"' : ""}
-                   style="left:${pct(s.s)}%;width:${w}%"
+                   style="left:${pct(s.s)}%;width:${w}%"${s.abandoned ? ' data-abandoned="1"' : ""}
                    title="${esc(s.t || ("round "+s.r+" · "+mins+" min"))}">${w > 9 ? esc(s.t || mins+" min") : ""}</div>`;
         }).join("")}</div>
       </div>`).join("");

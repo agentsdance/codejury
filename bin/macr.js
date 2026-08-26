@@ -16,14 +16,14 @@ import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, writeRun, readEvents, foldEvents, slugFor, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn } from "../lib/loop.js";
 
 const run = promisify(execFile);
 const VERSION = "0.1.0";
 
 const USAGE = `macr — multi-agent code review
 
-  macr agent [flags]      autonomous loop: review, triage, fix, reply, repeat
+  macr agent [<pr-url>]   autonomous loop: review, triage, fix, reply, repeat
   macr review [flags]     run rounds until convergence or --max-rounds
   macr web [flags]        serve the console (default http://127.0.0.1:3080)
   macr finding <cmd>      list | reproduce | resolve | settled — appends events, enforces the gate
@@ -32,9 +32,11 @@ const USAGE = `macr — multi-agent code review
   macr agents             check which configured agents are installed
   macr version
 
-agent flags                      (drives itself; no operator between rounds)
+agent                            (drives itself; no operator between rounds)
+  macr agent https://github.com/owner/repo/pull/1
+
   --dir <path>       repo/worktree                            (default .)
-  --pr <url>         pull request URL, recorded on the run
+  --pr <url>         same as the positional argument
   --trunk <branch>   diff base branch          (default: the remote's own HEAD)
   --title <text>     what the change does         (default: read from the PR)
   --summary <text>   intent, passed to reviewers  (default: the PR description)
@@ -201,12 +203,21 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
       // a reader could perceive.
       let buf = "";
       let flushing = null;
-      const flush = async () => {
+      // Appends are chained rather than fired independently. Clearing `flushing`
+      // before awaiting let a second flush start while the first append was
+      // still in flight, so a later chunk — or the final report — could reach
+      // the log ahead of earlier output, leaving the conversation with a
+      // permanent "streaming" turn full of stale text.
+      let writes = Promise.resolve();
+      const flush = () => {
         flushing = null;
-        if (!buf) return;
+        if (!buf) return writes;
         const text = buf;
         buf = "";
-        await appendEvent(dir, { t: "agent.chunk", agent: a.name, round, text });
+        writes = writes.then(() =>
+          appendEvent(dir, { t: "agent.chunk", agent: a.name, round, text }),
+        );
+        return writes;
       };
       const r = await runAgent(a, {
         worktree, prompt, stopToken: cfg.stopToken,
@@ -218,7 +229,10 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
         },
       });
       if (flushing) clearTimeout(flushing);
+      // Await the chain, not just this flush: an append queued earlier must
+      // land before agent.report is written after it.
       await flush();
+      await writes;
       // Rewritten whole at the end: the streamed copy can be short if the agent
       // was killed mid-write, and r.raw is the authoritative buffer.
       await sink.close();
@@ -226,6 +240,9 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
       await appendEvent(dir, {
         t: "agent.report", agent: a.name, round,
         verdict: r.verdict, seconds: r.seconds, summary: firstLine(r.report), report: r.report,
+        // The session this review happened in, so the reply resumes THIS
+        // conversation rather than whichever ran most recently.
+        sessionId: r.sessionId ?? null,
         rawFile, rawBytes: (r.raw ?? "").length,
       });
       if (r.contradicted) {
@@ -304,8 +321,8 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
  *   the round cap      --rounds, default 10
  */
 async function cmdAgent(argv) {
-  const { values } = parseArgs({
-    args: argv, allowPositionals: false,
+  const { values, positionals } = parseArgs({
+    args: argv, allowPositionals: true,
     options: {
       dir: { type: "string", default: "." },
       pr: { type: "string" },
@@ -318,6 +335,16 @@ async function cmdAgent(argv) {
       "dry-run": { type: "boolean", default: false },
     },
   });
+
+  // The PR link is the argument. `--pr` still works, but a flag for the one
+  // thing every invocation names is ceremony: `macr agent <url>` is what
+  // someone reaches for, and refusing it teaches nothing.
+  const url = positionals.find((a) => /^https?:\/\//.test(a));
+  if (url) values.pr = values.pr ?? url;
+  const stray = positionals.filter((a) => a !== url);
+  if (stray.length) {
+    throw new Error(`unexpected argument "${stray[0]}" — pass the pull request URL, or use --pr`);
+  }
 
   const maxRounds = Number(values.rounds);
   if (!Number.isInteger(maxRounds) || maxRounds < 1) {
@@ -455,6 +482,7 @@ async function cmdAgent(argv) {
     const after = await findingsIn(dir);
     const answers = await replyRound({
       dir, pool, cfg, worktree, sha: head.sha, round, findings: after,
+      sessions: sessionsIn(await readEvents(dir)),
       dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
     });
     for (const a of answers) {
