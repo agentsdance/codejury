@@ -162,7 +162,9 @@ test("the triage path executes end to end without an undefined name", async () =
     const { stdout } = await run("node", [cli, "--rounds", "1", "--no-push"], { cwd: dir });
 
     // The whole point: it got past launch, raised a finding, and TRIAGED it.
-    assert.match(stdout, /triage\s+1 finding/, `triage never ran:\n${stdout}`);
+    // Matches the words, not the spacing: this guards that triage RAN, and it
+    // should not fail when the header is restyled.
+    assert.match(stdout, /triage\b[^\n]*\b1 finding\b/, `triage never ran:\n${stdout}`);
     assert.match(stdout, /REJECTED/, `no verdict was recorded:\n${stdout}`);
   } finally {
     await rm(dir, { recursive: true, force: true });

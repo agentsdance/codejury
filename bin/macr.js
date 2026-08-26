@@ -18,9 +18,14 @@ import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, r
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
+import * as st from "../lib/style.js";
 
 const run = promisify(execFile);
 const VERSION = "0.1.0";
+
+// Set when `review --web` boots the console in-process. Read once, after the
+// loop returns, to decide whether the process may exit.
+let liveConsole = null;
 
 const USAGE = `macr — multi-agent code review
 
@@ -44,6 +49,8 @@ review                           (drives itself; no operator between rounds)
   --summary <text>   intent, passed to reviewers  (default: the PR description)
   --rounds <n>       maximum rounds                           (default 10)
   --resume <slug>    continue an existing run instead of starting a new one
+  --web              open the console on this run          (stays up when it ends)
+  --port <n>         console port, with --web              (default 3080)
   --no-push          commit fixes to the worktree without pushing
   --dry-run          exercise the pipeline, spawn nothing
 
@@ -87,7 +94,15 @@ try {
     // things reading the same. Reviewing is what this tool does, so `review` is
     // the loop; the old single-round behaviour is --rounds 1, which it already
     // supported. `agent` stays as a hidden alias.
-    case "review": case "agent": await cmdAgent(rest); break;
+    case "review": case "agent":
+      await cmdAgent(rest);
+      // The loop is done; the console it started is not. Exiting here would
+      // close the page at the exact moment there is a finished run to read.
+      if (liveConsole) {
+        console.log(`\nconsole still up at ${liveConsole} — ctrl-c to stop`);
+        await new Promise(() => {});
+      }
+      break;
     case "review-once": await cmdReview(rest); break;
     case "web": await cmdWeb(rest); break;
     case "finding": case "findings": await cmdFinding(rest); break;
@@ -182,7 +197,7 @@ async function cmdReview(argv) {
 /** One round: prompt, launch every reviewer, record what they said. */
 async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }) {
   const git = { sha };
-  console.log(`round    ${round}`);
+  console.log(st.info(st.bold(`round ${round}`)));
 
   // Built before the round opens so the exact text handed to the reviewers is
   // part of the record. A verdict is only readable next to the question asked.
@@ -264,7 +279,8 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
       try {
         r = await runAgent(a, {
           worktree, prompt, stopToken: cfg.stopToken,
-          dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
+          dryRun: values["dry-run"],
+          onLog: (m) => console.log(`  ${st.agent(a.name)} ${st.muted(m)}`),
           onChunk: (text) => {
             lastSpoke = Date.now();
             sink.write(text);
@@ -330,25 +346,35 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
   await appendEvent(dir, { t: "round.end", n: round });
   await publish();
 
-  console.log(`\nround ${round} — ${((Date.now() - started) / 1000).toFixed(1)}s\n`);
+  // Once, not three times. The elapsed time, the per-reviewer table and the
+  // verdict each used to restate the round's result in their own words.
+  const took = ((Date.now() - started) / 1000).toFixed(1);
+  console.log(`\n${st.rule(`round ${round} · ${took}s`)}\n`);
   for (const r of results) {
-    const mark = r.verdict === "clean" ? "clean" : r.verdict === "error" ? "ERROR" : "findings";
-    const n = r.findings?.length ? `  ${r.findings.length} finding(s)` : "";
-    console.log(`${r.agent.padEnd(8)} ${String(r.seconds).padStart(6)}s  ${mark}${n}`);
+    const paint = r.verdict === "clean" ? st.ok : r.verdict === "error" ? st.bad : st.warn;
+    const mark = r.verdict === "clean" ? "clean" : r.verdict === "error" ? "failed" : "findings";
+    const n = r.findings?.length ? st.muted(`  ${st.count(r.findings.length, "finding")}`) : "";
+    console.log(`  ${st.agent(r.agent.padEnd(8))} ${st.muted(String(r.seconds).padStart(5) + "s")}  ${paint(mark)}${n}`);
   }
 
   console.log("");
-  if (errored.length) console.log(`${errored.length} reviewer(s) failed to run — see the reports below.`);
+  if (errored.length) {
+    console.log(st.bad(`${st.count(errored.length, "reviewer")} failed to run — see the reports below.`));
+  }
   console.log(clean && !errored.length
-    ? `CONVERGED — every reviewer emitted the stop token on ${git.sha}.`
-    : `NOT converged. Triage the findings, fix what reproduces, push, then run round ${round + 1}.`);
-  console.log(`\nrecorded: ${path.relative(process.cwd(), dir)}`);
+    ? st.ok(`CONVERGED — every reviewer emitted the stop token on ${git.sha}.`)
+    : st.warn(`NOT converged. Triage, fix what reproduces, push, then round ${round + 1}.`));
+  console.log(st.muted(`recorded: ${path.relative(process.cwd(), dir)}`));
 
   // Every reviewer's report, including the clean ones: a sign-off still says
-  // what was checked, and reading only the complaints hides that.
+  // what was checked, and reading only the complaints hides that. Indented and
+  // ruled at both ends, because otherwise a report runs straight into whatever
+  // the loop prints next and the two read as one voice.
   for (const r of results) {
-    const head = r.verdict === "clean" ? `${r.agent}  (clean)` : r.agent;
-    console.log(`\n${"─".repeat(64)}\n${head}\n${"─".repeat(64)}\n${r.report}`);
+    const head = `${r.agent}${r.verdict === "clean" ? " · clean" : ""}`;
+    console.log(`\n${st.rule(head)}`);
+    console.log(st.indent(r.report ?? ""));
+    console.log(st.rule(""));
   }
 
   // A failed reviewer is not convergence. Stopping the loop here would report
@@ -386,6 +412,8 @@ async function cmdAgent(argv) {
       "no-push": { type: "boolean", default: false },
       resume: { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      web: { type: "boolean", default: false },
+      port: { type: "string", default: "3080" },
     },
   });
 
@@ -471,16 +499,29 @@ async function cmdAgent(argv) {
   }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
-  console.log(`target   ${target.repo} ${target.id}`);
-  console.log(`worktree ${worktree} @ ${git.sha} (${git.branch})`);
-  console.log(`trunk    ${trunk}${trunkGiven ? "" : "  (detected)"}`);
-  if (target.title) console.log(`title    ${target.title.slice(0, 72)}`);
-  console.log(`main     ${main.name}`);
-  console.log(`agents   ${pool.map((a) => a.name).join(", ")}${values["dry-run"] ? "  (dry run)" : ""}`);
-  console.log(`rounds   ${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`);
-  console.log(`fixes    ${values.push ? `committed and pushed to ${git.branch}` : "committed to the worktree only"}`);
-  console.log(`run      ${path.basename(dir)}${values.resume ? "  (resumed)" : ""}`);
-  console.log(`watch    macr web  →  the conversation streams live\n`);
+  console.log(st.field("target", `${target.repo} ${st.bold(target.id)}`));
+  console.log(st.field("worktree", st.muted(`${worktree} @ ${git.sha} (${git.branch})`)));
+  console.log(st.field("trunk", `${trunk}${trunkGiven ? st.muted("  (detected)") : ""}`));
+  if (target.title) console.log(st.field("title", target.title.slice(0, 72)));
+  console.log(st.field("main", st.agent(main.name)));
+  console.log(st.field("agents", pool.map((a) => st.agent(a.name)).join(", ")
+    + (values["dry-run"] ? st.warn("  (dry run)") : "")));
+  console.log(st.field("rounds", st.muted(`${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`)));
+  console.log(st.field("fixes", st.muted(values.push
+    ? `committed and pushed to ${git.branch}` : "committed to the worktree only")));
+  console.log(st.field("run", st.muted(path.basename(dir) + (values.resume ? "  (resumed)" : ""))));
+  // The console, in this same process. The loop and the server share the run
+  // directory and nothing else: the server re-reads it per request and tails
+  // the event log, so it sees each round land without the loop telling it.
+  if (values.web) {
+    const { url } = await serve({ port: Number(values.port), onLog: (m) => console.log(st.field("console", st.muted(m))) });
+    liveConsole = url;
+    console.log(st.field("console", `${url}${st.muted("  →  the conversation streams live")}`));
+    openBrowser(url);
+    console.log("");
+  } else {
+    console.log(st.field("watch", st.muted("macr web  →  the conversation streams live")) + "\n");
+  }
 
   let pushFailed = false;
   for (let i = 0; i < maxRounds; i++) {
@@ -504,10 +545,10 @@ async function cmdAgent(argv) {
       // convergence.
       const open = await openFindings(dir);
       if (!open.length) {
-        console.log(`\nCONVERGED after ${round - first + 1} round(s).`);
+        console.log(st.ok(`\nCONVERGED after ${st.count(round - first + 1, "round")}.`));
         return;
       }
-      console.log(`\nevery reviewer is clean, but ${open.length} finding(s) from earlier are still open.`);
+      console.log(st.warn(`\nevery reviewer is clean, but ${st.count(open.length, "finding")} from earlier ${open.length === 1 ? "is" : "are"} still open.`));
     }
 
     let findings = await findingsIn(dir);
@@ -517,14 +558,14 @@ async function cmdAgent(argv) {
     // Nothing to answer and nobody signed off: the reviewers produced prose
     // this parser could not track. Another identical round will not fix that.
     if (!todo.length) {
-      console.log("\nno trackable findings to triage — stopping rather than repeating the round.");
+      console.log(st.warn("\nno trackable findings to triage — stopping rather than repeating the round."));
       await publishRun(dir, {
         ...target, state: "human", stateNote: "findings raised but none parsed as trackable",
       });
       return;
     }
 
-    console.log(`\ntriage   ${todo.length} finding(s) → ${main.name}`);
+    console.log(`\n${st.rule(`triage · ${st.count(todo.length, "finding")} → ${main.name}`)}`);
     let fixed = 0;
     for (const f of todo) {
       // The turn limit ends an argument the loop cannot win. Both positions are
@@ -535,11 +576,11 @@ async function cmdAgent(argv) {
           verdict: "deferred",
           reason: `argued ${MAX_TURNS} turns without agreement; both positions are in the log`,
         });
-        console.log(`  ${f.id}  deferred (turn limit)${r.ok ? "" : ` — ${r.why}`}`);
+        console.log(`  ${st.muted(f.id)}  ${st.verdict("deferred")} ${st.muted(`(turn limit)${r.ok ? "" : ` — ${r.why}`}`)}`);
         continue;
       }
 
-      console.log(`  ${f.id}  ${f.claim.slice(0, 66)}${f.claim.length > 66 ? "…" : ""}`);
+      console.log(`  ${st.muted(f.id)}  ${st.agent(f.agent)}  ${f.claim.slice(0, 62)}${f.claim.length > 62 ? "…" : ""}`);
 
       // One finding at a time, deliberately. Judging them concurrently would
       // have several agents editing the same tree at once, and the second fix
@@ -552,7 +593,7 @@ async function cmdAgent(argv) {
       try {
         v = await triageOne(main, f, {
           worktree, trunk, stopToken: cfg.stopToken, dryRun: values["dry-run"],
-          onLog: (m) => console.log(`          ${m}`),
+          onLog: (m) => console.log(`          ${st.muted(m)}`),
         });
       } finally {
         clearInterval(heart);
@@ -561,7 +602,7 @@ async function cmdAgent(argv) {
       if (!v.verdict) {
         // Left open on purpose: an unjudged finding must be raised again rather
         // than silently disappearing into a round that reports convergence.
-        console.log(`          ${v.failed ? "main agent failed" : "no verdict parsed"} — left open`);
+        console.log(`          ${st.bad(v.failed ? "main agent failed" : "no verdict parsed")}${st.muted(" — left open")}`);
         continue;
       }
 
@@ -585,10 +626,10 @@ async function cmdAgent(argv) {
       if (!res.ok) {
         // The gate refusing is the gate working. Downgrade rather than crash:
         // an acceptance with nothing behind it becomes an open finding again.
-        console.log(`          refused: ${res.why} — left open`);
+        console.log(`          ${st.bad("refused")}${st.muted(`: ${res.why} — left open`)}`);
         continue;
       }
-      console.log(`          ${v.verdict.toUpperCase()}${v.reason ? ` — ${v.reason.slice(0, 60)}` : ""}`);
+      console.log(`          ${st.verdict(v.verdict)}${v.reason ? st.muted(` — ${v.reason.slice(0, 60)}`) : ""}`);
       if (v.verdict === "accepted") fixed++;
     }
 
@@ -613,7 +654,10 @@ async function cmdAgent(argv) {
     const answers = await replyRound({
       dir, pool, cfg, worktree, sha: head.sha, round, findings: after,
       sessions: sessionsIn(await readEvents(dir)),
-      dryRun: values["dry-run"], onLog: (m) => console.log(`  ${m}`),
+      dryRun: values["dry-run"],
+      // Prefixed like the launch line: without a name this printed a bare
+      // "node (in worktree)" with nothing saying whose reply it was.
+      onLog: (m, who) => console.log(`  ${who ? st.agent(who) + " " : ""}${st.muted(m)}`),
     });
     for (const a of answers) {
       const what = a.failed
@@ -623,7 +667,7 @@ async function cmdAgent(argv) {
           : a.raised
             ? `raised ${a.raised} new finding(s)`
             : a.clean ? "signed off" : "still disagrees";
-      console.log(`reply    ${a.agent.padEnd(8)} ${what}`);
+      console.log(`${st.dim("reply")}    ${st.agent(a.agent.padEnd(8))} ${a.failed ? st.bad(what) : a.clean ? st.ok(what) : st.warn(what)}`);
     }
 
     // Convergence is three things, and the first one was missing: every
@@ -635,24 +679,24 @@ async function cmdAgent(argv) {
     const stillOpen = [...settled.values()].filter((f) => f.status === "open");
     const broke = answers.filter((a) => a.failed);
     if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed) {
-      console.log(`\nCONVERGED — every reviewer signed off after round ${round}.`);
+      console.log(st.ok(st.bold(`\nCONVERGED — every reviewer signed off after round ${round}.`)));
       await publishRun(dir, {
         ...target, state: "converged", stateNote: `converged after round ${round}`,
       });
       return;
     }
     if (stillOpen.length) {
-      console.log(`\n${stillOpen.length} finding(s) still open — not convergence.`);
+      console.log(st.warn(`\n${st.count(stillOpen.length, "finding")} still open — not convergence.`));
     }
     if (broke.length) {
-      console.log(`${broke.map((a) => a.agent).join(", ")} could not run — this run cannot converge.`);
+      console.log(st.bad(`${broke.map((a) => a.agent).join(", ")} could not run — this run cannot converge.`));
     }
     if (pushFailed) {
-      console.log("a push failed — the reviewers are reading code the PR does not have.");
+      console.log(st.bad("a push failed — the reviewers are reading code the PR does not have."));
     }
   }
 
-  console.log(`\nstopped at the ${maxRounds}-round limit without full agreement.`);
+  console.log(st.warn(`\nstopped at the ${maxRounds}-round limit without full agreement.`));
   await publishRun(dir, { ...target, state: "human", stateNote: `hit the ${maxRounds}-round limit` });
 }
 
@@ -721,12 +765,16 @@ async function cmdWeb(argv) {
   const { url, port } = await serve({ port: Number(values.port) });
   console.log(`console: ${url}`);
   console.log(`runs:    ${path.relative(process.cwd(), runsDir()) || "runs"}/`);
-  if (values.open) {
-    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-    execFile(cmd, [url], () => {});
-  }
+  if (values.open) openBrowser(url);
   process.on("SIGINT", () => { console.log("\nstopped"); process.exit(0); });
   return new Promise(() => {}); // serve until interrupted
+}
+
+// Best effort, and deliberately unawaited: no browser (a CI box, a bare ssh
+// session) is not a reason to fail a review that is otherwise about to run.
+function openBrowser(url) {
+  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  execFile(cmd, [url], () => {});
 }
 
 /**
