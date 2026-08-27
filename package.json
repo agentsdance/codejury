@@ -1,6 +1,6 @@
 {
   "name": "@agentsdance/cr",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Run a pull request past several independent AI reviewers and watch them converge.",
   "keywords": [
     "code-review",
@@ -34,6 +34,7 @@
     "access": "public"
   },
   "scripts": {
+    "prepublishOnly": "npm test",
     "start": "node bin/cr.js web --open",
     "test": "node --test \"test/*.test.js\""
   },
