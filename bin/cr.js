@@ -32,7 +32,38 @@ const VERSION = JSON.parse(
 // loop returns, to decide whether the process may exit.
 let liveConsole = null;
 
-const USAGE = `cr — multi-agent code review
+/**
+ * What a person types, and nothing else.
+ *
+ * The full reference lists eight commands and thirty flags, most of which exist
+ * for the skill driving triage rather than for anyone at a prompt. Showing all
+ * of it by default buried the one command that matters in a wall of options —
+ * `cr help --all` still prints everything.
+ */
+const USAGE = `cr — run a pull request past several AI reviewers until they agree
+
+  cr <pr-url>              review a pull request
+  cr --rounds 3            review the current branch, no PR
+  cr --web <pr-url>        …and watch it in the browser
+
+Common flags
+
+  --rounds <n>             stop after n rounds            (default 10)
+  --agents codex,grok      only these reviewers           (default: all installed)
+  --no-push                fix locally, do not push
+  --dry-run                exercise the pipeline, spawn nothing
+
+Other commands
+
+  cr agents                which reviewers are installed
+  cr runs                  every PR under review
+  cr web                   the console, on its own
+  cr version
+
+  cr help --all            every command and flag
+`;
+
+const USAGE_FULL = `cr — multi-agent code review
 
   cr <pr-url>             review a PR: rounds until convergence, one conversation per reviewer
   cr review-once [flags]  a single round, no triage or reply
@@ -53,6 +84,7 @@ review                           (drives itself; no operator between rounds)
   --title <text>     what the change does         (default: read from the PR)
   --summary <text>   intent, passed to reviewers  (default: the PR description)
   --rounds <n>       maximum rounds                           (default 10)
+  --agents a,b       only these reviewers            (default: all installed)
   --resume <slug>    continue an existing run instead of starting a new one
   --web              open the console on this run          (stays up when it ends)
   --port <n>         console port, with --web              (default 3080)
@@ -115,7 +147,13 @@ try {
     case "runs": await cmdRuns(); break;
     case "agents": await cmdAgents(); break;
     case "version": case "-v": case "--version": console.log(`cr ${VERSION}`); break;
-    case "help": case "-h": case "--help": case undefined: process.stdout.write(USAGE); break;
+    case "help": case "-h": case "--help": case undefined:
+      // --all, -a, or the bare word: every command and flag. Anything else
+      // gets the short form, which is what a person at a prompt wants.
+      process.stdout.write(
+        rest.some((a) => a === "--all" || a === "-a" || a === "all") ? USAGE_FULL : USAGE,
+      );
+      break;
     default:
       console.error(`cr: unknown command "${cmd}"\n`);
       process.stdout.write(USAGE);
