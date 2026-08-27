@@ -78,3 +78,30 @@ test("an indented report cannot be mistaken for the loop's own voice", async () 
   const out = st.indent("FINDING: x\nWHERE: a.js:1");
   assert.equal(out, "  FINDING: x\n  WHERE: a.js:1");
 });
+
+test("the default help stays short, and everything it names is real", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("../bin/cr.js", import.meta.url), "utf8");
+
+  const grab = (name) => {
+    const at = src.indexOf(`const ${name} = \``);
+    assert.ok(at >= 0, `bin/cr.js no longer defines ${name}`);
+    return src.slice(at, src.indexOf("\n`;", at));
+  };
+  const short = grab("USAGE");
+  const full = grab("USAGE_FULL");
+
+  // The point of splitting them: `cr --help` is for a person at a prompt, and a
+  // wall of flags buried the one command that matters.
+  assert.ok(short.split("\n").length < 30, "the short help must stay short");
+  assert.ok(short.length < full.length, "USAGE must be shorter than USAGE_FULL");
+  assert.match(short, /cr help --all/, "it must say where the rest is");
+
+  // Every flag the short help advertises has to exist in the real reference,
+  // or it documents behaviour the CLI does not have. `cr` bare prints help
+  // rather than reviewing, and the short help claimed otherwise once.
+  for (const flag of short.match(/--[a-z-]+/g) ?? []) {
+    if (flag === "--all") continue; // help's own flag, not a review flag
+    assert.ok(full.includes(flag), `${flag} is advertised but not in the full reference`);
+  }
+});
