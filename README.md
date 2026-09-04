@@ -14,6 +14,11 @@ npm install -g @agentsdance/cr     # then: cr <pr-url>
 npx @agentsdance/cr <pr-url>       # or without installing
 ```
 
+The GitHub PR URL is authoritative. `cr` resolves its base, source branch and exact
+head commit, reviews an isolated temporary checkout, and pushes accepted fixes
+back to the source branch. It is safe to invoke from `master` or from outside
+the target repository; the caller's working tree is not switched or modified.
+
 Node 20 or newer. The reviewers are separate CLIs you install yourself — `cr` spawns whatever you
 have and skips the rest:
 

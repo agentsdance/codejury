@@ -19,7 +19,7 @@ import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, r
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
-import { assertPrCheckout } from "../lib/repository.js";
+import { assertPrCheckout, resolvePrCheckout } from "../lib/repository.js";
 import * as st from "../lib/style.js";
 
 const run = promisify(execFile);
@@ -32,6 +32,7 @@ const VERSION = JSON.parse(
 // Set when `review --web` boots the console in-process. Read once, after the
 // loop returns, to decide whether the process may exit.
 let liveConsole = null;
+let resolvedCheckoutCleanup = null;
 
 /**
  * What a person types, and nothing else.
@@ -134,6 +135,7 @@ try {
     // supported. `agent` stays as a hidden alias.
     case "review": case "agent":
       await cmdAgent(rest);
+      await cleanupResolvedCheckout();
       // The loop is done; the console it started is not. Exiting here would
       // close the page at the exact moment there is a finished run to read.
       if (liveConsole) {
@@ -161,6 +163,7 @@ try {
       process.exit(2);
   }
 } catch (err) {
+  await cleanupResolvedCheckout();
   console.error(`cr: ${err.message}`);
   process.exit(1);
 }
@@ -477,8 +480,17 @@ async function cmdAgent(argv) {
     throw new Error("--rounds must be a positive integer");
   }
 
-  const worktree = path.resolve(values.dir);
-  const cfg = await loadConfig(worktree);
+  values.push = values.push && !values["no-push"];
+  const requestedWorktree = path.resolve(values.dir);
+  const resolved = values.pr
+    ? await resolvePrCheckout(values.pr, { allowPush: values.push })
+    : null;
+  const worktree = resolved?.worktree ?? requestedWorktree;
+  resolvedCheckoutCleanup = resolved?.cleanup ?? null;
+
+  // A local ignored config belongs to the requested checkout. An automatic
+  // clone intentionally starts from the repository's committed/default config.
+  const cfg = await loadConfig(resolved ? worktree : requestedWorktree);
   const main = mainAgent(cfg);
   if (!main) {
     // A run with no main agent has no one to triage or fix — every finding
@@ -494,30 +506,28 @@ async function cmdAgent(argv) {
   }
   if (!pool.length) throw new Error("no reviewers configured — nothing would review anything");
 
-  // The URL and checkout must describe the same repository. Without this, a
-  // command launched from an unrelated directory reviews its HEAD and can push
-  // fixes to its origin while the run is labelled as somebody else's PR.
   const git = await describe(worktree);
-  if (values.pr) assertPrCheckout(values.pr, git.remote, worktree);
 
   // Both asked for rather than assumed: the trunk from the remote's own HEAD,
   // the title and intent from the PR itself. Every one of these was a flag you
   // had to get right, and getting the trunk wrong is silent — the diff is taken
   // against a branch that does not exist.
   const trunkGiven = Boolean(values.trunk);
-  const trunk = values.trunk ?? (await defaultTrunk(worktree));
+  const trunk = values.trunk ?? resolved?.trunk ?? (await defaultTrunk(worktree));
   values.trunk = trunk;
-  const pr = await prDetails(values.pr, worktree);
+  const pr = resolved ?? await prDetails(values.pr, worktree);
 
   // The next round has to review NEW code or it is not a loop, so pushing is
   // the default. It still refuses trunk outright: a loop that can push to
   // master is one bad triage away from a bad afternoon.
-  values.push = values.push && !values["no-push"];
+  const pushTarget = values.push
+    ? resolved?.pushTarget ?? { remote: "origin", branch: git.branch }
+    : null;
   if (values.push) {
     if (!git.branch || git.branch === "HEAD") {
       throw new Error("--push needs a checked-out branch; this worktree is detached");
     }
-    if (git.branch === values.trunk) {
+    if (!resolved && git.branch === values.trunk) {
       throw new Error(`refusing --push onto ${values.trunk}: that is the trunk, not a PR branch`);
     }
   }
@@ -528,7 +538,7 @@ async function cmdAgent(argv) {
     url: values.pr ?? "",
     // An explicit flag still wins; the PR is only consulted when you did not say.
     title: values.title ?? pr.title ?? git.subject,
-    branch: git.branch,
+    branch: resolved?.branch ?? git.branch,
     trunk,
     state: "review",
     stateNote: "",
@@ -550,7 +560,7 @@ async function cmdAgent(argv) {
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
   console.log(st.field("target", `${target.repo} ${st.bold(target.id)}`));
-  console.log(st.field("worktree", st.muted(`${worktree} @ ${git.sha} (${git.branch})`)));
+  console.log(st.field("worktree", st.muted(`${worktree} @ ${git.sha} (${resolved?.branch ?? git.branch})`)));
   console.log(st.field("trunk", `${trunk}${trunkGiven ? st.muted("  (detected)") : ""}`));
   if (target.title) console.log(st.field("title", target.title.slice(0, 72)));
   console.log(st.field("main", st.agent(main.name)));
@@ -558,7 +568,7 @@ async function cmdAgent(argv) {
     + (values["dry-run"] ? st.warn("  (dry run)") : "")));
   console.log(st.field("rounds", st.muted(`${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`)));
   console.log(st.field("fixes", st.muted(values.push
-    ? `committed and pushed to ${git.branch}` : "committed to the worktree only")));
+    ? `committed and pushed to ${pushTarget.branch}` : "committed to the worktree only")));
   console.log(st.field("run", st.muted(path.basename(dir) + (values.resume ? "  (resumed)" : ""))));
   // The console, in this same process. The loop and the server share the run
   // directory and nothing else: the server re-reads it per request and tails
@@ -684,13 +694,13 @@ async function cmdAgent(argv) {
     }
 
     if (fixed && !values["dry-run"]) {
-      const c = await commitFixes(worktree, round, values.push ? git.branch : null);
+      const c = await commitFixes(worktree, round, pushTarget);
       if (c?.sha) {
         await appendEvent(dir, {
           t: "commit.pushed", sha: c.sha, pushed: c.pushed, subject: `round ${round} fixes`,
         });
         console.log(`commit   ${c.sha}${
-          c.pushed === null ? "" : c.pushed ? ` → pushed to ${git.branch}` : "  (NOT pushed)"}`);
+          c.pushed === null ? "" : c.pushed ? ` → pushed to ${pushTarget.branch}` : "  (NOT pushed)"}`);
         // A run whose fixes never reached the branch cannot converge: the
         // reviewers would be signing off on code the PR does not contain.
         if (c.pushed === false) pushFailed = true;
@@ -786,7 +796,7 @@ async function publishRun(dir, target) {
  * does not rewrite what is already there. A rejected push is reported, not
  * retried harder.
  */
-async function commitFixes(worktree, round, branch) {
+async function commitFixes(worktree, round, pushTarget) {
   const status = await run("git", ["status", "--porcelain"], { cwd: worktree });
   if (!status.stdout.trim()) return null;
   await run("git", ["add", "-A"], { cwd: worktree });
@@ -794,9 +804,9 @@ async function commitFixes(worktree, round, branch) {
   const { stdout } = await run("git", ["rev-parse", "--short", "HEAD"], { cwd: worktree });
   const sha = stdout.trim();
   let pushed = false;
-  if (branch) {
+  if (pushTarget) {
     try {
-      await run("git", ["push", "origin", `HEAD:${branch}`], { cwd: worktree });
+      await run("git", ["push", pushTarget.remote, `HEAD:${pushTarget.branch}`], { cwd: worktree });
       pushed = true;
     } catch (err) {
       // Swallowing this reported a local commit as pushed, so later rounds
@@ -804,7 +814,13 @@ async function commitFixes(worktree, round, branch) {
       console.error(`push FAILED (${err.message.split("\n")[0]}) — the commit is local only`);
     }
   }
-  return { sha, pushed: branch ? pushed : null };
+  return { sha, pushed: pushTarget ? pushed : null };
+}
+
+async function cleanupResolvedCheckout() {
+  const cleanup = resolvedCheckoutCleanup;
+  resolvedCheckoutCleanup = null;
+  if (cleanup) await cleanup();
 }
 
 async function cmdWeb(argv) {
