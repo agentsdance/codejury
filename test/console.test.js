@@ -57,8 +57,8 @@ async function loadRenderer() {
     'const TZ_LABEL = "UTC";',
     'const clockFmt = new Intl.DateTimeFormat("en-GB",' +
       ' { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });',
-    ...["esc", "hash", "bytes", "clamped", "bubble", "stampFor", "turnHTML"].map(fn),
-    "export { turnHTML, CLAMP };",
+    ...["esc", "hash", "bytes", "clamped", "bubble", "stampFor", "turnHTML", "reviewedCommit", "statusLabel"].map(fn),
+    "export { turnHTML, reviewedCommit, statusLabel, CLAMP };",
   ].join("\n");
 
   return import("data:text/javascript;base64," + Buffer.from(mod).toString("base64"));
@@ -96,4 +96,27 @@ test("only a long in-progress stream remains compact", async () => {
     "codex");
   assert.ok(html.includes("one line"));
   assert.doesNotMatch(html, /class="tall"/);
+});
+
+test("completed review status is plain language and labels legacy commit ids", async () => {
+  const { reviewedCommit, statusLabel } = await loadRenderer();
+  const current = { state: "converged", stateNote: "Review complete", reviewedCommit: "abc1234" };
+  assert.equal(statusLabel(current), "Review complete");
+  assert.equal(reviewedCommit(current), "abc1234");
+
+  const legacy = { state: "converged", stateNote: "converged on DEADBEE" };
+  assert.equal(statusLabel(legacy), "Review complete");
+  assert.equal(reviewedCommit(legacy), "deadbee");
+
+  assert.equal(statusLabel({ state: "merged", stateNote: "merged · converged on deadbee" }), "Merged");
+  assert.equal(
+    statusLabel({ state: "merged", stateNote: "Merged by release manager" }),
+    "Merged by release manager",
+    "descriptive merge notes are not discarded",
+  );
+  assert.equal(
+    statusLabel({ state: "human", stateNote: "2 reviewers failed to run" }),
+    "2 reviewers failed to run",
+    "human-intervention states keep their actionable explanation",
+  );
 });
