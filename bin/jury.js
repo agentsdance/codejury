@@ -170,6 +170,31 @@ try {
   process.exit(1);
 }
 
+/** Resolve an explicit reviewer list or explain each ineligible name. */
+function selectReviewers(cfg, requested, judge = null) {
+  const eligible = reviewers(cfg).filter((a) => a.name !== judge);
+  if (!requested) return eligible;
+
+  const names = [...new Set(requested.split(",").map((s) => s.trim()).filter(Boolean))];
+  if (!names.length) throw new Error("--agents needs at least one reviewer name");
+
+  const byName = new Map(cfg.agents.map((a) => [a.name, a]));
+  const allowed = new Set(eligible.map((a) => a.name));
+  const problems = names.filter((name) => !allowed.has(name)).map((name) => {
+    const agent = byName.get(name);
+    if (name === judge) return `"${name}" is the selected judge and cannot review its own work`;
+    if (agent) return `"${name}" has role "${agent.role ?? "reviewer"}", not "reviewer"`;
+    return `"${name}" is not configured or is disabled`;
+  });
+  if (problems.length) {
+    const available = eligible.map((a) => a.name).join(", ") || "none";
+    throw new Error(
+      `requested reviewer ${problems.join("; ")}. Add or enable it with role "reviewer" in ${path.basename(cfg.configFile)}. Available enabled reviewers: ${available}`,
+    );
+  }
+  return eligible.filter((a) => names.includes(a.name));
+}
+
 async function cmdReview(argv) {
   const { values } = parseArgs({
     args: argv, allowPositionals: false,
@@ -193,12 +218,7 @@ async function cmdReview(argv) {
 
   const worktree = path.resolve(values.dir);
   const cfg = await loadConfig(worktree);
-  let pool = reviewers(cfg);
-  if (values.agents) {
-    const want = new Set(values.agents.split(",").map((s) => s.trim()));
-    pool = pool.filter((a) => want.has(a.name));
-    if (!pool.length) throw new Error(`no configured reviewer matches "${values.agents}"`);
-  }
+  const pool = selectReviewers(cfg, values.agents);
 
   const git = await describe(worktree, values.trunk);
   if (values.pr) assertPrCheckout(values.pr, git.remote, worktree);
@@ -570,11 +590,7 @@ async function cmdAgent(argv) {
   // A judge cannot independently review its own work. Other configured main
   // agents stay out of the pool rather than being silently demoted to writers
   // with a read-only prompt.
-  let pool = reviewers(cfg).filter((a) => a.name !== judge.name);
-  if (values.agents) {
-    const want = new Set(values.agents.split(",").map((s) => s.trim()));
-    pool = pool.filter((a) => want.has(a.name));
-  }
+  const pool = selectReviewers(cfg, values.agents, judge.name);
   if (!pool.length) throw new Error("no reviewers configured after excluding the judge");
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
@@ -973,11 +989,7 @@ async function cmdReply(argv) {
   const worktree = path.resolve(values.dir);
   const { sha } = await describe(worktree, "master");
 
-  let pool = reviewers(cfg).filter((a) => a.name !== judge);
-  if (values.agents) {
-    const want = new Set(values.agents.split(",").map((s) => s.trim()));
-    pool = pool.filter((a) => want.has(a.name));
-  }
+  let pool = selectReviewers(cfg, values.agents, judge);
   // Only reviewers that actually said something, and only once you have
   // answered them: a reply that says "still open" for every item is noise.
   pool = pool.filter((a) => {

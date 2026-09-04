@@ -529,5 +529,50 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
     path.resolve("bin/jury.js"), "agent", "--judge", "codex", "--judge", "claude",
   ], { cwd: repo });
   assert.match(repeated.stderr, /--judge accepts exactly one agent/);
+
+  const missing = await run(process.execPath, [
+    path.resolve("bin/jury.js"), "agent", "--dir", repo, "--trunk", "master",
+    "--rounds", "1", "--no-push", "--dry-run", "--agents", "traecli",
+  ], { cwd: repo });
+  assert.match(missing.stderr, /requested reviewer "traecli" is not configured or is disabled/);
+  assert.match(missing.stderr, /Add or enable it with role "reviewer" in jury\.config\.json/);
+  assert.match(missing.stderr, /Available enabled reviewers:/);
+  await rm(repo, { recursive: true, force: true });
+});
+
+test("an explicitly requested configured reviewer is actually launched", async () => {
+  const repo = await tmp();
+  const g = async (...a) => run("git", ["-C", repo, ...a]);
+  await g("init", "-q", "-b", "master");
+  await g("config", "user.email", "t@example.com");
+  await g("config", "user.name", "t");
+  await writeFile(path.join(repo, "a.txt"), "one\n");
+  await g("add", "-A");
+  await g("commit", "-qm", "base");
+  await g("checkout", "-q", "-b", "feature");
+  await writeFile(path.join(repo, "a.txt"), "two\n");
+  await g("commit", "-qam", "change");
+  await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
+    { name: "codex", enabled: false },
+    { name: "grok", enabled: false },
+    { name: "droid", enabled: false },
+    {
+      name: "traecli", role: "reviewer", promptDelivery: "argv", cwd: "worktree",
+      argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"], report: "whole",
+    },
+  ] }));
+
+  const result = await run(process.execPath, [
+    path.resolve("bin/jury.js"), "review-once", "--dir", repo, "--trunk", "master",
+    "--agents", "traecli",
+  ], { cwd: repo });
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /traecli\s+.*clean/);
+  assert.match(result.stdout, /REVIEW COMPLETE/);
+
+  const [slug] = await readdir(path.join(repo, "runs"));
+  const events = await readEvents(path.join(repo, "runs", slug));
+  assert.deepEqual(events.filter((e) => e.t === "agent.launch").map((e) => e.agent), ["traecli"]);
+  assert.equal(events.find((e) => e.t === "agent.report")?.verdict, "clean");
   await rm(repo, { recursive: true, force: true });
 });
