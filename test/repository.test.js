@@ -166,7 +166,12 @@ test("a merge request with no unique source branch requires --no-push", async ()
     resolvePrCheckout("https://git.example.com/acme/widgets/merge_requests/7", {
       exec, makeTemp: async () => "/tmp/jury-mr-7-test", remove: async () => {},
     }),
-    /source branch is not uniquely available.*--no-push/,
+    (err) => {
+      assert.match(err.message, /^resolved merge request !7, but its source branch/);
+      assert.match(err.message, /--no-push/);
+      assert.doesNotMatch(err.message, /could not resolve/);
+      return true;
+    },
   );
 
   const readOnly = await resolvePrCheckout(
