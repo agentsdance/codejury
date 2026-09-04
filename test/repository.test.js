@@ -9,6 +9,7 @@ import {
   assertPrCheckout,
   repositoryFromPrUrl,
   repositoryFromRemote,
+  resolvePrCheckout,
 } from "../lib/repository.js";
 
 const run = promisify(execFile);
@@ -46,7 +47,7 @@ test("a PR cannot operate on an unrelated checkout", () => {
   );
 });
 
-test("the CLI rejects a mismatched PR before the trunk push check", async () => {
+test("the CLI gives checkout guidance when it cannot resolve the PR provider", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cr-repo-binding-"));
   try {
     const g = (...args) => run("git", ["-C", dir, ...args]);
@@ -69,7 +70,8 @@ test("the CLI rejects a mismatched PR before the trunk push check", async () => 
         "--dry-run",
       ]),
       (err) => {
-        assert.match(err.stderr, /PR targets git\.example\.com\/example\/project/);
+        assert.match(err.stderr, /cannot resolve the PR head/);
+        assert.match(err.stderr, /checked-out branch with --dir/);
         assert.doesNotMatch(err.stderr, /refusing --push onto master/);
         return true;
       },
@@ -77,4 +79,46 @@ test("the CLI rejects a mismatched PR before the trunk push check", async () => 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("a GitHub PR is cloned and checked out at its exact head", async () => {
+  const calls = [];
+  let removed = null;
+  const head = "a".repeat(40);
+  const exec = async (command, args, options) => {
+    calls.push({ command, args, cwd: options?.cwd });
+    if (command === "gh" && args[0] === "pr") {
+      return { stdout: JSON.stringify({
+        title: "Fix it",
+        body: "The intent",
+        state: "OPEN",
+        baseRefName: "master",
+        headRefName: "fix/it",
+        headRefOid: head,
+        headRepository: { nameWithOwner: "acme/widgets" },
+      }) };
+    }
+    if (command === "git" && args[0] === "rev-parse") return { stdout: `${head}\n` };
+    if (command === "git" && args[0] === "remote" && args[1] === "get-url") {
+      return { stdout: "git@github.com:acme/widgets.git\n" };
+    }
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout("https://github.com/acme/widgets/pull/42", {
+    exec,
+    makeTemp: async () => "/tmp/cr-pr-42-test",
+    remove: async (dir) => { removed = dir; },
+  });
+
+  assert.equal(resolved.worktree, "/tmp/cr-pr-42-test");
+  assert.equal(resolved.branch, "fix/it");
+  assert.equal(resolved.trunk, "master");
+  assert.deepEqual(resolved.pushTarget, { remote: "origin", branch: "fix/it" });
+  assert.ok(calls.some((c) => c.command === "gh" && c.args.join(" ").includes("repo clone github.com/acme/widgets")));
+  assert.ok(calls.some((c) => c.command === "git" && c.args.includes("refs/pull/42/head")));
+  assert.ok(calls.some((c) => c.command === "git" && c.args.includes("FETCH_HEAD")));
+
+  await resolved.cleanup();
+  assert.equal(removed, "/tmp/cr-pr-42-test");
 });
