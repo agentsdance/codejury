@@ -47,7 +47,7 @@ test("a PR cannot operate on an unrelated checkout", () => {
   );
 });
 
-test("the CLI gives checkout guidance when it cannot resolve the PR provider", async () => {
+test("the CLI gives checkout guidance when a merge request clone fails", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "jury-repo-binding-"));
   try {
     const g = (...args) => run("git", ["-C", dir, ...args]);
@@ -70,8 +70,8 @@ test("the CLI gives checkout guidance when it cannot resolve the PR provider", a
         "--dry-run",
       ]),
       (err) => {
-        assert.match(err.stderr, /cannot resolve the PR head/);
-        assert.match(err.stderr, /checked-out branch with --dir/);
+        assert.match(err.stderr, /could not resolve .* merge request !195/);
+        assert.match(err.stderr, /check Git authentication.*source branch and pass --dir/);
         assert.doesNotMatch(err.stderr, /refusing --push onto master/);
         return true;
       },
@@ -121,4 +121,61 @@ test("a GitHub PR is cloned and checked out at its exact head", async () => {
 
   await resolved.cleanup();
   assert.equal(removed, "/tmp/jury-pr-42-test");
+});
+
+test("a GitLab-style merge request is cloned and checked out from its standard ref", async () => {
+  const calls = [];
+  let removed = null;
+  const head = "b".repeat(40);
+  const exec = async (command, args, options) => {
+    calls.push({ command, args, cwd: options?.cwd });
+    if (command === "git" && args[0] === "rev-parse") return { stdout: `${head}\n` };
+    if (command === "git" && args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (command === "git" && args[0] === "ls-remote") {
+      return { stdout: `${head}\trefs/heads/fix/widget\n` };
+    }
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/platform/widgets/-/merge_requests/195",
+    { exec, makeTemp: async () => "/tmp/jury-mr-195-test", remove: async (dir) => { removed = dir; } },
+  );
+
+  assert.equal(resolved.worktree, "/tmp/jury-mr-195-test");
+  assert.equal(resolved.branch, "fix/widget");
+  assert.equal(resolved.trunk, "main");
+  assert.equal(resolved.sha, head);
+  assert.deepEqual(resolved.pushTarget, { remote: "origin", branch: "fix/widget" });
+  assert.ok(calls.some((c) => c.args.includes("https://git.example.com/acme/platform/widgets.git")));
+  assert.ok(calls.some((c) => c.args.includes("refs/merge-requests/195/head")));
+
+  await resolved.cleanup();
+  assert.equal(removed, "/tmp/jury-mr-195-test");
+});
+
+test("a merge request with no unique source branch requires --no-push", async () => {
+  const head = "c".repeat(40);
+  const exec = async (command, args) => {
+    if (command === "git" && args[0] === "rev-parse") return { stdout: `${head}\n` };
+    if (command === "git" && args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (command === "git" && args[0] === "ls-remote") return { stdout: "" };
+    return { stdout: "" };
+  };
+  await assert.rejects(
+    resolvePrCheckout("https://git.example.com/acme/widgets/merge_requests/7", {
+      exec, makeTemp: async () => "/tmp/jury-mr-7-test", remove: async () => {},
+    }),
+    /source branch is not uniquely available.*--no-push/,
+  );
+
+  const readOnly = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/merge_requests/7",
+    {
+      allowPush: false, exec, makeTemp: async () => "/tmp/jury-mr-7-read-only-test",
+      remove: async () => {},
+    },
+  );
+  assert.equal(readOnly.branch, "merge-request/7");
+  assert.equal(readOnly.pushTarget, null);
 });
