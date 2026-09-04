@@ -19,6 +19,7 @@ import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, r
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
+import { assertPrCheckout } from "../lib/repository.js";
 import * as st from "../lib/style.js";
 
 const run = promisify(execFile);
@@ -185,7 +186,8 @@ async function cmdReview(argv) {
     throw new Error("--max-rounds must be a positive integer");
   }
 
-  const cfg = await loadConfig();
+  const worktree = path.resolve(values.dir);
+  const cfg = await loadConfig(worktree);
   let pool = reviewers(cfg);
   if (values.agents) {
     const want = new Set(values.agents.split(",").map((s) => s.trim()));
@@ -193,8 +195,8 @@ async function cmdReview(argv) {
     if (!pool.length) throw new Error(`no configured reviewer matches "${values.agents}"`);
   }
 
-  const worktree = path.resolve(values.dir);
   const git = await describe(worktree, values.trunk);
+  if (values.pr) assertPrCheckout(values.pr, git.remote, worktree);
   const target = {
     repo: values.pr ? repoFromUrl(values.pr) : git.repo,
     id: values.pr ? idFromUrl(values.pr) : git.branch,
@@ -475,7 +477,8 @@ async function cmdAgent(argv) {
     throw new Error("--rounds must be a positive integer");
   }
 
-  const cfg = await loadConfig();
+  const worktree = path.resolve(values.dir);
+  const cfg = await loadConfig(worktree);
   const main = mainAgent(cfg);
   if (!main) {
     // A run with no main agent has no one to triage or fix — every finding
@@ -491,7 +494,12 @@ async function cmdAgent(argv) {
   }
   if (!pool.length) throw new Error("no reviewers configured — nothing would review anything");
 
-  const worktree = path.resolve(values.dir);
+  // The URL and checkout must describe the same repository. Without this, a
+  // command launched from an unrelated directory reviews its HEAD and can push
+  // fixes to its origin while the run is labelled as somebody else's PR.
+  const git = await describe(worktree);
+  if (values.pr) assertPrCheckout(values.pr, git.remote, worktree);
+
   // Both asked for rather than assumed: the trunk from the remote's own HEAD,
   // the title and intent from the PR itself. Every one of these was a flag you
   // had to get right, and getting the trunk wrong is silent — the diff is taken
@@ -500,7 +508,6 @@ async function cmdAgent(argv) {
   const trunk = values.trunk ?? (await defaultTrunk(worktree));
   values.trunk = trunk;
   const pr = await prDetails(values.pr, worktree);
-  const git = await describe(worktree, trunk);
 
   // The next round has to review NEW code or it is not a loop, so pushing is
   // the default. It still refuses trunk outright: a loop that can push to
@@ -1105,11 +1112,12 @@ async function describe(dir, trunk) {
     g("log", "-1", "--format=%s").catch(() => ""),
   ]);
   let repo = path.basename(dir);
+  let remote = "";
   try {
-    const remote = await g("remote", "get-url", "origin");
+    remote = await g("remote", "get-url", "origin");
     repo = remote.replace(/\.git$/, "").split(/[:/]/).slice(-2).join("/");
   } catch { /* no remote is fine */ }
-  return { sha, branch, subject, repo, trunk };
+  return { sha, branch, subject, repo, remote, trunk };
 }
 
 // Declarations, not const arrows: the dispatch switch above runs at module
