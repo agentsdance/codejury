@@ -20,6 +20,7 @@ import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, resolvePrCheckout } from "../lib/repository.js";
+import { resolveJuryDirectory } from "../lib/directories.js";
 import * as st from "../lib/style.js";
 
 const run = promisify(execFile);
@@ -50,6 +51,7 @@ const USAGE = `jury — run a pull request past several AI reviewers until they 
 
 Common flags
 
+  --dir <path>             working/state root      (default: Git cwd or ~/.jury)
   --rounds <n>             stop after n rounds            (default 10)
   --agents codex,grok      only these reviewers           (default: all installed)
   --judge codex            one agent that triages and fixes       (default: claude)
@@ -81,7 +83,7 @@ review                           (drives itself; no operator between rounds)
   jury https://github.com/owner/repo/pull/1
   jury --rounds 3                  the current branch, no PR
 
-  --dir <path>       repo/worktree                            (default .)
+  --dir <path>       repo/worktree      (default: cwd if Git, otherwise ~/.jury)
   --pr <url>         same as the positional argument
   --trunk <branch>   diff base branch          (default: the remote's own HEAD)
   --title <text>     what the change does         (default: read from the PR)
@@ -96,7 +98,7 @@ review                           (drives itself; no operator between rounds)
   --dry-run          exercise the pipeline, spawn nothing
 
 review-once flags
-  --dir <path>       repo/worktree the reviewers read        (default .)
+  --dir <path>       repo/worktree       (default: cwd if Git, otherwise ~/.jury)
   --pr <url>         pull request URL, recorded on the run
   --title <text>     what the change does, shown in the console
   --summary <text>   a few lines of intent, passed to reviewers
@@ -107,14 +109,19 @@ review-once flags
   --dry-run          do not spawn anything; exercise the pipeline
 
 web flags
+  --dir <path>       run-state root       (default: cwd if Git, otherwise ~/.jury)
   --port <n>         default 3080, walks forward if busy
   --open             open a browser
 
-finding commands                                (--run <slug> picks the run)
+finding commands                     (--dir picks state root; --run picks run)
   jury finding list
   jury finding reproduce <id> --evidence <text> [--test <text>]
   jury finding resolve <id> --verdict <${VERDICTS.join("|")}> [--reason <text>] [--test <text>]
   jury finding settled                          print the regenerated settled list
+
+state commands
+  jury runs [--dir <path>]
+  jury reply [--dir <path>] [--run <slug>]
 `;
 
 let [, , cmd, ...rest] = process.argv;
@@ -149,7 +156,7 @@ try {
     case "web": await cmdWeb(rest); break;
     case "finding": case "findings": await cmdFinding(rest); break;
     case "reply": await cmdReply(rest); break;
-    case "runs": await cmdRuns(); break;
+    case "runs": await cmdRuns(rest); break;
     case "agents": await cmdAgents(); break;
     case "version": case "-v": case "--version": console.log(`jury ${VERSION}`); break;
     case "help": case "-h": case "--help": case undefined:
@@ -195,11 +202,24 @@ function selectReviewers(cfg, requested, judge = null) {
   return eligible.filter((a) => names.includes(a.name));
 }
 
+async function commandDirectory(value) {
+  return resolveJuryDirectory(value, {
+    isUsable: async (dir) => {
+      try {
+        await run("git", ["-C", dir, "rev-parse", "--is-inside-work-tree"]);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+}
+
 async function cmdReview(argv) {
   const { values } = parseArgs({
     args: argv, allowPositionals: false,
     options: {
-      dir: { type: "string", default: "." },
+      dir: { type: "string" },
       pr: { type: "string" },
       title: { type: "string" },
       summary: { type: "string", default: "" },
@@ -216,7 +236,7 @@ async function cmdReview(argv) {
     throw new Error("--max-rounds must be a positive integer");
   }
 
-  const worktree = path.resolve(values.dir);
+  const worktree = await commandDirectory(values.dir);
   const cfg = await loadConfig(worktree);
   const pool = selectReviewers(cfg, values.agents);
 
@@ -236,7 +256,7 @@ async function cmdReview(argv) {
     stateNote: "",
   };
 
-  const dir = path.join(runsDir(), slugFor(target));
+  const dir = path.join(runsDir(worktree), slugFor(target));
   const prior = await readEvents(dir);
   const firstRound = values.round
     ? Number(values.round)
@@ -245,7 +265,7 @@ async function cmdReview(argv) {
   console.log(`target   ${target.repo} ${target.id}`);
   console.log(`worktree ${worktree} @ ${git.sha}`);
   console.log(`agents   ${pool.map((a) => a.name).join(", ")}${values["dry-run"] ? "  (dry run)" : ""}`);
-  if (maxRounds > 1) console.log(`rounds   ${firstRound}..${firstRound + maxRounds - 1} (until convergence)`);
+  if (maxRounds > 1) console.log(`rounds   ${firstRound}..${firstRound + maxRounds - 1} (until every reviewer approves)`);
   console.log("");
 
   for (let i = 0; i < maxRounds; i++) {
@@ -479,7 +499,7 @@ async function cmdAgent(argv) {
   const { values, positionals } = parseArgs({
     args: argv, allowPositionals: true,
     options: {
-      dir: { type: "string", default: "." },
+      dir: { type: "string" },
       pr: { type: "string" },
       title: { type: "string" },
       summary: { type: "string" },
@@ -513,7 +533,7 @@ async function cmdAgent(argv) {
   }
 
   values.push = values.push && !values["no-push"];
-  const requestedWorktree = path.resolve(values.dir);
+  const requestedWorktree = await commandDirectory(values.dir);
   const resolved = values.pr
     ? await resolvePrCheckout(values.pr, { allowPush: values.push })
     : null;
@@ -567,12 +587,15 @@ async function cmdAgent(argv) {
   // into rounds 1-5 of a single run, and a killed run's open rounds interleaved
   // with the next one's.
   target.attempt = values.resume ? "" : attemptStamp();
+  const stateBase = runsDir(requestedWorktree);
   const dir = values.resume
-    ? path.join(runsDir(), path.basename(values.resume))
-    : path.join(runsDir(), slugFor(target));
+    ? path.join(stateBase, path.basename(values.resume))
+    : path.join(stateBase, slugFor(target));
   const prior = await readEvents(dir);
   if (values.resume && !prior.length) {
-    throw new Error(`no run at ${path.relative(process.cwd(), dir)} — check \`jury runs\``);
+    throw new Error(
+      `no run at ${dir} — pass --dir <root-that-contains-runs>, then check \`jury runs --dir <root>\``,
+    );
   }
   const priorJudge = [...prior].reverse()
     .find((e) => e.t === "target" && e.target?.judge)?.target.judge;
@@ -872,11 +895,16 @@ async function cleanupResolvedCheckout() {
 async function cmdWeb(argv) {
   const { values } = parseArgs({
     args: argv, allowPositionals: false,
-    options: { port: { type: "string", default: "3080" }, open: { type: "boolean", default: false } },
+    options: {
+      dir: { type: "string" },
+      port: { type: "string", default: "3080" },
+      open: { type: "boolean", default: false },
+    },
   });
-  const { url, port } = await serve({ port: Number(values.port) });
+  const root = await commandDirectory(values.dir);
+  const { url, port } = await serve({ port: Number(values.port), cwd: root });
   console.log(`console: ${url}`);
-  console.log(`runs:    ${path.relative(process.cwd(), runsDir()) || "runs"}/`);
+  console.log(`runs:    ${runsDir(root)}/`);
   if (values.open) openBrowser(url);
   process.on("SIGINT", () => { console.log("\nstopped"); process.exit(0); });
   return new Promise(() => {}); // serve until interrupted
@@ -900,6 +928,7 @@ async function cmdFinding(argv) {
     args: rest, allowPositionals: true,
     options: {
       run: { type: "string" },
+      dir: { type: "string" },
       evidence: { type: "string" },
       test: { type: "string" },
       verdict: { type: "string" },
@@ -907,7 +936,8 @@ async function cmdFinding(argv) {
     },
   });
 
-  const dir = await resolveRun(values.run);
+  const root = await commandDirectory(values.dir);
+  const dir = await resolveRun(values.run, root);
   const events = await readEvents(dir);
   const judge = currentJudge(events);
   const findings = await findingsIn(dir);
@@ -975,18 +1005,18 @@ async function cmdReply(argv) {
     args: argv, allowPositionals: false,
     options: {
       run: { type: "string" },
-      dir: { type: "string", default: "." },
+      dir: { type: "string" },
       agents: { type: "string" },
       "dry-run": { type: "boolean", default: false },
     },
   });
 
-  const cfg = await loadConfig();
-  const dir = await resolveRun(values.run);
+  const worktree = await commandDirectory(values.dir);
+  const cfg = await loadConfig(worktree);
+  const dir = await resolveRun(values.run, worktree);
   const events = await readEvents(dir);
   const judge = currentJudge(events);
   const findings = await findingsIn(dir);
-  const worktree = path.resolve(values.dir);
   const { sha } = await describe(worktree, "master");
 
   let pool = selectReviewers(cfg, values.agents, judge);
@@ -1041,8 +1071,8 @@ async function cmdReply(argv) {
 }
 
 /** Which run a finding command applies to; unambiguous by default. */
-async function resolveRun(slug) {
-  const base = runsDir();
+async function resolveRun(slug, root = process.cwd()) {
+  const base = runsDir(root);
   if (slug) return path.join(base, slug);
   const { readdir } = await import("node:fs/promises");
   let dirs = [];
@@ -1065,9 +1095,14 @@ async function republish(dir) {
  * optional, so there has to be a way to see the slugs that does not require
  * triggering the ambiguity error to find them out.
  */
-async function cmdRuns() {
+async function cmdRuns(argv) {
+  const { values } = parseArgs({
+    args: argv, allowPositionals: false,
+    options: { dir: { type: "string" } },
+  });
+  const root = await commandDirectory(values.dir);
   const { listRuns } = await import("../lib/store.js");
-  const { runs, skipped } = await listRuns(runsDir());
+  const { runs, skipped } = await listRuns(runsDir(root));
   if (!runs.length) {
     // Report the unreadable ones even when nothing succeeded: "no runs yet"
     // over a directory full of broken runs is a lie that reads as "nothing was
