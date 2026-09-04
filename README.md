@@ -76,12 +76,21 @@ standalone, against runs that already exist.
 
 ## Who writes, and who only reads
 
-Exactly one agent has role `main` — **Claude Code**, the session driving the loop. It owns the working
-tree and the commit, triages every finding, and is the only writer. Its registry entry carries an
-empty `argv` because it is never spawned; `jury agents` shows it as in-process:
+Exactly one agent has role `main`; it is the default **judge**. The built-in default is Claude Code.
+The judge owns the working tree and commit, triages every finding, and is the only writer. Choose a
+different enabled agent for one run with `--judge`; without that flag Claude remains the default:
+
+```bash
+jury https://github.com/owner/repo/pull/1                 # Claude judges
+jury --judge codex https://github.com/owner/repo/pull/1   # Codex judges
+```
+
+`--judge` accepts exactly one agent name. The selected judge is removed from that run's reviewer
+pool, so it never reviews its own work.
+`jury agents` shows the configured roles:
 
 ```
-ok      claude   main     (in-process)
+ok      claude   main     /usr/local/bin/claude
 ok      codex    reviewer /usr/local/bin/codex
 ok      agy      reviewer /usr/local/bin/agy
 ```
@@ -89,7 +98,7 @@ ok      agy      reviewer /usr/local/bin/agy
 Reviewers only read and report. A registry with two `main` entries is refused outright — two agents
 both believing they own the commit corrupts a run rather than merely failing it.
 
-The main agent then holds **one conversation per reviewer**, concurrently, each about that reviewer's
+The judge then holds **one conversation per reviewer**, concurrently, each about that reviewer's
 own findings and nothing else:
 
 ```

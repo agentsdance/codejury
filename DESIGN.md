@@ -136,7 +136,8 @@ Still the operator's job, on purpose:
 reproduces, fixing what does, and pushing so the next round has new code to read. When nobody sits
 there, `--max-rounds 10` reviews the same commit ten times and calls it a loop.
 
-`jury agent` fills that seat. The main agent triages each finding, fixes what reproduces, commits,
+`jury agent` fills that seat. The judge (Claude by default, or any enabled agent selected with
+`--judge`) triages each finding, fixes what reproduces, commits,
 replies to every reviewer about its own findings, and goes again — up to `--rounds` (default 10).
 
 Three things make it terminate rather than argue forever:
@@ -157,7 +158,7 @@ master is one bad triage away from a bad afternoon.
 
 ## Watching it happen
 
-The conversation is the product, so it is rendered as one: **claude on the left, the reviewer on the
+The conversation is the product, so it is rendered as one: **the judge on the left, the reviewer on the
 right**, one column per reviewer. codex and agy are separate threads and are never merged — two
 reviewers that read each other stop being independent, which is the only reason to run more than one.
 
