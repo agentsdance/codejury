@@ -68,7 +68,7 @@ Other commands
 
 const USAGE_FULL = `jury — multi-agent code review
 
-  jury <pr-url>             review a PR: rounds until convergence, one conversation per reviewer
+  jury <pr-url>             review a PR until every reviewer approves, one conversation per reviewer
   jury review-once [flags]  a single round, no triage or reply
   jury web [flags]          serve the console (default http://127.0.0.1:3080)
   jury finding <cmd>        list | reproduce | resolve | settled — appends events, enforces the gate
@@ -103,7 +103,7 @@ review-once flags
   --trunk <branch>   diff base branch                        (default master)
   --round <n>        round number                            (default: next)
   --agents a,b       only these reviewers                    (default: all enabled)
-  --max-rounds <n>   keep going until convergence, at most n (default 1)
+  --max-rounds <n>   keep going until every reviewer approves, at most n (default 1)
   --dry-run          do not spawn anything; exercise the pipeline
 
 web flags
@@ -245,7 +245,7 @@ async function cmdReview(argv) {
 }
 
 /** One round: prompt, launch every reviewer, record what they said. */
-async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }) {
+async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, announceCompletion = true }) {
   const git = { sha };
   console.log(st.info(st.bold(`round ${round}`)));
 
@@ -386,13 +386,17 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
   // The state the run was launched with says "review", which stops being true
   // the moment the round ends. Restate it, or the console keeps asserting a
   // review is running after it converged.
-  const state = errored.length ? "human" : clean ? "converged" : "review";
+  const state = errored.length ? "human" : clean && announceCompletion ? "converged" : "review";
   const stateNote = errored.length
     ? `${errored.length} reviewer(s) failed to run`
     : clean
-      ? `converged on ${git.sha}`
+      ? announceCompletion ? "Review complete" : `round ${round} clean — checking outstanding findings`
       : `round ${round} — ${raised || "unparsed"} finding(s) to triage`;
-  await appendEvent(dir, { t: "target", target: { ...target, state, stateNote } });
+  const reviewedCommit = clean && !errored.length && announceCompletion ? git.sha : "";
+  await appendEvent(dir, {
+    t: "target",
+    target: { ...target, state, stateNote, ...(reviewedCommit ? { reviewedCommit } : {}) },
+  });
   await appendEvent(dir, { t: "round.end", n: round });
   await publish();
 
@@ -412,8 +416,10 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
     console.log(st.bad(`${st.count(errored.length, "reviewer")} failed to run — see the reports below.`));
   }
   console.log(clean && !errored.length
-    ? st.ok(`CONVERGED — every reviewer emitted the stop token on ${git.sha}.`)
-    : st.warn(`NOT converged. Triage, fix what reproduces, push, then round ${round + 1}.`));
+    ? announceCompletion
+      ? `${st.ok("REVIEW COMPLETE — every reviewer approved.")}\n${st.muted(`Reviewed commit ${git.sha}.`)}`
+      : `${st.ok("ROUND CLEAN — every reviewer approved this commit.")}\n${st.muted(`Reviewed commit ${git.sha}.`)}`
+    : st.warn(`REVIEW INCOMPLETE — triage findings, fix what reproduces, push, then run round ${round + 1}.`));
   console.log(st.muted(`recorded: ${path.relative(process.cwd(), dir)}`));
 
   // Every reviewer's report, including the clean ones: a sign-off still says
@@ -607,6 +613,9 @@ async function cmdAgent(argv) {
     const head = await describe(worktree, values.trunk);
     const converged = await runRound({
       dir, round, pool, cfg, target, worktree, values, sha: head.sha,
+      // A clean round is not necessarily a complete review: an earlier finding
+      // can still be open. This loop announces completion only after checking.
+      announceCompletion: false,
     });
     if (converged) {
       // Clean is not enough on its own. A finding left open by the previous
@@ -618,7 +627,11 @@ async function cmdAgent(argv) {
       // convergence.
       const open = await openFindings(dir);
       if (!open.length) {
-        console.log(st.ok(`\nCONVERGED after ${st.count(round - first + 1, "round")}.`));
+        console.log(st.ok(`\nREVIEW COMPLETE after ${st.count(round - first + 1, "round")}.`));
+        console.log(st.muted(`Reviewed commit ${head.sha}.`));
+        await publishRun(dir, {
+          ...target, state: "converged", stateNote: "Review complete", reviewedCommit: head.sha,
+        });
         return;
       }
       console.log(st.warn(`\nevery reviewer is clean, but ${st.count(open.length, "finding")} from earlier ${open.length === 1 ? "is" : "are"} still open.`));
@@ -755,17 +768,18 @@ async function cmdAgent(argv) {
     const stillOpen = [...settled.values()].filter((f) => f.status === "open");
     const broke = answers.filter((a) => a.failed);
     if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed) {
-      console.log(st.ok(st.bold(`\nCONVERGED — every reviewer signed off after round ${round}.`)));
+      console.log(st.ok(st.bold(`\nREVIEW COMPLETE — every reviewer approved after round ${round}.`)));
+      console.log(st.muted(`Reviewed commit ${head.sha}.`));
       await publishRun(dir, {
-        ...target, state: "converged", stateNote: `converged after round ${round}`,
+        ...target, state: "converged", stateNote: "Review complete", reviewedCommit: head.sha,
       });
       return;
     }
     if (stillOpen.length) {
-      console.log(st.warn(`\n${st.count(stillOpen.length, "finding")} still open — not convergence.`));
+      console.log(st.warn(`\n${st.count(stillOpen.length, "finding")} still open — review incomplete.`));
     }
     if (broke.length) {
-      console.log(st.bad(`${broke.map((a) => a.agent).join(", ")} could not run — this run cannot converge.`));
+      console.log(st.bad(`${broke.map((a) => a.agent).join(", ")} could not run — this review cannot complete.`));
     }
     if (pushFailed) {
       console.log(st.bad("a push failed — the reviewers are reading code the PR does not have."));
