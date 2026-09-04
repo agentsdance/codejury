@@ -1,6 +1,6 @@
 {
   "name": "@agentsdance/cr",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Run a pull request past several independent AI reviewers and watch them converge.",
   "keywords": [
     "code-review",
