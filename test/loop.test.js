@@ -474,10 +474,17 @@ test("a clean round does not converge while an earlier finding is still open", a
 
   // Round 2's reviewer is clean. Exiting there would announce convergence with
   // the round-1 finding untouched.
-  assert.doesNotMatch(r.stdout, /CONVERGED after 1 round\(s\)/,
+  assert.doesNotMatch(r.stdout, /REVIEW COMPLETE/,
     "a clean round must not converge past a finding nobody answered");
+  assert.match(r.stdout, /ROUND CLEAN/, "the clean round itself is still reported accurately");
   assert.match(r.stdout, /still open/,
     "the loop must say why it is not stopping");
+  const intermediateTarget = (await readEvents(runDir))
+    .filter((e) => e.t === "target" && /checking outstanding/.test(e.target?.stateNote ?? ""))
+    .at(-1)?.target;
+  assert.ok(intermediateTarget, "the clean intermediate round must be recorded");
+  assert.equal(Object.hasOwn(intermediateTarget, "reviewedCommit"), false,
+    "an intermediate round must not erase or invent a completed commit");
   // And it must actually deal with it rather than merely refusing to stop.
   const f = await findingsIn(runDir);
   assert.notEqual(f.get("1-codex-reply-1").status, "open",
@@ -506,10 +513,16 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /judge\s+codex/);
   assert.match(result.stdout, /agents\s+droid/);
+  assert.match(result.stdout, /REVIEW COMPLETE/);
+  assert.match(result.stdout, /Reviewed commit [0-9a-f]+\./);
+  assert.doesNotMatch(result.stdout, /\bconverged\b/i);
 
   const [slug] = await readdir(path.join(repo, "runs"));
   const events = await readEvents(path.join(repo, "runs", slug));
   assert.equal(currentJudge(events), "codex");
+  const target = events.filter((e) => e.t === "target").at(-1).target;
+  assert.equal(target.stateNote, "Review complete");
+  assert.match(target.reviewedCommit, /^[0-9a-f]+$/);
   assert.deepEqual(events.filter((e) => e.t === "agent.launch").map((e) => e.agent), ["droid"]);
 
   const repeated = await run(process.execPath, [

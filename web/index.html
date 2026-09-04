@@ -1,5 +1,5 @@
 <!doctype html>
-<title>Code Jury — Convergence Console</title>
+<title>Code Jury — Review Console</title>
 <style>
   :root {
     --ground:#F4F6F8; --surface:#FFFFFF; --surface-alt:#EDF0F4;
@@ -521,7 +521,7 @@ let RUN = {
     title: "Grow the CreateSandbox retry wait on repeated failures",
     branch: "fix/sandbox-manager-create-backoff", trunk: "master",
     judge: "claude",
-    diffstat: "2 files · +418 −13", state: "merged", stateNote: "merged · converged on ae473ab",
+    diffstat: "2 files · +418 −13", state: "merged", stateNote: "Merged", reviewedCommit: "ae473ab",
     summary: "Two reviewers — codex and droid — read each pushed commit independently. The main agent triages what they find, fixes what survives verification, answers every finding including the ones it rejects, and pushes again. Three rounds until both reported nothing new."
   },
   totalMin: 100,
@@ -593,7 +593,7 @@ let RUN = {
         { who:"codex", ts:"round 1 · T+51m", body:"Accepted. The producer reservation code is byte-for-byte outside this commit's diff, so the issue is pre-existing. The new backoff does not materially widen the concurrent-producer window; cancellation-aware worker exit arguably reduces old/new manager overlap. I agree it belongs in a separate PR." } ] }
   ],
   ship: [
-    { n:"3",  k:"rounds",       s:"to convergence" },
+    { n:"3",  k:"rounds",       s:"until complete" },
     { n:"5",  k:"exchanges",    s:"3 fixed · 1 deferred · 1 rejected" },
     { n:"11", k:"turns",        s:"every finding answered" },
     { n:"0",  k:"prod bugs",    s:"found in these 3 rounds" },
@@ -844,9 +844,11 @@ function renderHeader(){
   const branch = t.branch ? `<span>${esc(t.branch)} → ${esc(t.trunk ?? "master")}</span>` : "";
   const stat = t.diffstat ? `<span>${esc(t.diffstat)}</span>` : "";
   const cls = BADGE[t.state] ?? "badge-mute";
+  const commit = reviewedCommit(t);
   const badge = t.state
-    ? `<span class="${cls}"><span class="d"></span>${esc(t.stateNote || t.state)}</span>` : "";
-  $("t-meta").innerHTML = [link, branch, stat, badge].filter(Boolean).join("");
+    ? `<span class="${cls}"><span class="d"></span>${esc(statusLabel(t))}</span>` : "";
+  const reviewed = commit ? `<span>Reviewed commit <code>${esc(commit)}</code></span>` : "";
+  $("t-meta").innerHTML = [link, branch, stat, badge, reviewed].filter(Boolean).join("");
 
   // Only worth showing when there is something to switch between.
   //
@@ -933,12 +935,23 @@ function runSummary(r) {
   const t = r.target ?? {};
   if (isLive(r) && t.stateNote) return t.stateNote;
   const n = (r.exchanges ?? []).length;
-  if (t.state === "converged") return "converged";
+  if (t.state === "converged") return "Review complete";
   const found = n ? `${n} finding${n === 1 ? "" : "s"}` : "";
   // A stale "review" is a run that stopped without finishing. Saying "review"
   // would repeat the claim that misled the grouping in the first place.
   if (t.state === "review") return found ? `${found} · stopped` : "stopped";
   return found || t.stateNote || t.state || "";
+}
+
+function reviewedCommit(t) {
+  if (t?.reviewedCommit) return t.reviewedCommit;
+  return (t?.stateNote?.match(/\bconverged on ([0-9a-f]{7,40})\b/i)?.[1] ?? "").toLowerCase();
+}
+
+function statusLabel(t) {
+  if (t?.state === "converged") return "Review complete";
+  if (t?.state === "merged" && /converged/i.test(t.stateNote ?? "")) return "Merged";
+  return t?.stateNote || t?.state || "";
 }
 
 function drawSwitcher() {
