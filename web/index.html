@@ -237,7 +237,7 @@
   .io { background:var(--t-bg); border:1px solid var(--t-line); border-radius:6px;
         overflow:hidden; box-shadow:var(--shadow); font-family:var(--mono); }
   .io-body { padding:13px 16px 18px; font-size:12.6px; line-height:1.6; color:var(--t-fg);
-             max-height:640px; overflow:auto; }
+             overflow-x:auto; }
 
   /* One column per reviewer. They are side by side to make the independence
      legible at a glance; below the breakpoint they stack, which is the same
@@ -258,7 +258,6 @@
   .convo-switch .pr-chip[aria-pressed="true"]:hover { color:#fff; }
   .convo-switch .pr-chip[aria-pressed="false"] { opacity:.7; }
   .convo-note { margin:0 0 10px; font-size:12.5px; color:var(--muted); }
-  .convo .io-body { max-height:none; }
   /* A long unbroken report must scroll inside its own column rather than
      widening the grid and pushing the other conversation off-screen. */
   .convo .stream { white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -362,12 +361,12 @@
   .convo > header .d { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; }
   .convo > header .d[data-live="1"] { background:var(--warn); animation:blip 1.4s ease-in-out infinite; }
   @keyframes blip { 0%,100%{opacity:1} 50%{opacity:.25} }
-  /* The thread is what this page exists to show, so it gets real height: tall
-     enough to read in, with a floor so a short conversation still reads as the
-     main surface rather than a strip under the timeline. */
+  /* Completed threads grow with their content. The page owns vertical
+     scrolling; neither the thread nor an individual message hides findings in
+     a nested scroll region. */
   .msgs { padding:14px 16px; display:flex; flex-direction:column; gap:10px;
-    overflow-y:auto; max-height:82vh; min-height:min(34em, 58vh); }
-  .convo-grid[data-stack="1"] .msgs { max-height:56vh; min-height:0; }
+    min-height:min(34em, 58vh); }
+  .convo-grid[data-stack="1"] .msgs { min-height:0; }
   /* Wider than before: bubbles now carry the reviewer's report in full, and a
      narrow column turns a report into a ribbon. */
   .msg { max-width:min(88%, 940px); display:flex; flex-direction:column; gap:4px; min-width:0; }
@@ -437,9 +436,8 @@
   .bub[data-k="streaming"]::after {
     content:"▍"; animation:blip 1s steps(2) infinite; color:var(--accent);
   }
-  /* A long message keeps all of its text and gives up height instead. The
-     inset shadows are the affordance: they say "there is more above/below"
-     without a control to click. */
+  /* Only a live transcript is compact. Once the report completes, it is
+     rendered directly in the conversation at full height. */
   .bub .tall { max-height:26em; overflow-y:auto; overscroll-behavior:contain;
     scrollbar-width:thin; border-radius:3px;
     background:
@@ -1157,22 +1155,12 @@ const VERDICT_TEXT = {
   superseded: "Superseded",
 };
 
-// Long reports collapse. A twenty-minute reviewer turn can be thousands of
-// lines, and an un-collapsed one buries every exchange after it.
+// A live transcript can be thousands of lines before it becomes a completed
+// report. Keep only that in-progress state compact; completed messages expand.
 const CLAMP = 700;
-/* The collapsing half of a bubble, on its own so that bubbles which lead with a
-   header — a verdict, a named claim — can clamp their body without clamping the
-   header along with it. */
 /**
- * Every message in full, always. Nothing is truncated and nothing hides behind
- * a button: reading a review should not mean clicking through it.
- *
- * The reason a clamp existed is still real — evidence arrives verbatim from
- * `jury finding reproduce --evidence` and is routinely thousands of lines, and
- * one such turn inlined at full height buries every turn after it. So a long
- * message scrolls WITHIN ITS OWN BOX instead of being cut: the whole text is in
- * the DOM, selectable and searchable with the browser's own find, while the
- * thread below it stays reachable. Bounded height, not bounded content.
+ * Compact an in-progress transcript without truncating its DOM content.
+ * Completed reports bypass this helper and expand to their full height.
  */
 function clamped(text) {
   const t = text ?? "";
@@ -1181,7 +1169,7 @@ function clamped(text) {
     aria-label="long message, ${bytes(t.length)}, scrollable">${esc(t)}</div>`;
 }
 function bubble(text, k, attrs = "") {
-  return `<div class="bub" data-k="${k}" ${attrs}>${clamped(text)}</div>`;
+  return `<div class="bub" data-k="${k}" ${attrs}>${esc(text ?? "")}</div>`;
 }
 /** m:ss, or h:mm:ss once a reviewer has been going that long. */
 function hms(sec) {
@@ -1242,14 +1230,12 @@ function turnHTML(t, agent) {
   switch (t.kind) {
     case "finding":
       body = `<div class="bub" data-k="finding"><span class="hd">${esc(t.claim ?? "")}</span
-        >${t.loc ? `<span class="loc">${esc(t.loc)}</span>\n` : ""}${esc((t.body ?? "").slice(0, CLAMP))}</div>`;
+        >${t.loc ? `<span class="loc">${esc(t.loc)}</span>\n` : ""}${esc(t.body ?? "")}</div>`;
       break;
     case "reproduced":
-      // Evidence is whatever the reviewer passed to `finding reproduce
-      // --evidence`, which is routinely a wall of captured command output. It
-      // collapses, or one reproduction buries every turn below it.
+      // Evidence is shown inline in full once reproduction has completed.
       body = `<div class="bub" data-k="reproduced"
-        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}Reproduced. ${clamped(t.text ?? "")}</div>`;
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}Reproduced. ${esc(t.text ?? "")}</div>`;
       break;
     case "verdict":
       // The claim is named here because the findings are no longer bubbles of

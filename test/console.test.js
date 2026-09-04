@@ -1,9 +1,7 @@
 // Rendering a turn in the console. Run with `node --test`.
 //
-// The property: no single turn can be long enough to bury the ones after it.
-// A reviewer's evidence arrives verbatim from `jury finding reproduce
-// --evidence` and is routinely a wall of captured command output, so every
-// bubble that carries reviewer-supplied prose has to collapse past CLAMP.
+// Completed review output must remain directly readable in the conversation.
+// Only an in-progress stream may use a compact internal scroll region.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -66,36 +64,36 @@ async function loadRenderer() {
   return import("data:text/javascript;base64," + Buffer.from(mod).toString("base64"));
 }
 
-test("long evidence is shown whole, and scrolls rather than truncating", async () => {
+test("long completed messages expand inline without clipping or internal scrolling", async () => {
   const { turnHTML, CLAMP } = await loadRenderer();
 
   const evidence = "reviewer captured output\n".repeat(2000);
   assert.ok(evidence.length > CLAMP * 10, "the test evidence must exceed the clamp");
 
-  const html = turnHTML(
+  for (const turn of [
+    { kind: "report", who: "codex", text: evidence },
+    { kind: "answer", who: "codex", text: evidence },
+    { kind: "reply", who: "claude", text: evidence },
     { kind: "reproduced", who: "claude", claim: "the retry wait never grows", text: evidence },
-    "codex");
-
-  // Every message in full: reading a review must not mean clicking through it.
-  // The whole text is in the DOM, so browser find and select-all reach it.
-  assert.ok(html.includes(evidence.trim()), "the full evidence must be present");
-  assert.doesNotMatch(html, /class="more"/, "nothing hides behind a button");
-  assert.doesNotMatch(html, /…/, "nothing is truncated with an ellipsis");
-
-  // But it gives up height rather than content, or one wall of captured output
-  // buries every turn after it.
-  assert.match(html, /class="tall"/, "a long message must scroll within itself");
-
-  assert.match(html, /the retry wait never grows/);
-  assert.match(html, /Reproduced\./);
+    { kind: "finding", who: "codex", claim: "many findings", body: evidence },
+  ]) {
+    const html = turnHTML(turn, "codex");
+    assert.ok(html.includes(evidence.trim()), `${turn.kind} must contain its full text`);
+    assert.doesNotMatch(html, /class="tall"/, `${turn.kind} must not scroll internally`);
+    assert.doesNotMatch(html, /class="more"|…/, `${turn.kind} must not clip or truncate`);
+  }
 });
 
-test("a short message is not wrapped in a scroll box it does not need", async () => {
-  const { turnHTML } = await loadRenderer();
+test("only a long in-progress stream remains compact", async () => {
+  const { turnHTML, CLAMP } = await loadRenderer();
+  const live = "still working\n".repeat(CLAMP);
+  const long = turnHTML({ kind: "streaming", who: "codex", text: live }, "codex");
+  assert.ok(long.includes(live.trim()), "the live text remains searchable and selectable");
+  assert.match(long, /class="tall"/, "a live stream may remain compact");
+
   const html = turnHTML(
-    { kind: "reproduced", who: "claude", claim: "c", text: "one failing assertion" },
+    { kind: "streaming", who: "codex", text: "one line" },
     "codex");
-  assert.ok(html.includes("one failing assertion"));
+  assert.ok(html.includes("one line"));
   assert.doesNotMatch(html, /class="tall"/);
-  assert.doesNotMatch(html, /class="more"/);
 });
