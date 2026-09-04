@@ -34,6 +34,17 @@ used. The former `cr.config.json` and `macr.config.json` names remain readable f
 
 The former `cr` command remains available as a compatibility alias.
 
+## Working and state directory
+
+With no `--dir`, Jury keeps the current directory when it is a Git worktree. From anywhere else it
+uses `~/.jury` and creates that directory automatically. An explicitly empty `--dir ""` also selects
+`~/.jury`; a non-empty explicit path always wins. `~` is expanded consistently for review, web,
+runs, findings, and reply commands.
+
+Run records live in `<dir>/runs`. For example, `jury runs --dir ""` and `jury web --dir ""` read
+`~/.jury/runs`, while a review launched from a repository continues to use that repository's
+`runs` directory.
+
 ## The loop
 
 ```
