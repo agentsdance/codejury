@@ -46,6 +46,7 @@ async function loadRenderer() {
 
   const mod = [
     decl(/const CLAMP = \d+;/, "CLAMP"),
+    'const judgeName = () => "claude";',
     decl(/const SIDE = [^\n]+/, "SIDE"),
     decl(/const VERDICT_TEXT = \{[\s\S]*?\};/, "VERDICT_TEXT"),
     "let CONVO_T0 = null, CONVO_SPREAD = 0, CONVO_PREV = null;",

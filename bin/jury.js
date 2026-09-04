@@ -10,14 +10,14 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
-import { loadConfig, reviewers, mainAgent } from "../lib/config.js";
+import { loadConfig, reviewers, judgeAgent } from "../lib/config.js";
 import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, resolvePrCheckout } from "../lib/repository.js";
 import * as st from "../lib/style.js";
@@ -52,6 +52,7 @@ Common flags
 
   --rounds <n>             stop after n rounds            (default 10)
   --agents codex,grok      only these reviewers           (default: all installed)
+  --judge codex            one agent that triages and fixes       (default: claude)
   --no-push                fix locally, do not push
   --dry-run                exercise the pipeline, spawn nothing
 
@@ -87,6 +88,7 @@ review                           (drives itself; no operator between rounds)
   --summary <text>   intent, passed to reviewers  (default: the PR description)
   --rounds <n>       maximum rounds                           (default 10)
   --agents a,b       only these reviewers            (default: all installed)
+  --judge <agent>    one agent that triages and fixes       (default: claude)
   --resume <slug>    continue an existing run instead of starting a new one
   --web              open the console on this run          (stays up when it ends)
   --port <n>         console port, with --web              (default 3080)
@@ -446,6 +448,8 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha }
  *   the round cap      --rounds, default 10
  */
 async function cmdAgent(argv) {
+  const judgeFlags = argv.filter((a) => a === "--judge" || a.startsWith("--judge="));
+  if (judgeFlags.length > 1) throw new Error("--judge accepts exactly one agent");
   const { values, positionals } = parseArgs({
     args: argv, allowPositionals: true,
     options: {
@@ -456,6 +460,7 @@ async function cmdAgent(argv) {
       trunk: { type: "string" },
       rounds: { type: "string", default: "10" },
       agents: { type: "string" },
+      judge: { type: "string" },
       push: { type: "boolean", default: true },
       "no-push": { type: "boolean", default: false },
       resume: { type: "string" },
@@ -464,6 +469,7 @@ async function cmdAgent(argv) {
       port: { type: "string", default: "3080" },
     },
   });
+  if (values.judge?.includes(",")) throw new Error("--judge accepts exactly one agent, not a list");
 
   // The PR link is the argument. `--pr` still works, but a flag for the one
   // thing every invocation names is ceremony: `jury agent <url>` is what
@@ -491,21 +497,6 @@ async function cmdAgent(argv) {
   // A local ignored config belongs to the requested checkout. An automatic
   // clone intentionally starts from the repository's committed/default config.
   const cfg = await loadConfig(resolved ? worktree : requestedWorktree);
-  const main = mainAgent(cfg);
-  if (!main) {
-    // A run with no main agent has no one to triage or fix — every finding
-    // would stay open and every round would re-raise it. Better to say so than
-    // to burn ten rounds discovering it.
-    throw new Error('no agent has role "main" — the loop has nobody to triage or fix');
-  }
-
-  let pool = reviewers(cfg);
-  if (values.agents) {
-    const want = new Set(values.agents.split(",").map((s) => s.trim()));
-    pool = pool.filter((a) => want.has(a.name));
-  }
-  if (!pool.length) throw new Error("no reviewers configured — nothing would review anything");
-
   const git = await describe(worktree);
 
   // Both asked for rather than assumed: the trunk from the remote's own HEAD,
@@ -557,13 +548,35 @@ async function cmdAgent(argv) {
   if (values.resume && !prior.length) {
     throw new Error(`no run at ${path.relative(process.cwd(), dir)} — check \`jury runs\``);
   }
+  const priorJudge = [...prior].reverse()
+    .find((e) => e.t === "target" && e.target?.judge)?.target.judge;
+  const requestedJudge = values.judge ?? (values.resume ? priorJudge : null);
+  const judge = judgeAgent(cfg, requestedJudge);
+  if (!judge) {
+    const available = cfg.agents.map((a) => a.name).join(", ") || "none";
+    if (requestedJudge) {
+      throw new Error(`judge "${requestedJudge}" is not an enabled configured agent — available: ${available}`);
+    }
+    throw new Error('no agent has role "main" — configure one or pass --judge <agent>');
+  }
+  target.judge = judge.name;
+
+  // A judge cannot independently review its own work. Other configured main
+  // agents stay out of the pool rather than being silently demoted to writers
+  // with a read-only prompt.
+  let pool = reviewers(cfg).filter((a) => a.name !== judge.name);
+  if (values.agents) {
+    const want = new Set(values.agents.split(",").map((s) => s.trim()));
+    pool = pool.filter((a) => want.has(a.name));
+  }
+  if (!pool.length) throw new Error("no reviewers configured after excluding the judge");
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
   console.log(st.field("target", `${target.repo} ${st.bold(target.id)}`));
   console.log(st.field("worktree", st.muted(`${worktree} @ ${git.sha} (${resolved?.branch ?? git.branch})`)));
   console.log(st.field("trunk", `${trunk}${trunkGiven ? st.muted("  (detected)") : ""}`));
   if (target.title) console.log(st.field("title", target.title.slice(0, 72)));
-  console.log(st.field("main", st.agent(main.name)));
+  console.log(st.field("judge", st.agent(judge.name)));
   console.log(st.field("agents", pool.map((a) => st.agent(a.name)).join(", ")
     + (values["dry-run"] ? st.warn("  (dry run)") : "")));
   console.log(st.field("rounds", st.muted(`${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`)));
@@ -625,7 +638,7 @@ async function cmdAgent(argv) {
       return;
     }
 
-    console.log(`\n${st.rule(`triage · ${st.count(todo.length, "finding")} → ${main.name}`)}`);
+    console.log(`\n${st.rule(`triage · ${st.count(todo.length, "finding")} → ${judge.name}`)}`);
     let fixed = 0;
     for (const f of todo) {
       // The turn limit ends an argument the loop cannot win. Both positions are
@@ -635,6 +648,7 @@ async function cmdAgent(argv) {
         const r = await record(dir, findings, f.id, {
           verdict: "deferred",
           reason: `argued ${MAX_TURNS} turns without agreement; both positions are in the log`,
+          who: judge.name,
         });
         console.log(`  ${st.muted(f.id)}  ${st.verdict("deferred")} ${st.muted(`(turn limit)${r.ok ? "" : ` — ${r.why}`}`)}`);
         continue;
@@ -648,10 +662,10 @@ async function cmdAgent(argv) {
       // Tagged with the reviewer whose finding this is: threads are per
       // reviewer, and a heartbeat filed under "claude" opened a claude thread
       // of its own, splitting one conversation in two.
-      const heart = beat(dir, main.name, round, f.agent);
+      const heart = beat(dir, judge.name, round, f.agent);
       let v;
       try {
-        v = await triageOne(main, f, {
+        v = await triageOne(judge, f, {
           worktree, trunk, stopToken: cfg.stopToken, dryRun: values["dry-run"],
           onLog: (m) => console.log(`          ${st.muted(m)}`),
         });
@@ -672,6 +686,7 @@ async function cmdAgent(argv) {
       if (v.reproduced) {
         await appendEvent(dir, {
           t: "finding.reproduced", id: f.id, evidence: v.reproduced, test: v.test ?? null,
+          who: judge.name,
         });
       }
       // Refold BEFORE recording, not after. gate() checks the finding it is
@@ -681,7 +696,7 @@ async function cmdAgent(argv) {
       // described the right order; the code did not implement it.
       findings = await findingsIn(dir);
       const res = await record(dir, findings, f.id, {
-        verdict: v.verdict, reason: v.reason, test: v.test,
+        verdict: v.verdict, reason: v.reason, test: v.test, who: judge.name,
       });
       if (!res.ok) {
         // The gate refusing is the gate working. Downgrade rather than crash:
@@ -698,6 +713,7 @@ async function cmdAgent(argv) {
       if (c?.sha) {
         await appendEvent(dir, {
           t: "commit.pushed", sha: c.sha, pushed: c.pushed, subject: `round ${round} fixes`,
+          who: judge.name,
         });
         console.log(`commit   ${c.sha}${
           c.pushed === null ? "" : c.pushed ? ` → pushed to ${pushTarget.branch}` : "  (NOT pushed)"}`);
@@ -712,7 +728,7 @@ async function cmdAgent(argv) {
     // concede or push back.
     const after = await findingsIn(dir);
     const answers = await replyRound({
-      dir, pool, cfg, worktree, sha: head.sha, round, findings: after,
+      dir, pool, cfg, worktree, sha: head.sha, round, findings: after, judge: judge.name,
       sessions: sessionsIn(await readEvents(dir)),
       dryRun: values["dry-run"],
       // Prefixed like the launch line: without a name this printed a bare
@@ -862,6 +878,8 @@ async function cmdFinding(argv) {
   });
 
   const dir = await resolveRun(values.run);
+  const events = await readEvents(dir);
+  const judge = currentJudge(events);
   const findings = await findingsIn(dir);
   const id = positionals[0];
 
@@ -881,7 +899,7 @@ async function cmdFinding(argv) {
       if (!findings.has(id)) throw new Error(`no such finding: ${id}`);
       if (!values.evidence) throw new Error("--evidence is required: what demonstrated the finding");
       await appendEvent(dir, {
-        t: "finding.reproduced", id, evidence: values.evidence, test: values.test,
+        t: "finding.reproduced", id, evidence: values.evidence, test: values.test, who: judge,
       });
       await republish(dir);
       console.log(`${id}: reproduction recorded`);
@@ -895,7 +913,7 @@ async function cmdFinding(argv) {
       // survives the operator deciding to skip it.
       if (why) throw new Error(`refused: ${why}`);
       await appendEvent(dir, {
-        t: "finding.resolved", id, verdict: values.verdict, reason: values.reason ?? "", test: values.test,
+        t: "finding.resolved", id, verdict: values.verdict, reason: values.reason ?? "", test: values.test, who: judge,
       });
       await republish(dir);
       console.log(`${id}: ${values.verdict}`);
@@ -935,11 +953,13 @@ async function cmdReply(argv) {
 
   const cfg = await loadConfig();
   const dir = await resolveRun(values.run);
+  const events = await readEvents(dir);
+  const judge = currentJudge(events);
   const findings = await findingsIn(dir);
   const worktree = path.resolve(values.dir);
   const { sha } = await describe(worktree, "master");
 
-  let pool = reviewers(cfg);
+  let pool = reviewers(cfg).filter((a) => a.name !== judge);
   if (values.agents) {
     const want = new Set(values.agents.split(",").map((s) => s.trim()));
     pool = pool.filter((a) => want.has(a.name));
@@ -952,8 +972,7 @@ async function cmdReply(argv) {
   });
   if (!pool.length) throw new Error("nothing to reply about — resolve some findings first");
 
-  const main = mainAgent(cfg);
-  console.log(`main     ${main?.name ?? "(unset)"}`);
+  console.log(`judge    ${judge}`);
   console.log(`replying ${pool.map((a) => a.name).join(", ")}  (separate conversations)`);
   console.log("");
 
@@ -976,7 +995,7 @@ async function cmdReply(argv) {
 
     if (values["dry-run"]) return;
 
-    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, promptFile: file });
+    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, promptFile: file, who: judge });
     const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree }).argv };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);
