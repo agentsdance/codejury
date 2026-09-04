@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// cr — run a pull request past several independent AI reviewers.
+// jury — run a pull request past several independent AI reviewers.
 //
 // The CLI owns the mechanics: worktrees, spawning agents, capturing what they
 // said, recording it, serving the console. It deliberately does NOT triage —
@@ -40,13 +40,13 @@ let resolvedCheckoutCleanup = null;
  * The full reference lists eight commands and thirty flags, most of which exist
  * for the skill driving triage rather than for anyone at a prompt. Showing all
  * of it by default buried the one command that matters in a wall of options —
- * `cr help --all` still prints everything.
+ * `jury help --all` still prints everything.
  */
-const USAGE = `cr — run a pull request past several AI reviewers until they agree
+const USAGE = `jury — run a pull request past several AI reviewers until they agree
 
-  cr <pr-url>              review a pull request
-  cr --rounds 3            review the current branch, no PR
-  cr --web <pr-url>        …and watch it in the browser
+  jury <pr-url>              review a pull request
+  jury --rounds 3            review the current branch, no PR
+  jury --web <pr-url>        …and watch it in the browser
 
 Common flags
 
@@ -57,28 +57,28 @@ Common flags
 
 Other commands
 
-  cr agents                which reviewers are installed
-  cr runs                  every PR under review
-  cr web                   the console, on its own
-  cr version
+  jury agents                which reviewers are installed
+  jury runs                  every PR under review
+  jury web                   the console, on its own
+  jury version
 
-  cr help --all            every command and flag
+  jury help --all            every command and flag
 `;
 
-const USAGE_FULL = `cr — multi-agent code review
+const USAGE_FULL = `jury — multi-agent code review
 
-  cr <pr-url>             review a PR: rounds until convergence, one conversation per reviewer
-  cr review-once [flags]  a single round, no triage or reply
-  cr web [flags]          serve the console (default http://127.0.0.1:3080)
-  cr finding <cmd>        list | reproduce | resolve | settled — appends events, enforces the gate
-  cr reply [flags]        send each reviewer your verdicts on ITS findings, one conversation each
-  cr runs                 list every PR under review, with its slug for --run
-  cr agents               check which configured agents are installed
-  cr version
+  jury <pr-url>             review a PR: rounds until convergence, one conversation per reviewer
+  jury review-once [flags]  a single round, no triage or reply
+  jury web [flags]          serve the console (default http://127.0.0.1:3080)
+  jury finding <cmd>        list | reproduce | resolve | settled — appends events, enforces the gate
+  jury reply [flags]        send each reviewer your verdicts on ITS findings, one conversation each
+  jury runs                 list every PR under review, with its slug for --run
+  jury agents               check which configured agents are installed
+  jury version
 
 review                           (drives itself; no operator between rounds)
-  cr https://github.com/owner/repo/pull/1
-  cr --rounds 3                  the current branch, no PR
+  jury https://github.com/owner/repo/pull/1
+  jury --rounds 3                  the current branch, no PR
 
   --dir <path>       repo/worktree                            (default .)
   --pr <url>         same as the positional argument
@@ -109,15 +109,15 @@ web flags
   --open             open a browser
 
 finding commands                                (--run <slug> picks the run)
-  cr finding list
-  cr finding reproduce <id> --evidence <text> [--test <text>]
-  cr finding resolve <id> --verdict <${VERDICTS.join("|")}> [--reason <text>] [--test <text>]
-  cr finding settled                          print the regenerated settled list
+  jury finding list
+  jury finding reproduce <id> --evidence <text> [--test <text>]
+  jury finding resolve <id> --verdict <${VERDICTS.join("|")}> [--reason <text>] [--test <text>]
+  jury finding settled                          print the regenerated settled list
 `;
 
 let [, , cmd, ...rest] = process.argv;
 
-// Reviewing is the only thing this tool does; `cr review <url>` on a program
+// Reviewing is the only thing this tool does; `jury review <url>` on a program
 // named for multi-agent code review is a tautology. A bare URL — or a bare
 // flag, with the target implied by the working directory — means review.
 // Nothing else here takes a URL, so there is nothing to disambiguate.
@@ -129,7 +129,7 @@ if (cmd && (/^https?:\/\//.test(cmd) || cmd.startsWith("-")) && cmd !== "-h" && 
 
 try {
   switch (cmd) {
-    // `agent` collided with both --agents and `cr agents`, three different
+    // `agent` collided with both --agents and `jury agents`, three different
     // things reading the same. Reviewing is what this tool does, so `review` is
     // the loop; the old single-round behaviour is --rounds 1, which it already
     // supported. `agent` stays as a hidden alias.
@@ -149,7 +149,7 @@ try {
     case "reply": await cmdReply(rest); break;
     case "runs": await cmdRuns(); break;
     case "agents": await cmdAgents(); break;
-    case "version": case "-v": case "--version": console.log(`cr ${VERSION}`); break;
+    case "version": case "-v": case "--version": console.log(`jury ${VERSION}`); break;
     case "help": case "-h": case "--help": case undefined:
       // --all, -a, or the bare word: every command and flag. Anything else
       // gets the short form, which is what a person at a prompt wants.
@@ -158,13 +158,13 @@ try {
       );
       break;
     default:
-      console.error(`cr: unknown command "${cmd}"\n`);
+      console.error(`jury: unknown command "${cmd}"\n`);
       process.stdout.write(USAGE);
       process.exit(2);
   }
 } catch (err) {
   await cleanupResolvedCheckout();
-  console.error(`cr: ${err.message}`);
+  console.error(`jury: ${err.message}`);
   process.exit(1);
 }
 
@@ -466,7 +466,7 @@ async function cmdAgent(argv) {
   });
 
   // The PR link is the argument. `--pr` still works, but a flag for the one
-  // thing every invocation names is ceremony: `cr agent <url>` is what
+  // thing every invocation names is ceremony: `jury agent <url>` is what
   // someone reaches for, and refusing it teaches nothing.
   const url = positionals.find((a) => /^https?:\/\//.test(a));
   if (url) values.pr = values.pr ?? url;
@@ -555,7 +555,7 @@ async function cmdAgent(argv) {
     : path.join(runsDir(), slugFor(target));
   const prior = await readEvents(dir);
   if (values.resume && !prior.length) {
-    throw new Error(`no run at ${path.relative(process.cwd(), dir)} — check \`cr runs\``);
+    throw new Error(`no run at ${path.relative(process.cwd(), dir)} — check \`jury runs\``);
   }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
@@ -580,7 +580,7 @@ async function cmdAgent(argv) {
     openBrowser(url);
     console.log("");
   } else {
-    console.log(st.field("watch", st.muted("cr web  →  the conversation streams live")) + "\n");
+    console.log(st.field("watch", st.muted("jury web  →  the conversation streams live")) + "\n");
   }
 
   let pushFailed = false;
@@ -877,7 +877,7 @@ async function cmdFinding(argv) {
     }
 
     case "reproduce": {
-      if (!id) throw new Error("usage: cr finding reproduce <id> --evidence <text>");
+      if (!id) throw new Error("usage: jury finding reproduce <id> --evidence <text>");
       if (!findings.has(id)) throw new Error(`no such finding: ${id}`);
       if (!values.evidence) throw new Error("--evidence is required: what demonstrated the finding");
       await appendEvent(dir, {
@@ -889,7 +889,7 @@ async function cmdFinding(argv) {
     }
 
     case "resolve": {
-      if (!id) throw new Error(`usage: cr finding resolve <id> --verdict <${VERDICTS.join("|")}>`);
+      if (!id) throw new Error(`usage: jury finding resolve <id> --verdict <${VERDICTS.join("|")}>`);
       const why = gate(findings.get(id), { verdict: values.verdict, test: values.test });
       // Refused, not merely warned: this is the half of the discipline that
       // survives the operator deciding to skip it.
@@ -1004,7 +1004,7 @@ async function resolveRun(slug) {
   try {
     dirs = (await readdir(base, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch { /* handled below */ }
-  if (!dirs.length) throw new Error("no runs yet — run `cr review` first");
+  if (!dirs.length) throw new Error("no runs yet — run `jury review` first");
   if (dirs.length > 1) throw new Error(`several runs; pick one with --run <${dirs.join("|")}>`);
   return path.join(base, dirs[0]);
 }
@@ -1028,7 +1028,7 @@ async function cmdRuns() {
     // over a directory full of broken runs is a lie that reads as "nothing was
     // ever reviewed".
     for (const s of skipped) console.log(`SKIPPED ${s.dir}: ${s.reason}`);
-    console.log(skipped.length ? "no readable runs" : "no runs yet — run `cr review` first");
+    console.log(skipped.length ? "no readable runs" : "no runs yet — run `jury review` first");
     return;
   }
 
@@ -1060,7 +1060,7 @@ async function cmdAgents() {
   }
   const missing = found.filter((p) => !p.ok);
   if (missing.length) {
-    console.log(`\n${missing.length} agent(s) not installed. Install them, or disable in cr.config.json.`);
+    console.log(`\n${missing.length} agent(s) not installed. Install them, or disable in jury.config.json.`);
     process.exitCode = 1;
   }
 }

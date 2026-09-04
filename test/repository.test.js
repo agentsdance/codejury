@@ -40,15 +40,15 @@ test("a PR cannot operate on an unrelated checkout", () => {
   assert.throws(
     () => assertPrCheckout(
       "https://git.example.com/example/project/merge_requests/195",
-      "git@github.com:zzxwill/multiple-agents-code-reivew.git",
-      "/work/multiple-agents-code-reivew",
+      "git@github.com:agentsdance/codejury.git",
+      "/work/codejury",
     ),
-    /PR targets git\.example\.com\/example\/project, but .* is github\.com\/zzxwill\/multiple-agents-code-reivew.*--dir/,
+    /PR targets git\.example\.com\/example\/project, but .* is github\.com\/agentsdance\/codejury.*--dir/,
   );
 });
 
 test("the CLI gives checkout guidance when it cannot resolve the PR provider", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cr-repo-binding-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "jury-repo-binding-"));
   try {
     const g = (...args) => run("git", ["-C", dir, ...args]);
     await g("init", "-q", "-b", "master");
@@ -59,7 +59,7 @@ test("the CLI gives checkout guidance when it cannot resolve the PR provider", a
     await g("commit", "-qm", "base");
     await g("remote", "add", "origin", "git@github.com:someone/other.git");
 
-    const cli = path.resolve("bin/cr.js");
+    const cli = path.resolve("bin/jury.js");
     await assert.rejects(
       run(process.execPath, [
         cli,
@@ -107,11 +107,11 @@ test("a GitHub PR is cloned and checked out at its exact head", async () => {
 
   const resolved = await resolvePrCheckout("https://github.com/acme/widgets/pull/42", {
     exec,
-    makeTemp: async () => "/tmp/cr-pr-42-test",
+    makeTemp: async () => "/tmp/jury-pr-42-test",
     remove: async (dir) => { removed = dir; },
   });
 
-  assert.equal(resolved.worktree, "/tmp/cr-pr-42-test");
+  assert.equal(resolved.worktree, "/tmp/jury-pr-42-test");
   assert.equal(resolved.branch, "fix/it");
   assert.equal(resolved.trunk, "master");
   assert.deepEqual(resolved.pushTarget, { remote: "origin", branch: "fix/it" });
@@ -120,5 +120,5 @@ test("a GitHub PR is cloned and checked out at its exact head", async () => {
   assert.ok(calls.some((c) => c.command === "git" && c.args.includes("FETCH_HEAD")));
 
   await resolved.cleanup();
-  assert.equal(removed, "/tmp/cr-pr-42-test");
+  assert.equal(removed, "/tmp/jury-pr-42-test");
 });

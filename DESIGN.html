@@ -181,7 +181,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding:26px 0 72px;font
 
 <header class="mast">
   <div class="eyebrow">
-    <span>macr</span><span class="dot"></span><span>bin/macr.js</span><span class="dot"></span><span>lib/loop.js</span>
+    <span>jury</span><span class="dot"></span><span>bin/jury.js</span><span class="dot"></span><span>lib/loop.js</span>
   </div>
   <h1>Anatomy of a <em>Round</em></h1>
   <p class="standfirst">
@@ -216,7 +216,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding:26px 0 72px;font
     <div class="band"><div class="who"><i style="background:var(--no)"></i>agy</div>
       <div class="bar agy"><span>quota error at 0:20 — counted as failed, not clean</span></div></div>
 
-    <div class="barrier"><b>barrier</b> — <code>await Promise.all(pool.map(…))</code> · bin/macr.js:208<br>
+    <div class="barrier"><b>barrier</b> — <code>await Promise.all(pool.map(…))</code> · bin/jury.js:208<br>
       the slowest reviewer sets the round's wall clock. codex idles four minutes.</div>
 
     <div class="band"><div class="who"><i style="background:var(--ink-3)"></i>claude</div>
@@ -293,7 +293,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding:26px 0 72px;font
   </p>
 </section>
 
-<pre><span class="c">// bin/macr.js — the triage loop, one finding at a time</span>
+<pre><span class="c">// bin/jury.js — the triage loop, one finding at a time</span>
 <span class="k">for</span> (<span class="k">const</span> f <span class="k">of</span> todo) {
   <span class="k">if</span> (deadlocked(events, f.id)) <span class="c">// 3 turns per claim → defer, never accept</span>
     <span class="k">continue</span>;
@@ -459,7 +459,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding:26px 0 72px;font
 </section>
 
 <footer>
-  <span>macr · multi-agent code review</span>
+  <span>Code Jury · multi-agent code review</span>
   <span>measured on PR #3, round 1</span>
 </footer>
 

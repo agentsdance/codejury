@@ -1,8 +1,8 @@
-// Command macr serves the multi-agent code review console.
+// Command jury serves the Code Jury console.
 //
-//	macr web              serve the console at http://127.0.0.1:3080
-//	macr web --run r.json serve a specific run
-//	macr version
+//	jury web              serve the console at http://127.0.0.1:3080
+//	jury web --run r.json serve a specific run
+//	jury version
 package main
 
 import (
@@ -18,7 +18,7 @@ import (
 	"runtime"
 	"time"
 
-	macr "github.com/zzxwill/multi-agents-code-review"
+	codejury "github.com/agentsdance/codejury"
 )
 
 const version = "0.1.0"
@@ -33,25 +33,25 @@ func main() {
 	switch os.Args[1] {
 	case "web":
 		if err := web(os.Args[2:]); err != nil {
-			log.Fatalf("macr: %v", err)
+			log.Fatalf("jury: %v", err)
 		}
 	case "version", "-v", "--version":
-		fmt.Println("macr " + version)
+		fmt.Println("jury " + version)
 	case "help", "-h", "--help":
 		usage()
 	default:
-		log.Printf("macr: unknown command %q", os.Args[1])
+		log.Printf("jury: unknown command %q", os.Args[1])
 		usage()
 		os.Exit(2)
 	}
 }
 
 func usage() {
-	fmt.Print(`macr — multi-agent code review console
+	fmt.Print(`jury — Code Jury console
 
 Usage:
-  macr web [flags]     serve the console
-  macr version
+  jury web [flags]     serve the console
+  jury version
 
 Flags for web:
   --port int     port to listen on (default 3080; the next free port is used if taken)
@@ -69,7 +69,7 @@ func web(args []string) error {
 		return err
 	}
 
-	ui, live, err := macr.UI()
+	ui, live, err := codejury.UI()
 	if err != nil {
 		return fmt.Errorf("assets: %w", err)
 	}

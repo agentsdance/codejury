@@ -2,7 +2,7 @@
 //
 // The page carries a default run so it renders standalone; this exports that
 // same object as a file the CLI's console can serve. One-off bootstrap — real
-// runs are written by `cr review`.
+// runs are written by `jury review`.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 

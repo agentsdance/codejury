@@ -1,6 +1,6 @@
 // The CLI's own output. Run with `node --test`.
 //
-// The property that matters most here is the absence of colour: `cr … > log`
+// The property that matters most here is the absence of colour: `jury … > log`
 // and `| grep` have to stay readable, and a terminal that asked for no colour
 // has to get none.
 import { test } from "node:test";
@@ -81,24 +81,24 @@ test("an indented report cannot be mistaken for the loop's own voice", async () 
 
 test("the default help stays short, and everything it names is real", async () => {
   const { readFile } = await import("node:fs/promises");
-  const src = await readFile(new URL("../bin/cr.js", import.meta.url), "utf8");
+  const src = await readFile(new URL("../bin/jury.js", import.meta.url), "utf8");
 
   const grab = (name) => {
     const at = src.indexOf(`const ${name} = \``);
-    assert.ok(at >= 0, `bin/cr.js no longer defines ${name}`);
+    assert.ok(at >= 0, `bin/jury.js no longer defines ${name}`);
     return src.slice(at, src.indexOf("\n`;", at));
   };
   const short = grab("USAGE");
   const full = grab("USAGE_FULL");
 
-  // The point of splitting them: `cr --help` is for a person at a prompt, and a
+  // The point of splitting them: `jury --help` is for a person at a prompt, and a
   // wall of flags buried the one command that matters.
   assert.ok(short.split("\n").length < 30, "the short help must stay short");
   assert.ok(short.length < full.length, "USAGE must be shorter than USAGE_FULL");
-  assert.match(short, /cr help --all/, "it must say where the rest is");
+  assert.match(short, /jury help --all/, "it must say where the rest is");
 
   // Every flag the short help advertises has to exist in the real reference,
-  // or it documents behaviour the CLI does not have. `cr` bare prints help
+  // or it documents behaviour the CLI does not have. `jury` bare prints help
   // rather than reviewing, and the short help claimed otherwise once.
   for (const flag of short.match(/--[a-z-]+/g) ?? []) {
     if (flag === "--all") continue; // help's own flag, not a review flag
