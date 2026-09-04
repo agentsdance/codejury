@@ -21,6 +21,13 @@ head commit, reviews an isolated temporary checkout, and pushes accepted fixes
 back to the source branch. It is safe to invoke from `master` or from outside
 the target repository; the caller's working tree is not switched or modified.
 
+GitLab and compatible self-hosted services are supported through
+`/merge_requests/<id>` URLs. Jury clones with Git and fetches the standard
+`refs/merge-requests/<id>/head` ref, so existing Git credentials are used. If
+the source branch is not uniquely visible on the target remote (commonly a
+fork), use `--no-push` for a read-only review or check out the source branch
+locally and pass `--dir`.
+
 Node 20 or newer. The reviewers are separate CLIs you install yourself — `jury` spawns whatever you
 have and skips the rest:
 

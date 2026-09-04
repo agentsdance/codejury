@@ -19,7 +19,7 @@ import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, r
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
-import { assertPrCheckout, resolvePrCheckout } from "../lib/repository.js";
+import { assertPrCheckout, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
 import * as st from "../lib/style.js";
 
@@ -1219,7 +1219,7 @@ async function describe(dir, trunk) {
 // Declarations, not const arrows: the dispatch switch above runs at module
 // top level, so anything it reaches must be hoisted.
 function repoFromUrl(u) {
-  return u.match(/\/([^/]+\/[^/]+)\/(?:merge_requests|pull)\//)?.[1] ?? "";
+  return repositoryFromPrUrl(u)?.path ?? "";
 }
 
 function idFromUrl(u) {
