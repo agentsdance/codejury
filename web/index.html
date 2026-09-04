@@ -522,6 +522,7 @@ let RUN = {
     url: "https://github.com/acme/worker-pool/pull/128",
     title: "Grow the CreateSandbox retry wait on repeated failures",
     branch: "fix/sandbox-manager-create-backoff", trunk: "master",
+    judge: "claude",
     diffstat: "2 files · +418 −13", state: "merged", stateNote: "merged · converged on ae473ab",
     summary: "Two reviewers — codex and droid — read each pushed commit independently. The main agent triages what they find, fixes what survives verification, answers every finding including the ones it rejects, and pushes again. Three rounds until both reported nothing new."
   },
@@ -760,7 +761,7 @@ function draw(){
       ${(x.turns ?? []).map(tt => `
         <div class="ln" data-who="${tt.who}">
           <span class="at">${when(tt)}</span>
-          <span class="nm">${icon(tt.who)}${esc(tt.who)}</span>
+          <span class="nm"${tt.who === judgeName() ? ' style="color:var(--t-claude)"' : ""}>${icon(tt.who)}${esc(tt.who)}</span>
           <span class="say">${rich(tt.body)}
             ${tt.quote ? `<div class="q">${esc(tt.quote)}</div>` : ""}
             ${tt.ask ? `<div class="ask">${esc(tt.ask)}</div>` : ""}
@@ -796,7 +797,7 @@ function draw(){
         return `
           <div class="xgroup">
             <div class="rule" data-who="${esc(agent)}">
-              <span class="lbl">${icon(agent)}claude ⇄ ${esc(agent)}</span><i></i>
+              <span class="lbl">${icon(agent)}${esc(judgeName())} ⇄ ${esc(agent)}</span><i></i>
               <span class="rt">${mine.length} of ${shown} finding(s)</span>
             </div>
             ${mine.map(card).join("")}
@@ -1125,14 +1126,15 @@ function render(){
    folded run; a conversation needs the events in the order they were spoken,
    and folding throws that order away.
 
-   Side is fixed by speaker, never by turn order: claude left, reviewer right.
+   Side is fixed by speaker, never by turn order: judge left, reviewer right.
    A reader should be able to tell who is talking from across the room. */
 let THREADS = [];        // [{agent, turns:[…]}]
 let CONVO_STACK = false; // one thread full width, or every thread stacked
 let CONVO_PICK = null;   // which thread, when not stacked
 const CONVO_SHUT = new Set(); // collapsed threads, by agent, while stacked
 
-const SIDE = (who) => (who === "claude" ? "l" : "r");
+const judgeName = () => RUN.target?.judge ?? "claude";
+const SIDE = (who) => (who === judgeName() ? "l" : "r");
 
 // A stable colour per agent. codex and droid have tokens already; anything else
 // is hashed to a hue so a five-reviewer run does not render five identical
@@ -1235,7 +1237,7 @@ function stampFor(t) {
 
 function turnHTML(t, agent) {
   const side = SIDE(t.who);
-  const nm = t.who === "claude" ? "claude" : agent;
+  const nm = t.who === judgeName() ? judgeName() : agent;
   let body = "";
   switch (t.kind) {
     case "finding":
@@ -1262,7 +1264,7 @@ function turnHTML(t, agent) {
       // being re-argued, so it names the claim and leaves the words to the
       // report. Claude's turn in the thread does carry text, and shows it.
       body = `<div class="bub" data-k="rebuttal"
-        ><span class="hd">${t.who === "claude" ? "still open" : "not convinced"}</span
+        ><span class="hd">${t.who === judgeName() ? "still open" : "not convinced"}</span
         >${t.claim ? `<span class="re">${esc(t.claim)}</span>` : ""}${t.text ? `\n${esc(t.text)}` : ""}</div>`;
       break;
     case "commit":
@@ -1299,7 +1301,7 @@ function turnHTML(t, agent) {
       body = bubble(t.text ?? "", esc(t.kind ?? "turn"));
   }
   return `<div class="msg" data-side="${side}"><span class="nm"
-    ><span class="ic" style="color:${nm === "claude" ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}${stampFor(t)}</span>${body}</div>`;
+    ><span class="ic" style="color:${nm === judgeName() ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}${stampFor(t)}</span>${body}</div>`;
 }
 
 /**
@@ -1380,7 +1382,7 @@ function drawConvo() {
     return `<div class="convo" data-a="${esc(t.agent)}" data-open="${open ? 1 : 0}">
       <header data-fold-agent="${esc(t.agent)}"><span class="tw">${open ? "▾" : "▸"}</span
         ><span class="d" data-live="${l ? 1 : 0}"></span>
-        <span class="who"><span class="ic" style="color:var(--main-hue)">${icon("claude")}</span>claude
+        <span class="who"><span class="ic" style="color:var(--main-hue)">${icon(judgeName())}</span>${esc(judgeName())}
           <span class="sw">⇄</span>
           <span class="ic" style="color:${hueFor(t.agent)}">${icon(t.agent)}</span>${esc(t.agent)}</span>
         <span class="st">${t.turns.length} turn${t.turns.length === 1 ? "" : "s"}${l ? " · live" : ""}</span>
@@ -1502,8 +1504,12 @@ function foldConversation(events) {
   };
   const owner = new Map();
   const claimOf = new Map();
+  let judge = "claude";
   for (const e of events) {
     switch (e.t) {
+      case "target":
+        judge = e.target?.judge ?? judge;
+        break;
       case "finding.raised":
         owner.set(e.id, e.agent);
         // Deliberately NOT a turn of its own. The reviewer already said this in
@@ -1518,12 +1524,12 @@ function foldConversation(events) {
         thread(e.agent);
         break;
       case "finding.reproduced":
-        thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "reproduced",
+        thread(owner.get(e.id) ?? "?").turns.push({ who: e.who ?? judge, kind: "reproduced",
           id: e.id, claim: claimOf.get(e.id) ?? "",
           text: typeof e.evidence === "string" ? e.evidence : "", ts: e.ts });
         break;
       case "finding.resolved":
-        thread(owner.get(e.id) ?? "?").turns.push({ who: "claude", kind: "verdict",
+        thread(owner.get(e.id) ?? "?").turns.push({ who: e.who ?? judge, kind: "verdict",
           id: e.id, claim: claimOf.get(e.id) ?? "",
           verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "", ts: e.ts });
         break;
@@ -1532,12 +1538,12 @@ function foldConversation(events) {
         // and that reply is already rendered whole as its `answer` turn — so the
         // text is deliberately dropped, exactly as a raised finding's is. What
         // survives is the linkage: which claim is being re-argued, and by whom.
-        // Claude's own turn is the exception: it is not an excerpt of anything
+        // The judge's own turn is the exception: it is not an excerpt of anything
         // shown elsewhere, so dropping its text would lose it entirely.
         const who = e.who ?? "?";
         const turn = { who, kind: "rebuttal", id: e.id,
           claim: claimOf.get(e.id) ?? "", ts: e.ts };
-        if (who === "claude") turn.text = e.text ?? "";
+        if (who === judge) turn.text = e.text ?? "";
         thread(owner.get(e.id) ?? e.agent ?? "?").turns.push(turn);
         break;
       }
@@ -1589,7 +1595,7 @@ function foldConversation(events) {
         break;
       }
       case "reply.sent":
-        thread(e.agent).turns.push({ who: "claude", kind: "reply", text: e.text ?? "", ts: e.ts });
+        thread(e.agent).turns.push({ who: e.who ?? judge, kind: "reply", text: e.text ?? "", ts: e.ts });
         break;
       case "reply.answered":
         thread(e.agent).turns.push({ who: e.agent, kind: "answer",
@@ -1597,7 +1603,7 @@ function foldConversation(events) {
         break;
       case "commit.pushed":
         for (const t of threads.values()) {
-          t.turns.push({ who: "claude", kind: "commit", sha: e.sha, text: e.subject ?? "", ts: e.ts });
+          t.turns.push({ who: e.who ?? judge, kind: "commit", sha: e.sha, text: e.subject ?? "", ts: e.ts });
         }
         break;
     }

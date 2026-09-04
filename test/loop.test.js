@@ -1,13 +1,13 @@
 // The autonomous loop: what makes it terminate, and what it shows while it runs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { appendEvent, readEvents, readArtifact } from "../lib/store.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record, currentJudge } from "../lib/loop.js";
 import { findingsIn } from "../lib/findings.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "jury-loop-"));
@@ -128,6 +128,28 @@ test("the conversation puts claude and the reviewer on their own sides, one thre
   assert.equal(codex.turns.find((t) => t.kind === "verdict").claim, "a");
   // A reviewer whose only event was a finding still gets a thread.
   assert.ok(threads.find((t) => t.agent === "agy"), "agy must not vanish");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("a selected non-Claude judge owns its events without becoming its own reviewer", async () => {
+  const dir = await tmp();
+  await appendEvent(dir, { t: "target", target: { judge: "codex" } });
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "agy", claim: "a" });
+  await appendEvent(dir, { t: "finding.reproduced", id: "A", evidence: "reproduced" });
+  await appendEvent(dir, { t: "finding.resolved", id: "A", verdict: "rejected", reason: "not a bug" });
+  await appendEvent(dir, { t: "reply.sent", agent: "agy", text: "answered" });
+  await appendEvent(dir, { t: "finding.turn", id: "A", who: "codex", text: "judge explanation" });
+
+  const [thread] = conversation(await readEvents(dir));
+  assert.equal(thread.agent, "agy");
+  assert.deepEqual(thread.turns.map((t) => t.who), ["codex", "codex", "codex", "codex"]);
+  assert.equal(thread.turns.at(-1).text, "judge explanation");
+  assert.equal((await findingsIn(dir)).get("A").contested, false,
+    "the judge's own turn must not reopen its finding");
+
+  await appendEvent(dir, { t: "finding.turn", id: "A", who: "agy", text: "still wrong" });
+  assert.equal((await findingsIn(dir)).get("A").contested, true,
+    "a reviewer's turn must still reopen the finding");
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -461,5 +483,38 @@ test("a clean round does not converge while an earlier finding is still open", a
   assert.notEqual(f.get("1-codex-reply-1").status, "open",
     "the open finding must reach triage");
 
+  await rm(repo, { recursive: true, force: true });
+});
+
+test("--judge selects one judge, excludes it from reviewers, and records the choice", async () => {
+  const repo = await tmp();
+  const g = async (...a) => run("git", ["-C", repo, ...a]);
+  await g("init", "-q", "-b", "master");
+  await g("config", "user.email", "t@example.com");
+  await g("config", "user.name", "t");
+  await writeFile(path.join(repo, "a.txt"), "one\n");
+  await g("add", "-A");
+  await g("commit", "-qm", "base");
+  await g("checkout", "-q", "-b", "feature");
+  await writeFile(path.join(repo, "a.txt"), "two\n");
+  await g("commit", "-qam", "change");
+
+  const result = await run(process.execPath, [
+    path.resolve("bin/jury.js"), "agent", "--dir", repo, "--trunk", "master",
+    "--rounds", "1", "--no-push", "--dry-run", "--judge", "codex", "--agents", "droid",
+  ], { cwd: repo });
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /judge\s+codex/);
+  assert.match(result.stdout, /agents\s+droid/);
+
+  const [slug] = await readdir(path.join(repo, "runs"));
+  const events = await readEvents(path.join(repo, "runs", slug));
+  assert.equal(currentJudge(events), "codex");
+  assert.deepEqual(events.filter((e) => e.t === "agent.launch").map((e) => e.agent), ["droid"]);
+
+  const repeated = await run(process.execPath, [
+    path.resolve("bin/jury.js"), "agent", "--judge", "codex", "--judge", "claude",
+  ], { cwd: repo });
+  assert.match(repeated.stderr, /--judge accepts exactly one agent/);
   await rm(repo, { recursive: true, force: true });
 });

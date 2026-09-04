@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadConfig, CONFIG_NAMES } from "../lib/config.js";
+import { loadConfig, judgeAgent, CONFIG_NAMES } from "../lib/config.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "jury-config-"));
 const write = (dir, name, obj) =>
@@ -40,6 +40,15 @@ test("no config at all is not an error — the defaults stand", async () => {
   const dir = await tmp();
   const cfg = await loadConfig(dir);
   assert.ok(cfg.agents.length > 0, "built-in agents must survive a missing config");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("Claude is the default judge and an enabled agent can override it", async () => {
+  const dir = await tmp();
+  const cfg = await loadConfig(dir);
+  assert.equal(judgeAgent(cfg).name, "claude");
+  assert.equal(judgeAgent(cfg, "codex").name, "codex");
+  assert.equal(judgeAgent(cfg, "missing"), null);
   await rm(dir, { recursive: true, force: true });
 });
 
