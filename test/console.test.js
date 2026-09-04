@@ -1,7 +1,7 @@
 // Rendering a turn in the console. Run with `node --test`.
 //
 // The property: no single turn can be long enough to bury the ones after it.
-// A reviewer's evidence arrives verbatim from `cr finding reproduce
+// A reviewer's evidence arrives verbatim from `jury finding reproduce
 // --evidence` and is routinely a wall of captured command output, so every
 // bubble that carries reviewer-supplied prose has to collapse past CLAMP.
 import { test } from "node:test";

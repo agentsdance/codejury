@@ -73,7 +73,7 @@ test("a reproduction recorded now is visible to the gate now", async () => {
   const { appendEvent } = await import("../lib/store.js");
   const { findingsIn, gate } = await import("../lib/findings.js");
 
-  const dir = await mkdtemp(path.join(tmpdir(), "cr-gate-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "jury-gate-"));
   try {
     await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
 
@@ -97,7 +97,7 @@ test("a reproduction recorded now is visible to the gate now", async () => {
 
 test("the CLI defines every helper the triage path calls", async () => {
   const { readFile } = await import("node:fs/promises");
-  const src = await readFile(new URL("../bin/cr.js", import.meta.url), "utf8");
+  const src = await readFile(new URL("../bin/jury.js", import.meta.url), "utf8");
   // `beat(...)` was called on the first trackable finding and never declared,
   // so the loop died with a ReferenceError the moment triage began. Folding
   // synthetic events in a test never touches that path.
@@ -108,7 +108,7 @@ test("the CLI defines every helper the triage path calls", async () => {
 
 test("a failed push is not reported as pushed", async () => {
   const { readFile } = await import("node:fs/promises");
-  const src = await readFile(new URL("../bin/cr.js", import.meta.url), "utf8");
+  const src = await readFile(new URL("../bin/jury.js", import.meta.url), "utf8");
   // commitFixes swallowed the push error and returned the sha anyway, so the
   // caller emitted commit.pushed and later rounds reviewed a commit the PR
   // never received — and could converge on it.
@@ -129,7 +129,7 @@ test("the triage path executes end to end without an undefined name", async () =
   const { promisify } = await import("node:util");
   const run = promisify(execFile);
 
-  const dir = await mkdtemp(path.join(tmpdir(), "cr-e2e-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "jury-e2e-"));
   try {
     await run("git", ["init", "-q", "-b", "work"], { cwd: dir });
     await run("git", ["config", "user.email", "t@example.com"], { cwd: dir });
@@ -141,7 +141,7 @@ test("the triage path executes end to end without an undefined name", async () =
 
     // A reviewer that raises one finding, and a main agent that rejects it.
     // Both are `node -e`, so no real agent is spawned and the test is fast.
-    await writeFile(path.join(dir, "cr.config.json"), JSON.stringify({
+    await writeFile(path.join(dir, "jury.config.json"), JSON.stringify({
       agents: [
         { name: "codex", enabled: false }, { name: "grok", enabled: false },
         { name: "droid", enabled: false }, { name: "agy", enabled: false },
@@ -158,7 +158,7 @@ test("the triage path executes end to end without an undefined name", async () =
       ],
     }));
 
-    const cli = path.join(process.cwd(), "bin", "cr.js");
+    const cli = path.join(process.cwd(), "bin", "jury.js");
     const { stdout } = await run("node", [cli, "--rounds", "1", "--no-push"], { cwd: dir });
 
     // The whole point: it got past launch, raised a finding, and TRIAGED it.

@@ -1,3 +1,3 @@
-module github.com/zzxwill/multi-agents-code-review
+module github.com/agentsdance/codejury
 
 go 1.25

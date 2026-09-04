@@ -1,5 +1,5 @@
-// Package macr embeds the console UI so the CLI ships as a single binary.
-package macr
+// Package codejury embeds the console UI so the CLI ships as a single binary.
+package codejury
 
 import (
 	"embed"

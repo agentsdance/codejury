@@ -1,6 +1,6 @@
 # Deferred
 
-The triage step is built: `macr` spawns the main agent per finding, which
+The triage step is built: `jury` spawns the main agent per finding, which
 reproduces before accepting, fixes what is real, rejects what is not, and the
 loop commits and pushes between rounds.
 

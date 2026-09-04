@@ -14,7 +14,7 @@ import { findingsIn, settledList } from "../lib/findings.js";
 import { buildPrompt } from "../lib/prompt.js";
 
 async function scratch() {
-  const dir = await mkdtemp(path.join(tmpdir(), "cr-runs-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "jury-runs-"));
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
@@ -112,7 +112,7 @@ test("listRuns puts the newest run first, across PRs as well as within one", asy
       { target: { repo: "agentsdance/aigit", id, state: "review", attempt }, rounds: [], exchanges: [] },
     );
     // An older review of #3 and a newer one of #5. Sorting on the id first put
-    // #3 on top, so bare `cr web` opened the stale run.
+    // #3 on top, so bare `jury web` opened the stale run.
     await mk("#3", "20260826-1000");
     await mk("#5", "20260826-1200");
     await mk("#5", "20260826-1100");

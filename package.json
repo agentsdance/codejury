@@ -1,7 +1,7 @@
 {
-  "name": "@agentsdance/cr",
-  "version": "0.0.3",
-  "description": "Run a pull request past several independent AI reviewers and watch them converge.",
+  "name": "@agentsdance/codejury",
+  "version": "0.1.0",
+  "description": "Independent AI reviewers that iterate until your pull request is clean.",
   "keywords": [
     "code-review",
     "ai",
@@ -10,15 +10,17 @@
     "claude",
     "codex"
   ],
-  "homepage": "https://github.com/agentsdance/multiple-agents-code-reivew#readme",
-  "bugs": "https://github.com/agentsdance/multiple-agents-code-reivew/issues",
+  "homepage": "https://github.com/agentsdance/codejury#readme",
+  "bugs": "https://github.com/agentsdance/codejury/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/agentsdance/multiple-agents-code-reivew.git"
+    "url": "git+https://github.com/agentsdance/codejury.git"
   },
   "type": "module",
   "bin": {
-    "cr": "bin/cr.js"
+    "jury": "bin/jury.js",
+    "codejury": "bin/jury.js",
+    "cr": "bin/jury.js"
   },
   "engines": {
     "node": ">=20"
@@ -28,14 +30,14 @@
     "lib",
     "web/index.html",
     "prompts",
-    "cr.config.example.json"
+    "jury.config.example.json"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "prepublishOnly": "npm test",
-    "start": "node bin/cr.js web --open",
+    "start": "node bin/jury.js web --open",
     "test": "node --test \"test/*.test.js\""
   },
   "license": "MIT"
