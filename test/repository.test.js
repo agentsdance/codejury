@@ -272,3 +272,85 @@ test("a pruned merge request head ref is reported as pruned, not as an auth prob
     },
   );
 });
+
+test("FETCH_HEAD is never accepted as a merge request head", async () => {
+  const calls = [];
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    calls.push(a);
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    // The numbered ref is absent; FETCH_HEAD holds main from an earlier fetch.
+    if (a.includes("rev-parse --verify refs/merge-requests/")) throw new Error("no such ref");
+    if (a.includes("rev-parse --verify FETCH_HEAD")) return { stdout: "ma11111111111111111111111111111111111111\n" };
+    if (args[0] === "rev-parse") return { stdout: "de11111111111111111111111111111111111111\n" };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (args[0] === "ls-remote") return { stdout: "de11111111111111111111111111111111111111\trefs/heads/fix/widget\n" };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+
+  // Falling back to FETCH_HEAD would have reviewed main under !195's name, and
+  // branchAtHead could then have made main the push target.
+  assert.ok(!calls.some((a) => a.includes("checkout --quiet -b jury-mr-195 ma1111")));
+  assert.ok(calls.some((a) => a.startsWith("fetch origin refs/merge-requests/195/head")));
+  assert.equal(resolved.sha, "de11111111111111111111111111111111111111");
+});
+
+test("trunk comes from the real remote, not the branch the caller had checked out", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    // The clone source had the request's own branch checked out, so the copied
+    // origin/HEAD names it. Believing that diffs the branch against itself.
+    if (args[0] === "symbolic-ref") return { stdout: "origin/fix/widget\n" };
+    if (a.startsWith("ls-remote --symref")) {
+      return { stdout: "ref: refs/heads/main\tHEAD\n" };
+    }
+    if (args[0] === "ls-remote") return { stdout: `${head}\trefs/heads/fix/widget\n` };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+  assert.equal(resolved.trunk, "main");
+});
+
+test("a --no-push review of local commits touches the network for nothing", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    // Every network operation is unreachable. A read-only review of commits
+    // already on disk must still succeed.
+    if (args[0] === "ls-remote" || args[0] === "fetch") throw new Error("offline");
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { allowPush: false, exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+  assert.equal(resolved.sha, head);
+  assert.equal(resolved.pushTarget, null);
+});
