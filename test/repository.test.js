@@ -196,7 +196,10 @@ test("a merge request already in the caller's repository resolves without the he
     }
     if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
     if (args[0] === "rev-parse") return { stdout: `${head}\n` };
-    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    // The caller had the request's own branch checked out, so the copied
+    // origin/HEAD names it. Trunk must come from the host instead.
+    if (args[0] === "symbolic-ref") return { stdout: "origin/fix/widget\n" };
+    if (a.startsWith("ls-remote --symref")) return { stdout: "ref: refs/heads/main\tHEAD\n" };
     if (args[0] === "ls-remote") return { stdout: `${head}\trefs/heads/fix/widget\n` };
     return { stdout: "" };
   };
@@ -208,6 +211,7 @@ test("a merge request already in the caller's repository resolves without the he
       makeTemp: async (prefix) => prefix + "test", remove: async () => {},
     },
   );
+  assert.equal(resolved.trunk, "main");
 
   assert.equal(resolved.sha, head);
   // The whole point: a host that pruned refs/merge-requests/195/head cannot
@@ -353,4 +357,31 @@ test("a --no-push review of local commits touches the network for nothing", asyn
   );
   assert.equal(resolved.sha, head);
   assert.equal(resolved.pushTarget, null);
+});
+
+test("offline with no way to learn trunk, a local review says so instead of guessing", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    // The copied ref names the request's own branch: believing it would diff
+    // the branch against itself and report an empty change as clean.
+    if (args[0] === "symbolic-ref") return { stdout: "origin/fix/widget\n" };
+    if (args[0] === "ls-remote" || args[0] === "fetch") throw new Error("offline");
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { allowPush: false, exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+  // Empty, never the caller's own branch: the CLI's --trunk fills this in, and
+  // guessing "fix/widget" would diff the request against itself.
+  assert.equal(resolved.trunk, "");
+  assert.equal(resolved.sha, head);
 });
