@@ -184,3 +184,91 @@ test("a merge request with no unique source branch requires --no-push", async ()
   assert.equal(readOnly.branch, "merge-request/7");
   assert.equal(readOnly.pushTarget, null);
 });
+
+test("a merge request already in the caller's repository resolves without the head ref", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const calls = [];
+  const exec = async (command, args, options) => {
+    calls.push({ command, args: args.join(" "), cwd: options?.cwd });
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/platform/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (args[0] === "ls-remote") return { stdout: `${head}\trefs/heads/fix/widget\n` };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/platform/widgets/-/merge_requests/195",
+    {
+      exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {},
+    },
+  );
+
+  assert.equal(resolved.sha, head);
+  // The whole point: a host that pruned refs/merge-requests/195/head cannot
+  // break a review whose commits are already on this machine.
+  assert.ok(!calls.some((c) => c.args.startsWith("fetch")));
+  assert.ok(calls.some((c) => c.args.includes("clone --quiet --no-checkout /repos/widgets")));
+  // Cloning from disk leaves origin pointing at a filesystem path; pushing
+  // there would never reach the real remote.
+  assert.ok(calls.some((c) =>
+    c.args === "remote set-url origin https://git.example.com/acme/platform/widgets.git"));
+  assert.ok(resolved.worktree.startsWith("/home/dev/.jury/checkouts/"));
+});
+
+test("a local repository for a different project is never reviewed under this request's name", async () => {
+  const calls = [];
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    calls.push(a);
+    // The caller is sitting in an unrelated repository that happens to have a
+    // ref by the same number. Trusting it would review the wrong code.
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/other-project.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: "cafebabe\n" };
+    if (args[0] === "rev-parse") return { stdout: "deadbeef\n" };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (args[0] === "ls-remote") return { stdout: "deadbeef\trefs/heads/fix/widget\n" };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/platform/widgets/-/merge_requests/195",
+    { exec, dir: "/repos/unrelated", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+
+  assert.equal(resolved.sha, "deadbeef");
+  assert.ok(calls.some((a) => a.includes("clone --quiet --no-checkout https://git.example.com/acme/platform/widgets.git")));
+  assert.ok(!calls.some((a) => a.includes("clone --quiet --no-checkout /repos/unrelated")));
+});
+
+test("a pruned merge request head ref is reported as pruned, not as an auth problem", async () => {
+  const exec = async (command, args) => {
+    if (args.join(" ").startsWith("fetch")) {
+      const err = new Error("Command failed: git fetch origin refs/merge-requests/1/head");
+      err.stderr = "fatal: couldn't find remote ref refs/merge-requests/1/head";
+      throw err;
+    }
+    return { stdout: "" };
+  };
+
+  await assert.rejects(
+    resolvePrCheckout("https://git.example.com/acme/widgets/-/merge_requests/1",
+      { exec, dir: null, home: "/home/dev",
+        makeTemp: async (prefix) => prefix + "test", remove: async () => {} }),
+    (err) => {
+      // git's own words survive, and the guidance names the real cause.
+      assert.match(err.message, /couldn't find remote ref/);
+      assert.match(err.message, /hosts prune it once a request is merged or old/);
+      assert.doesNotMatch(err.message, /check Git authentication/);
+      return true;
+    },
+  );
+});
