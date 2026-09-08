@@ -533,9 +533,9 @@ async function cmdAgent(argv) {
   }
 
   values.push = values.push && !values["no-push"];
-  const requestedWorktree = await commandDirectory(values.dir);
+  const requestedWorktree = await commandDirectory(values.pr ? (values.dir ?? "") : values.dir);
   const resolved = values.pr
-    ? await resolvePrCheckout(values.pr, { allowPush: values.push, dir: requestedWorktree })
+    ? await resolvePrCheckout(values.pr, { allowPush: values.push, root: requestedWorktree })
     : null;
   const worktree = resolved?.worktree ?? requestedWorktree;
   resolvedCheckoutCleanup = resolved?.cleanup ?? null;
@@ -632,7 +632,7 @@ async function cmdAgent(argv) {
   // directory and nothing else: the server re-reads it per request and tails
   // the event log, so it sees each round land without the loop telling it.
   if (values.web) {
-    const { url } = await serve({ port: Number(values.port), onLog: (m) => console.log(st.field("console", st.muted(m))) });
+    const { url } = await serve({ port: Number(values.port), cwd: requestedWorktree, onLog: (m) => console.log(st.field("console", st.muted(m))) });
     liveConsole = url;
     console.log(st.field("console", `${url}${st.muted("  →  the conversation streams live")}`));
     openBrowser(url);

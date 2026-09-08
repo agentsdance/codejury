@@ -23,10 +23,14 @@ the target repository; the caller's working tree is not switched or modified.
 
 GitLab and compatible self-hosted services are supported through
 `/merge_requests/<id>` URLs. Jury clones with Git and fetches the standard
-`refs/merge-requests/<id>/head` ref, so existing Git credentials are used. If
+`refs/merge-requests/<id>/head` ref, so existing Git credentials are used.
+When that ref is missing, Jury discovers `refs/merge-requests/<shard>/<id>/<revision>`
+refs and fetches the highest numeric revision, verifying the advertised commit.
+The shard is discovered independently of the MR number. If
 the source branch is not uniquely visible on the target remote (commonly a
 fork), use `--no-push` for a read-only review or check out the source branch
-locally and pass `--dir`.
+locally, omit the MR URL, and run
+`jury --dir /path/to/checkout --trunk <target-branch>`.
 
 Node 20 or newer. The reviewers are separate CLIs you install yourself — `jury` spawns whatever you
 have and skips the rest:
@@ -43,14 +47,17 @@ The former `cr` command remains available as a compatibility alias.
 
 ## Working and state directory
 
-With no `--dir`, Jury keeps the current directory when it is a Git worktree. From anywhere else it
-uses `~/.jury` and creates that directory automatically. An explicitly empty `--dir ""` also selects
-`~/.jury`; a non-empty explicit path always wins. `~` is expanded consistently for review, web,
-runs, findings, and reply commands.
+With an MR/PR URL, Jury always resolves the URL into an isolated checkout. By default,
+checkouts live under `~/.jury/checkouts/` and run records under `~/.jury/runs/`, regardless
+of the current directory. `--dir <path>` instead uses `<path>/checkouts/` and `<path>/runs/`.
+The integrated `--web` console reads records from the same root.
+
+Without a URL, Jury reviews the current repository, or the repository selected by `--dir`.
+Other commands keep the current directory when it is a Git worktree and otherwise use
+`~/.jury`. An explicitly empty `--dir ""` selects `~/.jury`. `~` is expanded consistently.
 
 Run records live in `<dir>/runs`. For example, `jury runs --dir ""` and `jury web --dir ""` read
-`~/.jury/runs`, while a review launched from a repository continues to use that repository's
-`runs` directory.
+`~/.jury/runs`. Use those commands to inspect URL-based reviews launched with the default root.
 
 ## The loop
 
