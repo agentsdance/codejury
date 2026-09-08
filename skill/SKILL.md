@@ -126,4 +126,4 @@ that is a design decision, not a fact, and the loop should stop arguing.
 
 ## Viewing
 
-`jury web` serves the console. It displays a run; it does not create one.
+`jury --web-only` serves the console. It displays a run; it does not create one.

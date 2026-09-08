@@ -25,7 +25,7 @@ jury review <pr-url> --reviewer claude --jury grok
 ```
 
 Repeated flags and comma-separated names can be mixed. These options also work
-with `review-once` and `reply`. The default is the configured reviewers, excluding
+with `reply`. The default is the configured reviewers, excluding
 the selected judge where applicable. `--agents` remains a hidden compatibility
 alias for one release. The `jury agents` command is unchanged.
 
@@ -69,7 +69,7 @@ Without a URL, Jury reviews the current repository, or the repository selected b
 Other commands keep the current directory when it is a Git worktree and otherwise use
 `~/.jury`. An explicitly empty `--dir ""` selects `~/.jury`. `~` is expanded consistently.
 
-Run records live in `<dir>/runs`. For example, `jury runs --dir ""` and `jury web --dir ""` read
+Run records live in `<dir>/runs`. For example, `jury runs --dir ""` and `jury --web-only --dir ""` read
 `~/.jury/runs`. Use those commands to inspect URL-based reviews launched with the default root.
 
 ## The loop
@@ -117,8 +117,8 @@ The browser opens with `?run=<current-run>` so it shows the review just started,
 including when the server falls back to another port.
 
 The console outlives the loop — it stays up until you ctrl-c, which is the point: the run finishing
-is when there is finally something worth reading. `jury web` still serves the same console
-standalone, against runs that already exist.
+is when there is finally something worth reading. `jury --web-only` opens saved reviews without starting agents.
+Use `--run <slug>` to select a saved run, and `--dir <path>` to choose its state root.
 
 ## Who writes, and who only reads
 

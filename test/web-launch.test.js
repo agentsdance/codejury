@@ -74,3 +74,33 @@ test("current run is published before the console server starts", async (t) => {
   });
   assert.equal(url, "http://127.0.0.1:3081/?run=current-review");
 });
+
+test("web-only opens a saved run without starting a review", { timeout: 15000, skip: process.platform === "win32" }, async t => {
+  const { appendEvent, readEvents } = await import("../lib/store.js");
+  const root = await mkdtemp(path.join(tmpdir(), "jury-saved-console-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const dir = path.join(root, "runs", "saved");
+  const target = { id: "#1", state: "converged" };
+  await appendEvent(dir, { t: "target", target });
+  await writeRun(dir, { target, rounds: [], exchanges: [] });
+  const bin = path.join(root, "bin"); await mkdir(bin);
+  const receipt = path.join(root, "opened.json");
+  await writeFile(path.join(bin, process.platform === "darwin" ? "open" : "xdg-open"),
+    `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({url:process.argv[2]}));\n`, { mode: 0o755 });
+  const reserved = net.createServer(); reserved.listen(0, "127.0.0.1"); await once(reserved, "listening");
+  const port = reserved.address().port; await new Promise(resolve => reserved.close(resolve));
+  const child = spawn(process.execPath, [process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only",
+    "--dir", root, "--run", "saved", "--port", String(port)],
+    { env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
+  let output = ""; child.stderr.on("data", b => output += b);
+  const exited = once(child, "exit");
+  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill(); await exited; });
+  const opened = await waitForOpenReceipt(receipt);
+  assert.ok(opened, output);
+  assert.equal(new URL(opened.url).searchParams.get("run"), "saved");
+  const response = await fetch(new URL("/api/run", opened.url));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.ok((payload.targets ?? [payload]).some(r => r.slug === "saved"));
+  assert.equal((await readEvents(dir)).length, 1, "viewing must not append a round or launch agents");
+});
