@@ -8,6 +8,7 @@
 import { commandHelp } from "../lib/help.js";
 import { parseArgs } from "node:util";
 import { execFile } from "node:child_process";
+import { prepareGroup, groupContext, groupHead, reviewUrls, groupId, groupReady, pushRetained, findingPr, assertGroupCheckout } from "../lib/review-group.js";
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -50,6 +51,7 @@ const USAGE = `jury — review a pull request with multiple AI reviewers until t
 
   jury review <pr-url>       review a pull request
   jury <pr-url>              shorthand for jury review
+  jury review <pr-1> <pr-2>
   jury <pr-url> --rounds 3   review a pull request for up to 3 rounds
   jury <pr-url> --web=false  review without the browser console
 
@@ -80,6 +82,10 @@ const USAGE_FULL = `jury — review a pull request with multiple AI reviewers un
   jury runs                  list every PR under review, with its slug for --run
   jury agents                check which configured agents are installed
   jury version
+
+Related PRs: jury review <pr-url-1> <pr-url-2>
+Every reviewer assesses all supplied PRs together, with separate checkouts.
+Each PR uses its own base branch; omit --trunk for related PRs.
 
 review                           (triages, fixes, commits, and pushes automatically)
   jury https://github.com/owner/repo/pull/1
@@ -352,7 +358,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
       for (const [n, f] of (r.findings ?? []).entries()) {
         await appendEvent(dir, {
           t: "finding.raised", id: `r${round}-${a.name}-${n + 1}`, round,
-          agent: a.name, claim: f.claim, loc: f.loc, body: f.body,
+          agent: a.name, claim: f.claim, loc: f.loc, body: f.body, pr: findingPr(f.loc, target.targets),
         });
       }
       await publish(); // each reviewer lands as it finishes
@@ -457,12 +463,8 @@ async function cmdAgent(argv) {
   // The PR link is the argument. `--pr` still works, but a flag for the one
   // thing every invocation names is ceremony: `jury agent <url>` is what
   // someone reaches for, and refusing it teaches nothing.
-  const url = positionals.find((a) => /^https?:\/\//.test(a));
-  if (url) values.pr = values.pr ?? url;
-  const stray = positionals.filter((a) => a !== url);
-  if (stray.length) {
-    throw new Error(`unexpected argument "${stray[0]}" — pass the pull request URL, or use --pr`);
-  }
+  const urls = reviewUrls(positionals, values.pr);
+  values.pr = urls[0];
 
   const maxRounds = Number(values.rounds);
   if (!Number.isInteger(maxRounds) || maxRounds < 1) {
@@ -477,27 +479,39 @@ async function cmdAgent(argv) {
   // one ref the host may have pruned — rather than reading what is on disk —
   // is what issue #30 was.
   const resolveFrom = values.dir ? path.resolve(values.dir) : process.cwd();
-  const resolved = values.pr
+  const priorTargets = values.resume
+    ? [...await readEvents(path.join(runsDir(requestedWorktree), path.basename(values.resume)))].reverse()
+      .find(e => e.t === "target")?.target : null;
+  if (priorTargets?.targets && urls.length < 2) throw new Error("resuming a related-PR task requires all original PR URLs");
+  if (urls.length > 1 && values.resume && !priorTargets?.targets) throw new Error("no related-PR task found to resume");
+  if (priorTargets?.targets && !argv.some(a => a === "--push" || a.startsWith("--push="))) {
+    values.push = priorTargets.pushEnabled ?? false;
+  }
+  const group = urls.length > 1 ? await prepareGroup(urls, {
+    root: requestedWorktree, dir: resolveFrom, allowPush: values.push, trunk: values.trunk, previous: priorTargets,
+  }) : null;
+  if (group) resolvedCheckoutCleanup = group.cleanup;
+  const resolved = !group && values.pr
     ? await resolvePrCheckout(values.pr, {
       allowPush: values.push, root: requestedWorktree, dir: resolveFrom,
     })
     : null;
-  const worktree = resolved?.worktree ?? requestedWorktree;
-  resolvedCheckoutCleanup = resolved?.cleanup ?? null;
+  const worktree = group?.worktree ?? resolved?.worktree ?? requestedWorktree;
+  if (!group) resolvedCheckoutCleanup = resolved?.cleanup ?? null;
 
   // A local ignored config belongs to the requested checkout. An automatic
   // clone intentionally starts from the repository's committed/default config.
-  const cfg = await loadConfig(resolved ? worktree : requestedWorktree);
-  const git = await describe(worktree);
+  const cfg = await loadConfig(group ? group.targets[0].worktree : resolved ? worktree : requestedWorktree);
+  const git = await describe(group ? group.targets[0].worktree : worktree);
 
   // Both asked for rather than assumed: the trunk from the remote's own HEAD,
   // the title and intent from the PR itself. Every one of these was a flag you
   // had to get right, and getting the trunk wrong is silent — the diff is taken
   // against a branch that does not exist.
   const trunkGiven = Boolean(values.trunk);
-  const trunk = values.trunk ?? resolved?.trunk ?? (await defaultTrunk(worktree));
+  const trunk = values.trunk ?? group?.targets[0].trunk ?? resolved?.trunk ?? (await defaultTrunk(worktree));
   values.trunk = trunk;
-  const pr = resolved ?? await prDetails(values.pr, worktree);
+  const pr = group ? { title: group.targets.map(t => t.title || t.url).join(" + "), summary: "" } : resolved ?? await prDetails(values.pr, worktree);
 
   // The next round has to review NEW code or it is not a loop, so pushing is
   // the default. It still refuses trunk outright: a loop that can push to
@@ -505,7 +519,7 @@ async function cmdAgent(argv) {
   const pushTarget = values.push
     ? resolved?.pushTarget ?? { remote: "origin", branch: git.branch }
     : null;
-  if (values.push) {
+  if (values.push && !group) {
     if (!git.branch || git.branch === "HEAD") {
       throw new Error("--push needs a checked-out branch; this worktree is detached");
     }
@@ -525,13 +539,18 @@ async function cmdAgent(argv) {
     state: "review",
     stateNote: "",
   };
+  if (group) Object.assign(target, {
+    targets: group.targets, workspace: group.worktree, pushEnabled: values.push, repo: "related-prs",
+    reviewedCommit: null, reviewedCommits: null,
+    id: groupId(urls), url: "", branch: "", summary: values.summary ?? "",
+  });
   values.summary = values.summary ?? pr.summary ?? "";
 
   // Each invocation is its own run unless you explicitly resume one. Appending
   // to whatever ran before meant three separate reviews of the same PR merged
   // into rounds 1-5 of a single run, and a killed run's open rounds interleaved
   // with the next one's.
-  target.attempt = values.resume ? "" : attemptStamp();
+  target.attempt = values.resume ? "" : group ? `${attemptStamp()}-${path.basename(group.worktree)}` : attemptStamp();
   const stateBase = runsDir(requestedWorktree);
   const dir = values.resume
     ? path.join(stateBase, path.basename(values.resume))
@@ -567,7 +586,8 @@ async function cmdAgent(argv) {
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
   console.log(st.field("target", `${target.repo} ${st.bold(target.id)}`));
-  console.log(st.field("worktree", st.muted(`${worktree} @ ${git.sha} (${resolved?.branch ?? git.branch})`)));
+  console.log(st.field("worktree", st.muted(group ? worktree : `${worktree} @ ${git.sha} (${resolved?.branch ?? git.branch})`)));
+  if (group) for (const t of group.targets) console.log(st.field(t.key, `${t.url} @ ${t.sha} (${t.branch} → ${t.trunk})`));
   console.log(st.field("trunk", `${trunk}${trunkGiven ? st.muted("  (detected)") : ""}`));
   if (target.title) console.log(st.field("title", target.title.slice(0, 72)));
   console.log(st.field("judge", st.agent(judge.name)));
@@ -575,7 +595,7 @@ async function cmdAgent(argv) {
     + (values["dry-run"] ? st.warn("  (dry run)") : "")));
   console.log(st.field("rounds", st.muted(`${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`)));
   console.log(st.field("fixes", st.muted(values.push
-    ? `committed and pushed to ${pushTarget.branch}` : "committed to the worktree only")));
+    ? `committed and pushed to ${group ? group.targets.map(t => t.branch).join(", ") : pushTarget.branch}` : "committed to the worktree only")));
   console.log(st.field("run", st.muted(path.basename(dir) + (values.resume ? "  (resumed)" : ""))));
   // The console, in this same process. The loop and the server share the run
   // directory and nothing else: the server re-reads it per request and tails
@@ -590,6 +610,17 @@ async function cmdAgent(argv) {
     console.log("");
   }
 
+  if (group && values.resume && values.push && !values["dry-run"]) {
+    try {
+      await pushRetained(group.targets, member => appendEvent(dir, {
+        t: "commit.pushed", pr: member.key, sha: member.sha, pushed: true,
+        subject: "published retained review fixes", who: judge.name,
+      }));
+    } catch (error) {
+      await publishRun(dir, { ...target, state: "human", stateNote: "could not publish retained fixes" });
+      throw error;
+    }
+  }
   let pushFailed = false;
   for (let i = 0; i < maxRounds; i++) {
     const round = first + i;
@@ -598,7 +629,7 @@ async function cmdAgent(argv) {
     // written afterwards would first take effect one round too late.
     await refreshSettled(dir);
 
-    const head = await describe(worktree, values.trunk);
+    const head = group ? await groupHead(group.targets) : await describe(worktree, values.trunk);
     const converged = await runRound({
       dir, round, pool, cfg, target, worktree, values, sha: head.sha,
       // A clean round is not necessarily a complete review: an earlier finding
@@ -614,11 +645,18 @@ async function cmdAgent(argv) {
       // triage it; the round-end check below is the one that may declare
       // convergence.
       const open = await openFindings(dir);
+      const pending = group ? await groupReady(group.targets, values.push) : null;
+      if (pending || pushFailed) {
+        const reason = pending ?? "a push failed";
+        console.log(st.warn(`\nReview incomplete: ${reason}.`));
+        await publishRun(dir, { ...target, state: "human", stateNote: reason });
+        return;
+      }
       if (!open.length) {
         console.log(st.ok(`\nREVIEW COMPLETE after ${st.count(round - first + 1, "round")}.`));
         console.log(st.muted(`Reviewed commit ${head.sha}.`));
         await publishRun(dir, {
-          ...target, state: "converged", stateNote: "Review complete", reviewedCommit: head.sha,
+          ...target, state: "converged", stateNote: "Review complete", reviewedCommit: head.sha, ...(group ? { reviewedCommits: head.commits } : {}),
         });
         return;
       }
@@ -642,6 +680,10 @@ async function cmdAgent(argv) {
     console.log(`\n${st.rule(`triage · ${st.count(todo.length, "finding")} → ${judge.name}`)}`);
     let fixed = 0;
     for (const f of todo) {
+      if (group && !findingPr(f.loc, group.targets)) {
+        console.log(st.warn(`Finding ${f.id} needs a PR-qualified location (PR1/path:line); left open.`));
+        continue;
+      }
       // The turn limit ends an argument the loop cannot win. Both positions are
       // already recorded; deferring is not agreeing, and it is not fixing
       // something nobody demonstrated either.
@@ -667,7 +709,7 @@ async function cmdAgent(argv) {
       let v;
       try {
         v = await triageOne(judge, f, {
-          worktree, trunk, stopToken: cfg.stopToken, dryRun: values["dry-run"],
+          worktree, trunk, context: group ? groupContext(group.targets) : "", stopToken: cfg.stopToken, dryRun: values["dry-run"],
           onLog: (m) => console.log(`          ${st.muted(m)}`),
         });
       } finally {
@@ -710,17 +752,21 @@ async function cmdAgent(argv) {
     }
 
     if (fixed && !values["dry-run"]) {
-      const c = await commitFixes(worktree, round, pushTarget);
-      if (c?.sha) {
-        await appendEvent(dir, {
-          t: "commit.pushed", sha: c.sha, pushed: c.pushed, subject: `round ${round} fixes`,
-          who: judge.name,
-        });
-        console.log(`commit   ${c.sha}${
-          c.pushed === null ? "" : c.pushed ? ` → pushed to ${pushTarget.branch}` : "  (NOT pushed)"}`);
-        // A run whose fixes never reached the branch cannot converge: the
-        // reviewers would be signing off on code the PR does not contain.
-        if (c.pushed === false) pushFailed = true;
+      for (const member of group?.targets ?? [{ worktree, pushTarget }]) {
+        if (group) await assertGroupCheckout(member);
+        const c = await commitFixes(member.worktree, round, values.push ? member.pushTarget : null);
+        if (c?.sha) {
+          await appendEvent(dir, {
+            t: "commit.pushed", pr: member.key, sha: c.sha, pushed: c.pushed, subject: `round ${round} fixes`,
+            who: judge.name,
+          });
+          console.log(`commit   ${c.sha}${
+            c.pushed === null ? "" : c.pushed ? ` → pushed to ${member.pushTarget.branch}` : "  (NOT pushed)"}`);
+          // A run whose fixes never reached the branch cannot converge: the
+          // reviewers would be signing off on code the PR does not contain.
+          if (c.pushed === false) pushFailed = true;
+          if (group && c.pushed === true) member.publishedSha = (await run("git", ["rev-parse", "HEAD"], { cwd: member.worktree })).stdout.trim();
+        }
       }
     }
 
@@ -728,8 +774,9 @@ async function cmdAgent(argv) {
     // the conversation, and it is what a reviewer needs in order to either
     // concede or push back.
     const after = await findingsIn(dir);
+    const finalHead = group ? await groupHead(group.targets) : await describe(worktree, values.trunk);
     const answers = await replyRound({
-      dir, pool, cfg, worktree, sha: head.sha, round, findings: after, judge: judge.name,
+      dir, pool, cfg, worktree, sha: finalHead.sha, context: group ? groupContext(group.targets) : "", targets: group?.targets, round, findings: after, judge: judge.name,
       sessions: sessionsIn(await readEvents(dir)),
       dryRun: values["dry-run"],
       // Prefixed like the launch line: without a name this printed a bare
@@ -755,11 +802,13 @@ async function cmdAgent(argv) {
     const settled = await findingsIn(dir);
     const stillOpen = [...settled.values()].filter((f) => f.status === "open");
     const broke = answers.filter((a) => a.failed);
-    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed) {
+    const pending = group ? await groupReady(group.targets, values.push) : null;
+    if (pending) console.log(st.warn(`Review incomplete: ${pending}.`));
+    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed && !pending && !(group && fixed)) {
       console.log(st.ok(st.bold(`\nREVIEW COMPLETE — every reviewer approved after round ${round}.`)));
-      console.log(st.muted(`Reviewed commit ${head.sha}.`));
+      console.log(st.muted(`Reviewed commit ${finalHead.sha}.`));
       await publishRun(dir, {
-        ...target, state: "converged", stateNote: "Review complete", reviewedCommit: head.sha,
+        ...target, state: "converged", stateNote: "Review complete", reviewedCommit: finalHead.sha, ...(group ? { reviewedCommits: finalHead.commits } : {}),
       });
       return;
     }
@@ -824,7 +873,7 @@ async function commitFixes(worktree, round, pushTarget) {
   let pushed = false;
   if (pushTarget) {
     try {
-      await run("git", ["push", pushTarget.remote, `HEAD:${pushTarget.branch}`], { cwd: worktree });
+      await run("git", ["push", pushTarget.remote, `HEAD:refs/heads/${pushTarget.branch}`], { cwd: worktree });
       pushed = true;
     } catch (err) {
       // Swallowing this reported a local commit as pushed, so later rounds
