@@ -56,7 +56,6 @@ Common flags
   --agents codex,grok      only these reviewers           (default: all installed)
   --judge codex            one agent that triages and fixes       (default: claude)
   --no-push                fix locally, do not push
-  --dry-run                exercise the pipeline, spawn nothing
 
 Other commands
 
@@ -95,7 +94,9 @@ review                           (drives itself; no operator between rounds)
   --web              open the console on this run          (stays up when it ends)
   --port <n>         console port, with --web              (default 3080)
   --no-push          commit fixes to the worktree without pushing
-  --dry-run          exercise the pipeline, spawn nothing
+  --dry-run          (internal) exercise the pipeline, spawn no agents. Always
+                     reports clean and triages nothing, so it says whether the
+                     plumbing runs and never whether the code is good.
 
 review-once flags
   --dir <path>       repo/worktree       (default: cwd if Git, otherwise ~/.jury)
@@ -106,7 +107,6 @@ review-once flags
   --round <n>        round number                            (default: next)
   --agents a,b       only these reviewers                    (default: all enabled)
   --max-rounds <n>   keep going until every reviewer approves, at most n (default 1)
-  --dry-run          do not spawn anything; exercise the pipeline
 
 web flags
   --dir <path>       run-state root       (default: cwd if Git, otherwise ~/.jury)
@@ -535,7 +535,7 @@ async function cmdAgent(argv) {
   values.push = values.push && !values["no-push"];
   const requestedWorktree = await commandDirectory(values.dir);
   const resolved = values.pr
-    ? await resolvePrCheckout(values.pr, { allowPush: values.push })
+    ? await resolvePrCheckout(values.pr, { allowPush: values.push, dir: requestedWorktree })
     : null;
   const worktree = resolved?.worktree ?? requestedWorktree;
   resolvedCheckoutCleanup = resolved?.cleanup ?? null;

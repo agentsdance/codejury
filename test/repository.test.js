@@ -184,3 +184,204 @@ test("a merge request with no unique source branch requires --no-push", async ()
   assert.equal(readOnly.branch, "merge-request/7");
   assert.equal(readOnly.pushTarget, null);
 });
+
+test("a merge request already in the caller's repository resolves without the head ref", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const calls = [];
+  const exec = async (command, args, options) => {
+    calls.push({ command, args: args.join(" "), cwd: options?.cwd });
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/platform/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    // The caller had the request's own branch checked out, so the copied
+    // origin/HEAD names it. Trunk must come from the host instead.
+    if (args[0] === "symbolic-ref") return { stdout: "origin/fix/widget\n" };
+    if (a.startsWith("ls-remote --symref")) return { stdout: "ref: refs/heads/main\tHEAD\n" };
+    if (args[0] === "ls-remote") return { stdout: `${head}\trefs/heads/fix/widget\n` };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/platform/widgets/-/merge_requests/195",
+    {
+      exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {},
+    },
+  );
+  assert.equal(resolved.trunk, "main");
+
+  assert.equal(resolved.sha, head);
+  // The whole point: a host that pruned refs/merge-requests/195/head cannot
+  // break a review whose commits are already on this machine.
+  assert.ok(!calls.some((c) => c.args.startsWith("fetch")));
+  assert.ok(calls.some((c) => c.args.includes("clone --quiet --no-checkout /repos/widgets")));
+  // Cloning from disk leaves origin pointing at a filesystem path; pushing
+  // there would never reach the real remote.
+  assert.ok(calls.some((c) =>
+    c.args === "remote set-url origin https://git.example.com/acme/platform/widgets.git"));
+  assert.ok(resolved.worktree.startsWith("/home/dev/.jury/checkouts/"));
+});
+
+test("a local repository for a different project is never reviewed under this request's name", async () => {
+  const calls = [];
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    calls.push(a);
+    // The caller is sitting in an unrelated repository that happens to have a
+    // ref by the same number. Trusting it would review the wrong code.
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/other-project.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: "cafebabe\n" };
+    if (args[0] === "rev-parse") return { stdout: "deadbeef\n" };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (args[0] === "ls-remote") return { stdout: "deadbeef\trefs/heads/fix/widget\n" };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/platform/widgets/-/merge_requests/195",
+    { exec, dir: "/repos/unrelated", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+
+  assert.equal(resolved.sha, "deadbeef");
+  assert.ok(calls.some((a) => a.includes("clone --quiet --no-checkout https://git.example.com/acme/platform/widgets.git")));
+  assert.ok(!calls.some((a) => a.includes("clone --quiet --no-checkout /repos/unrelated")));
+});
+
+test("a pruned merge request head ref is reported as pruned, not as an auth problem", async () => {
+  const exec = async (command, args) => {
+    if (args.join(" ").startsWith("fetch")) {
+      const err = new Error("Command failed: git fetch origin refs/merge-requests/1/head");
+      err.stderr = "fatal: couldn't find remote ref refs/merge-requests/1/head";
+      throw err;
+    }
+    return { stdout: "" };
+  };
+
+  await assert.rejects(
+    resolvePrCheckout("https://git.example.com/acme/widgets/-/merge_requests/1",
+      { exec, dir: null, home: "/home/dev",
+        makeTemp: async (prefix) => prefix + "test", remove: async () => {} }),
+    (err) => {
+      // git's own words survive, and the guidance names the real cause.
+      assert.match(err.message, /couldn't find remote ref/);
+      assert.match(err.message, /hosts prune it once a request is merged or old/);
+      assert.doesNotMatch(err.message, /check Git authentication/);
+      return true;
+    },
+  );
+});
+
+test("FETCH_HEAD is never accepted as a merge request head", async () => {
+  const calls = [];
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    calls.push(a);
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    // The numbered ref is absent; FETCH_HEAD holds main from an earlier fetch.
+    if (a.includes("rev-parse --verify refs/merge-requests/")) throw new Error("no such ref");
+    if (a.includes("rev-parse --verify FETCH_HEAD")) return { stdout: "ma11111111111111111111111111111111111111\n" };
+    if (args[0] === "rev-parse") return { stdout: "de11111111111111111111111111111111111111\n" };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (args[0] === "ls-remote") return { stdout: "de11111111111111111111111111111111111111\trefs/heads/fix/widget\n" };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+
+  // Falling back to FETCH_HEAD would have reviewed main under !195's name, and
+  // branchAtHead could then have made main the push target.
+  assert.ok(!calls.some((a) => a.includes("checkout --quiet -b jury-mr-195 ma1111")));
+  assert.ok(calls.some((a) => a.startsWith("fetch origin refs/merge-requests/195/head")));
+  assert.equal(resolved.sha, "de11111111111111111111111111111111111111");
+});
+
+test("trunk comes from the real remote, not the branch the caller had checked out", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    // The clone source had the request's own branch checked out, so the copied
+    // origin/HEAD names it. Believing that diffs the branch against itself.
+    if (args[0] === "symbolic-ref") return { stdout: "origin/fix/widget\n" };
+    if (a.startsWith("ls-remote --symref")) {
+      return { stdout: "ref: refs/heads/main\tHEAD\n" };
+    }
+    if (args[0] === "ls-remote") return { stdout: `${head}\trefs/heads/fix/widget\n` };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+  assert.equal(resolved.trunk, "main");
+});
+
+test("a --no-push review of local commits touches the network for nothing", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    // Every network operation is unreachable. A read-only review of commits
+    // already on disk must still succeed.
+    if (args[0] === "ls-remote" || args[0] === "fetch") throw new Error("offline");
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { allowPush: false, exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+  assert.equal(resolved.sha, head);
+  assert.equal(resolved.pushTarget, null);
+});
+
+test("offline with no way to learn trunk, a local review says so instead of guessing", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    // The copied ref names the request's own branch: believing it would diff
+    // the branch against itself and report an empty change as clean.
+    if (args[0] === "symbolic-ref") return { stdout: "origin/fix/widget\n" };
+    if (args[0] === "ls-remote" || args[0] === "fetch") throw new Error("offline");
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { allowPush: false, exec, dir: "/repos/widgets", home: "/home/dev",
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {} },
+  );
+  // Empty, never the caller's own branch: the CLI's --trunk fills this in, and
+  // guessing "fix/widget" would diff the request against itself.
+  assert.equal(resolved.trunk, "");
+  assert.equal(resolved.sha, head);
+});
