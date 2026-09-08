@@ -59,3 +59,20 @@ test("default web opens the current run after publishing it, even on a fallback 
   assert.equal(runs.find(r => r.slug === slug).target.judge, "codex");
   assert.ok(output.includes(opened.url));
 });
+
+test("current run is published before the console server starts", async (t) => {
+  const { startReviewConsole } = await import("../lib/review-console.js");
+  const { readRun } = await import("../lib/store.js");
+  const root = await mkdtemp(path.join(tmpdir(), "jury-console-order-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const dir = path.join(root, "runs", "current-review");
+  const url = await startReviewConsole({ dir, cwd: root, port: 3080,
+    target: { id: "#35", state: "review", judge: "codex" } }, async (options) => {
+    const saved = await readRun(dir);
+    assert.equal(saved.target.id, "#35");
+    assert.equal(saved.target.stateNote, "starting review");
+    assert.equal(options.cwd, root);
+    return { url: "http://127.0.0.1:3081" };
+  });
+  assert.equal(url, "http://127.0.0.1:3081/?run=current-review");
+});

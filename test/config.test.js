@@ -79,3 +79,15 @@ test("an explicit configured judge overrides the built-in Codex default", async 
   ] });
   await assert.rejects(loadConfig(dir), /only one agent/);
 });
+
+test("judge permissions differ from reviewer permissions without replacing custom argv", async (t) => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const cfg = await loadConfig(dir);
+  assert.ok(judgeAgent(cfg).argv.includes("workspace-write"));
+  assert.ok(cfg.agents.find(a => a.name === "codex").argv.includes("read-only"));
+  assert.ok(judgeAgent(cfg, "claude").argv.includes("acceptEdits"));
+  assert.ok(reviewers(cfg).find(a => a.name === "claude").argv.includes("plan"));
+  await write(dir, "jury.config.json", { agents: [{ name: "codex", argv: ["custom-codex"] }] });
+  assert.deepEqual(judgeAgent(await loadConfig(dir)).argv, ["custom-codex"]);
+});

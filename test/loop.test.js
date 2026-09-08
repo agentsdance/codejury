@@ -537,6 +537,14 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
   assert.match(missing.stderr, /requested reviewer "traecli" is not configured or is disabled/);
   assert.match(missing.stderr, /Add or enable it with role "reviewer" in jury\.config\.json/);
   assert.match(missing.stderr, /Available enabled reviewers:/);
+  await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({
+    agents: [{ name: "codex", argv: ["jury-missing-judge-test"] }],
+  }));
+  const unavailable = await run(process.execPath, [path.resolve("bin/jury.js"), "review",
+    "--dir", repo, "--trunk", "master", "--web=false", "--rounds", "1"], { cwd: repo });
+  assert.match(unavailable.stderr, /judge "codex" is not installed/);
+  assert.doesNotMatch(unavailable.stdout, /round 1|console/);
+
   await rm(repo, { recursive: true, force: true });
 });
 

@@ -95,6 +95,8 @@ jury https://github.com/owner/repo/pull/1   # review, with the console open on i
 jury --port 3099 --rounds 3                 # the current branch, on another port
 ```
 
+Use `--push=false` to keep fixes local; pushing is enabled by default.
+
 Use `--web=false` (or `--web false`) to disable the console and exit when review finishes.
 `--web`, `--web=true`, and `--web true` enable it explicitly.
 
@@ -117,7 +119,10 @@ jury --judge claude https://github.com/owner/repo/pull/1  # Claude judges
 ```
 
 `--judge` accepts exactly one agent name. The selected judge is removed from that run's reviewer
-pool, so it never reviews its own work.
+pool, so it never reviews its own work. Codex uses a read-only sandbox for reviews
+and a workspace-write sandbox for judging. Claude uses plan mode for reviews and
+acceptEdits for judging. Custom agent `argv` remains authoritative; `judgeArgv` can
+provide a separate judge command when needed.
 `jury agents` shows the configured roles:
 
 ```

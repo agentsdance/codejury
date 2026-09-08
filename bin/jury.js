@@ -23,6 +23,7 @@ import { assertPrCheckout, repositoryFromPrUrl, resolvePrCheckout } from "../lib
 import { resolveJuryDirectory } from "../lib/directories.js";
 import * as st from "../lib/style.js";
 import { parseReviewArgs } from "../lib/cli-options.js";
+import { startReviewConsole } from "../lib/review-console.js";
 
 const run = promisify(execFile);
 // Read from the manifest rather than restated here, where it drifted: the CLI
@@ -56,7 +57,7 @@ Common flags
   --rounds <n>               stop after n rounds                  (default: 10)
   --agents claude,grok       only these reviewers                 (default: configured reviewers)
   --judge codex              one agent that triages and fixes     (default: codex)
-  --push                     commit and push fixes                (default: true)
+  --push <true|false>         commit and push fixes                (default: true)
   --web <true|false>         open the browser console             (default: true)
 
 Other commands
@@ -95,7 +96,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
   --port <n>                 console port                                          (default 3080)
-  --push                     commit and push fixes                                 (default: true)
+  --push <true|false>         commit and push fixes                                 (default: true)
   --dry-run                  (internal) exercise the pipeline, spawn no agents. Always
                              reports clean and triages nothing, so it says whether the
                              plumbing runs and never whether the code is good.
@@ -613,6 +614,10 @@ async function cmdAgent(argv) {
     }
     throw new Error('no agent has role "main" — configure one or pass --judge <agent>');
   }
+  if (!values["dry-run"]) {
+    const installed = await probe(judge);
+    if (!installed.ok) throw new Error(`judge "${judge.name}" is not installed (${installed.bin}); install it or select --judge <agent>`);
+  }
   target.judge = judge.name;
 
   // A judge cannot independently review its own work. Other configured main
@@ -637,12 +642,10 @@ async function cmdAgent(argv) {
   // directory and nothing else: the server re-reads it per request and tails
   // the event log, so it sees each round land without the loop telling it.
   if (values.web) {
-    // Make this run discoverable before the browser can request /api/run.
-    await publishRun(dir, { ...target, stateNote: "starting review" });
-    const { url } = await serve({ port: Number(values.port), cwd: requestedWorktree, onLog: (m) => console.log(st.field("console", st.muted(m))) });
-    const currentRunUrl = new URL(url);
-    currentRunUrl.searchParams.set("run", path.basename(dir));
-    liveConsole = currentRunUrl.href;
+    liveConsole = await startReviewConsole({
+      dir, target, cwd: requestedWorktree, port: Number(values.port),
+      onLog: (m) => console.log(st.field("console", st.muted(m))),
+    });
     console.log(st.field("console", `${liveConsole}${st.muted("  →  the conversation streams live")}`));
     openBrowser(liveConsole);
     console.log("");
