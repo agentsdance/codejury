@@ -46,80 +46,80 @@ let resolvedCheckoutCleanup = null;
  */
 const USAGE = `jury — review a pull request with multiple AI reviewers until they agree
 
-  jury <pr-url>             review a pull request
-  jury <pr-url> --rounds 3  review a pull request for up to 3 rounds
+  jury <pr-url>              review a pull request
+  jury <pr-url> --rounds 3   review a pull request for up to 3 rounds
   jury <pr-url> --web=false  review without the browser console
 
 Common flags
 
-  --dir <path>              working/state root                   (default: Git cwd or ~/.jury)
-  --rounds <n>              stop after n rounds                  (default: 10)
-  --agents claude,grok      only these reviewers                 (default: configured reviewers)
-  --judge codex             one agent that triages and fixes     (default: codex)
-  --push                    commit and push fixes                (default: true)
-  --web <true|false>        open the browser console             (default: true)
+  --dir <path>               working/state root                   (default: Git cwd or ~/.jury)
+  --rounds <n>               stop after n rounds                  (default: 10)
+  --agents claude,grok       only these reviewers                 (default: configured reviewers)
+  --judge codex              one agent that triages and fixes     (default: codex)
+  --push                     commit and push fixes                (default: true)
+  --web <true|false>         open the browser console             (default: true)
 
 Other commands
 
-  jury agents               which reviewers are installed
-  jury runs                 every PR under review
-  jury web                  the console, on its own
+  jury agents                which reviewers are installed
+  jury runs                  every PR under review
+  jury web                   the console, on its own
   jury version
 
-  jury help --all           every command and flag
+  jury help --all            every command and flag
 `;
 
 const USAGE_FULL = `jury — multi-agent code review
 
-  jury <pr-url>             review a PR until every reviewer approves, one conversation per reviewer
-  jury review-once [flags]  a single round, no triage or reply
-  jury web [flags]          serve the console                                     (default http://127.0.0.1:3080)
-  jury finding <cmd>        list | reproduce | resolve | settled — appends events, enforces the gate
-  jury reply [flags]        send each reviewer your verdicts on ITS findings, one conversation each
-  jury runs                 list every PR under review, with its slug for --run
-  jury agents               check which configured agents are installed
+  jury <pr-url>              review a PR until every reviewer approves, one conversation per reviewer
+  jury review-once [flags]   a single round, no triage or reply
+  jury web [flags]           serve the console                                     (default http://127.0.0.1:3080)
+  jury finding <cmd>         list | reproduce | resolve | settled — appends events, enforces the gate
+  jury reply [flags]         send each reviewer your verdicts on ITS findings, one conversation each
+  jury runs                  list every PR under review, with its slug for --run
+  jury agents                check which configured agents are installed
   jury version
 
 review                           (triages, fixes, commits, and pushes automatically)
   jury https://github.com/owner/repo/pull/1
-  jury <pr-url> --rounds 3  review a pull request for up to 3 rounds
+  jury <pr-url> --rounds 3   review a pull request for up to 3 rounds
 
-  --dir <path>              repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
-  --pr <url>                same as the positional argument
-  --trunk <branch>          diff base branch                                      (default: the remote's own HEAD)
-  --title <text>            what the change does                                  (default: read from the PR)
-  --summary <text>          intent, passed to reviewers                           (default: the PR description)
-  --rounds <n>              maximum rounds                                        (default 10)
-  --agents a,b              only these reviewers                                  (default: configured reviewers)
-  --judge <agent>           one agent that triages and fixes                      (default: codex)
-  --resume <slug>           continue an existing run instead of starting a new one
-  --web <true|false>        open the console; stays up after review               (default: true)
-  --port <n>                console port                                          (default 3080)
-  --push                    commit and push fixes                                 (default: true)
-  --dry-run                 (internal) exercise the pipeline, spawn no agents. Always
-                            reports clean and triages nothing, so it says whether the
-                            plumbing runs and never whether the code is good.
+  --dir <path>               repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
+  --pr <url>                 same as the positional argument
+  --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
+  --title <text>             what the change does                                  (default: read from the PR)
+  --summary <text>           intent, passed to reviewers                           (default: the PR description)
+  --rounds <n>               maximum rounds                                        (default 10)
+  --agents a,b               only these reviewers                                  (default: configured reviewers)
+  --judge <agent>            one agent that triages and fixes                      (default: codex)
+  --resume <slug>            continue an existing run instead of starting a new one
+  --web <true|false>         open the console; stays up after review               (default: true)
+  --port <n>                 console port                                          (default 3080)
+  --push                     commit and push fixes                                 (default: true)
+  --dry-run                  (internal) exercise the pipeline, spawn no agents. Always
+                             reports clean and triages nothing, so it says whether the
+                             plumbing runs and never whether the code is good.
 
 review-once flags
-  --dir <path>              repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
-  --pr <url>                pull request URL, recorded on the run
-  --title <text>            what the change does, shown in the console
-  --summary <text>          a few lines of intent, passed to reviewers
-  --trunk <branch>          diff base branch                                      (default master)
-  --round <n>               round number                                          (default: next)
-  --agents a,b              only these reviewers                                  (default: all enabled)
-  --max-rounds <n>          keep going until every reviewer approves, at most n   (default 1)
+  --dir <path>               repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
+  --pr <url>                 pull request URL, recorded on the run
+  --title <text>             what the change does, shown in the console
+  --summary <text>           a few lines of intent, passed to reviewers
+  --trunk <branch>           diff base branch                                      (default master)
+  --round <n>                round number                                          (default: next)
+  --agents a,b               only these reviewers                                  (default: all enabled)
+  --max-rounds <n>           keep going until every reviewer approves, at most n   (default 1)
 
 web flags
-  --dir <path>              run-state root                                        (default: cwd if Git, otherwise ~/.jury)
-  --port <n>                default 3080, walks forward if busy
-  --open                    open a browser
+  --dir <path>               run-state root                                        (default: cwd if Git, otherwise ~/.jury)
+  --port <n>                 default 3080, walks forward if busy
+  --open                     open a browser
 
 finding commands                     (--dir picks state root; --run picks run)
   jury finding list
   jury finding reproduce <id> --evidence <text> [--test <text>]
   jury finding resolve <id> --verdict <${VERDICTS.join("|")}> [--reason <text>] [--test <text>]
-  jury finding settled      print the regenerated settled list
+  jury finding settled       print the regenerated settled list
 
 state commands
   jury runs [--dir <path>]
