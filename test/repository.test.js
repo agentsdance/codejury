@@ -167,7 +167,7 @@ test("a merge request with no unique source branch requires --no-push", async ()
       exec, makeTemp: async () => "/tmp/jury-mr-7-test", remove: async () => {},
     }),
     (err) => {
-      assert.match(err.message, /^resolved merge request !7, but its source branch/);
+      assert.match(err.message, /^Fetched merge request !7, but couldn't identify a single source branch to push fixes to/);
       assert.match(err.message, /--no-push/);
       assert.doesNotMatch(err.message, /could not resolve/);
       return true;
