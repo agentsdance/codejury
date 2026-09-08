@@ -118,6 +118,10 @@ jury https://github.com/owner/repo/pull/1                 # Codex judges
 jury --judge claude https://github.com/owner/repo/pull/1  # Claude judges
 ```
 
+When upgrading from 0.1.x, a configuration that disables Codex or marks it as a reviewer
+needs an explicit judge: use `--judge claude`, or assign role `main` to the intended
+agent in `jury.config.json`. For scripts, use `--web=false` to exit after review.
+
 `--judge` accepts exactly one agent name. The selected judge is removed from that run's reviewer
 pool, so it never reviews its own work. Codex uses a read-only sandbox for reviews
 and a workspace-write sandbox for judging. Claude uses plan mode for reviews and

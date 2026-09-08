@@ -57,7 +57,7 @@ Common flags
   --rounds <n>               stop after n rounds                  (default: 10)
   --agents claude,grok       only these reviewers                 (default: configured reviewers)
   --judge codex              one agent that triages and fixes     (default: codex)
-  --push <true|false>         commit and push fixes                (default: true)
+  --push <true|false>        commit and push fixes                (default: true)
   --web <true|false>         open the browser console             (default: true)
 
 Other commands
@@ -96,7 +96,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
   --port <n>                 console port                                          (default 3080)
-  --push <true|false>         commit and push fixes                                 (default: true)
+  --push <true|false>        commit and push fixes                                 (default: true)
   --dry-run                  (internal) exercise the pipeline, spawn no agents. Always
                              reports clean and triages nothing, so it says whether the
                              plumbing runs and never whether the code is good.
@@ -612,7 +612,7 @@ async function cmdAgent(argv) {
     if (requestedJudge) {
       throw new Error(`judge "${requestedJudge}" is not an enabled configured agent — available: ${available}`);
     }
-    throw new Error('no agent has role "main" — configure one or pass --judge <agent>');
+    throw new Error('no agent has role "main" — Codex is the default judge; enable it or pass --judge <agent>');
   }
   if (!values["dry-run"]) {
     const installed = await probe(judge);

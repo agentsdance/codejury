@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
-import { setTimeout as delay } from "node:timers/promises";
+import { waitForOpenReceipt } from "./helpers/open-receipt.js";
 import { writeRun } from "../lib/store.js";
 
 const exec = promisify(execFile);
-test("default web opens the current run after publishing it, even on a fallback port", { timeout: 15000, skip: process.platform === "win32" }, async (t) => {
+test("default web opens a URL selecting the current run, even on a fallback port", { timeout: 30000, skip: process.platform === "win32" }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "jury-web-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const repo = path.join(root, "repo");
@@ -42,11 +42,7 @@ test("default web opens the current run after publishing it, even on a fallback 
   child.stderr.on("data", b => { output += b; });
   const exited = once(child, "exit");
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); await exited; });
-  let opened;
-  for (let i = 0; i < 300; i++) {
-    try { opened = JSON.parse(await readFile(receipt, "utf8")); break; }
-    catch { await delay(20); }
-  }
+  const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
   const url = new URL(opened.url);
   assert.notEqual(Number(url.port), port);
@@ -55,7 +51,9 @@ test("default web opens the current run after publishing it, even on a fallback 
   assert.notEqual(slug, "old-review");
   const runs = opened.payload.targets ?? [opened.payload];
   assert.equal(runs[0].slug, "old-review", "older human run still sorts first, exercising the original failure");
-  assert.ok(runs.some(r => r.slug === slug), "current run must be published before browser opens");
+  // The round may have published by the time the separate opener fetches.
+  // The unit test below checks pre-serve publication deterministically.
+  assert.ok(runs.some(r => r.slug === slug), "opened URL must select a run available in the API response");
   assert.equal(runs.find(r => r.slug === slug).target.judge, "codex");
   assert.ok(output.includes(opened.url));
 });

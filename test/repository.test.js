@@ -65,7 +65,7 @@ test("the CLI gives checkout guidance when a merge request clone fails", async (
         cli,
         "https://git.example.com/example/project/merge_requests/195",
         "--dir", dir,
-        "--agents", "codex",
+        "--agents", "claude",
         "--rounds", "1",
         "--dry-run",
       ]),
