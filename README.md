@@ -72,6 +72,34 @@ Other commands keep the current directory when it is a Git worktree and otherwis
 Run records live in `<dir>/runs`. For example, `jury runs --dir ""` and `jury --web-only --dir ""` read
 `~/.jury/runs`. Use those commands to inspect URL-based reviews launched with the default root.
 
+## Related PRs in one task
+
+```sh
+jury review https://github.com/acme/api/pull/12 https://github.com/acme/client/pull/34
+jury review <pr-url-1> <pr-url-2> --reviewer claude,grok --push=false
+```
+
+Every reviewer sees all PRs together, including available descriptions, base branches,
+and separate checkouts. The judge can fix cross-PR problems in the appropriate
+branches. Reviewers reassess the whole set after fixes. The console lists every
+PR and groups findings by PR within each independent reviewer conversation.
+No `--parallel` flag is needed. GitHub PRs and GitLab-style MRs can be mixed.
+GitLab MRs retain the existing Git-based resolver: the base is the remote HEAD,
+and MR descriptions are unavailable. Use this mode for MRs targeting that default branch.
+
+The first PR supplies the agent configuration. Each PR uses its own base branch;
+`--trunk` is not accepted for a related-PR task. Findings use paths such as
+`PR1/src/api.js:12` and `PR2/src/client.js:34`. PRs sharing a source branch are
+rejected to avoid conflicting pushes from separate checkouts.
+
+Task workspaces are retained under `<state-root>/checkouts/jury-group-*`, including
+local commits when `--push=false` and commits whose push failed. Resume with the
+same URLs in the same order and `--resume <slug>`. Resume keeps the task's previous
+push setting unless explicitly overridden; `--push=true` publishes retained fixes
+with normal fast-forward pushes. If a remote branch changed independently, start
+a new task to review the new heads. After finishing, retained task workspaces can
+be removed manually when they are no longer needed.
+
 ## The loop
 
 ```
