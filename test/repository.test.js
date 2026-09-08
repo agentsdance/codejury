@@ -167,7 +167,7 @@ test("a merge request with no unique source branch requires --no-push", async ()
       exec, makeTemp: async () => "/tmp/jury-mr-7-test", remove: async () => {},
     }),
     (err) => {
-      assert.match(err.message, /^resolved merge request !7, but its source branch/);
+      assert.match(err.message, /^Can't determine where to push fixes for merge request !7/);
       assert.match(err.message, /--no-push/);
       assert.doesNotMatch(err.message, /could not resolve/);
       return true;
@@ -253,11 +253,11 @@ test("a local repository for a different project is never reviewed under this re
   assert.ok(!calls.some((a) => a.includes("clone --quiet --no-checkout /repos/unrelated")));
 });
 
-test("a pruned merge request head ref is reported as pruned, not as an auth problem", async () => {
+test("missing MR refs preserve Git diagnostics without guessing the request state", async () => {
   const exec = async (command, args) => {
     if (args.join(" ").startsWith("fetch")) {
       const err = new Error("Command failed: git fetch origin refs/merge-requests/1/head");
-      err.stderr = "fatal: couldn't find remote ref refs/merge-requests/1/head";
+      err.stderr = "Warning: connection notice\nfatal: couldn't find remote ref refs/merge-requests/1/head";
       throw err;
     }
     return { stdout: "" };
@@ -270,7 +270,9 @@ test("a pruned merge request head ref is reported as pruned, not as an auth prob
     (err) => {
       // git's own words survive, and the guidance names the real cause.
       assert.match(err.message, /couldn't find remote ref/);
-      assert.match(err.message, /hosts prune it once a request is merged or old/);
+      assert.match(err.message, /No usable merge request ref was found/);
+      assert.match(err.message, /omit the MR URL/);
+      assert.doesNotMatch(err.message, /merged or old/);
       assert.doesNotMatch(err.message, /check Git authentication/);
       return true;
     },
@@ -387,48 +389,73 @@ test("offline with no way to learn trunk, a local review says so instead of gues
 });
 
 test("numbered MR refs select revision 10 over 2, and a mid-fetch change is refused", async () => {
-  for (const changed of [false, true]) {
-    const sha = "d".repeat(40);
-    let removed = false;
-    const calls = [];
-    const exec = async (command, args) => {
-      calls.push(args.join(" "));
-      // This host publishes no /head ref at all, only numbered revisions.
-      if (args[0] === "fetch" && args.at(-1).endsWith("/head")) {
-        throw Object.assign(new Error("fetch failed"),
-          { stderr: "fatal: couldn't find remote ref refs/merge-requests/7/head" });
-      }
-      if (args[0] === "ls-remote" && args.includes("--refs")) {
-        return { stdout:
-          `${"a".repeat(40)}\trefs/merge-requests/7/7/2\n` +
-          `${sha}\trefs/merge-requests/7/7/10\n` +
-          `${"b".repeat(40)}\trefs/merge-requests/7/7/9\n` +
-          // A different request's refs must not be considered.
-          `${"c".repeat(40)}\trefs/merge-requests/8/8/99\n` };
-      }
-      if (args[0] === "rev-parse") return { stdout: changed ? "e".repeat(40) : sha };
-      if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
-      if (args[0] === "ls-remote") return { stdout: `${sha}\trefs/heads/fix/widget\n` };
-      return { stdout: "" };
-    };
+  for (const [number, shard] of [["7", "7"], ["1234", "34"], ["1207", "07"], ["1200", "00"]]) {
+    for (const changed of [false, true]) {
+      const sha = "d".repeat(40);
+      let removed = false;
+      const calls = [];
+      const exec = async (command, args) => {
+        calls.push(args.join(" "));
+        // This host publishes no /head ref at all, only numbered revisions.
+        if (args[0] === "fetch" && args.at(-1).endsWith("/head")) {
+          throw Object.assign(new Error("fetch failed"),
+            { stderr: `fatal: couldn't find remote ref refs/merge-requests/${number}/head` });
+        }
+        if (args[0] === "ls-remote" && args.includes("--refs")) {
+          assert.equal(args.at(-1), `refs/merge-requests/*/${number}/*`);
+          return { stdout:
+            `${"a".repeat(40)}\trefs/merge-requests/${shard}/${number}/2\n` +
+            `${sha}\trefs/merge-requests/${shard}/${number}/10\n` +
+            `${"b".repeat(40)}\trefs/merge-requests/${shard}/${number}/9\n` +
+            // A different request's refs must not be considered.
+            `${"c".repeat(40)}\trefs/merge-requests/8/8/99\n` };
+        }
+        if (args[0] === "rev-parse") return { stdout: changed ? "e".repeat(40) : sha };
+        if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+        if (args[0] === "ls-remote") return { stdout: `${sha}\trefs/heads/fix/widget\n` };
+        return { stdout: "" };
+      };
 
-    const run = resolvePrCheckout("https://git.example.com/acme/widgets/merge_requests/7", {
-      allowPush: false, exec, dir: null, home: "/home/dev",
-      makeTemp: async (prefix) => prefix + "test", remove: async () => { removed = true; },
-    });
+      const run = resolvePrCheckout(`https://git.example.com/acme/widgets/merge_requests/${number}`, {
+        allowPush: false, exec, dir: null, home: "/home/dev",
+        makeTemp: async (prefix) => prefix + "test", remove: async () => { removed = true; },
+      });
 
-    if (changed) {
-      // The remote advertised one commit and a different one arrived: the
-      // request moved mid-fetch, and reviewing it as the head would be wrong.
-      await assert.rejects(run, /changed while it was being fetched/);
-      assert.ok(removed);
-    } else {
-      const resolved = await run;
-      assert.equal(resolved.sha, sha);
-      // 10 beats 9 and 2 numerically, not as strings.
-      assert.ok(calls.some((c) => c === "fetch --quiet origin refs/merge-requests/7/7/10"));
+      if (changed) {
+        // The remote advertised one commit and a different one arrived: the
+        // request moved mid-fetch, and reviewing it as the head would be wrong.
+        await assert.rejects(run, /changed while it was being fetched/);
+        assert.ok(removed);
+      } else {
+        const resolved = await run;
+        assert.equal(resolved.sha, sha);
+        await resolved.cleanup();
+        assert.ok(removed);
+        // 10 beats 9 and 2 numerically, not as strings.
+        assert.ok(calls.some((c) => c === `fetch --quiet origin refs/merge-requests/${shard}/${number}/10`));
+      }
     }
   }
+});
+
+test("conflicting latest revisions in different shards are refused", async () => {
+  let removed = false;
+  await assert.rejects(resolvePrCheckout("https://git.example.com/acme/widgets/merge_requests/1234", {
+    allowPush: false, dir: null, home: "/home/dev",
+    exec: async (command, args) => {
+      if (args[0] === "fetch") {
+        assert.equal(args.at(-1), "refs/merge-requests/1234/head");
+        throw new Error("fatal: couldn't find remote ref refs/merge-requests/1234/head");
+      }
+      if (args[0] === "ls-remote") return { stdout:
+        `${"a".repeat(40)}\trefs/merge-requests/34/1234/4\n` +
+        `${"b".repeat(40)}\trefs/merge-requests/1234/1234/4\n` };
+      return { stdout: "" };
+    },
+    makeTemp: async (prefix) => prefix + "test",
+    remove: async () => { removed = true; },
+  }), /conflicting latest revision refs/);
+  assert.ok(removed);
 });
 
 test("an auth failure is not mistaken for an unusual ref layout", async () => {
