@@ -632,7 +632,7 @@ async function cmdAgent(argv) {
   // directory and nothing else: the server re-reads it per request and tails
   // the event log, so it sees each round land without the loop telling it.
   if (values.web) {
-    const { url } = await serve({ port: Number(values.port), onLog: (m) => console.log(st.field("console", st.muted(m))) });
+    const { url } = await serve({ port: Number(values.port), cwd: requestedWorktree, onLog: (m) => console.log(st.field("console", st.muted(m))) });
     liveConsole = url;
     console.log(st.field("console", `${url}${st.muted("  →  the conversation streams live")}`));
     openBrowser(url);

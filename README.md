@@ -23,10 +23,14 @@ the target repository; the caller's working tree is not switched or modified.
 
 GitLab and compatible self-hosted services are supported through
 `/merge_requests/<id>` URLs. Jury clones with Git and fetches the standard
-`refs/merge-requests/<id>/head` ref, so existing Git credentials are used. If
+`refs/merge-requests/<id>/head` ref, so existing Git credentials are used.
+When that ref is missing, Jury discovers `refs/merge-requests/<shard>/<id>/<revision>`
+refs and fetches the highest numeric revision, verifying the advertised commit.
+The shard is discovered independently of the MR number. If
 the source branch is not uniquely visible on the target remote (commonly a
 fork), use `--no-push` for a read-only review or check out the source branch
-locally and pass `--dir`.
+locally, omit the MR URL, and run
+`jury --dir /path/to/checkout --trunk <target-branch>`.
 
 Node 20 or newer. The reviewers are separate CLIs you install yourself — `jury` spawns whatever you
 have and skips the rest:
