@@ -98,9 +98,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --web <true|false>         open the console; stays up after review               (default: true)
   --port <n>                 console port                                          (default: 3080)
   --push <true|false>        commit and push fixes                                 (default: true)
-  --dry-run                  (internal) exercise the pipeline, spawn no agents. Always
-                             reports clean and triages nothing, so it says whether the
-                             plumbing runs and never whether the code is good.
+
 
 review-once flags
   --dir <path>               working/state root                                    (default: Git cwd or ~/.jury)
