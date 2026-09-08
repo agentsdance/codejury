@@ -28,7 +28,7 @@ When that ref is missing, Jury discovers `refs/merge-requests/<shard>/<id>/<revi
 refs and fetches the highest numeric revision, verifying the advertised commit.
 The shard is discovered independently of the MR number. If
 the source branch is not uniquely visible on the target remote (commonly a
-fork), use `--no-push` for a read-only review or check out the source branch
+fork), check out the source branch
 locally, omit the MR URL, and run
 `jury --dir /path/to/checkout --trunk <target-branch>`.
 
@@ -86,14 +86,22 @@ Two properties make it terminate rather than churn:
 
 ## Watching it happen
 
-A round is a reviewer talking for several minutes and then a wall of text. `--web` starts the console
+A round is a reviewer talking for several minutes and then a wall of text. Reviews start the console by default
 in the same process as the run, so the conversation streams as it is spoken rather than arriving at
 the end:
 
 ```
-jury --web https://github.com/owner/repo/pull/1   # review, with the console open on it
-jury --web --port 3099 --rounds 3                 # the current branch, on another port
+jury https://github.com/owner/repo/pull/1   # review, with the console open on it
+jury --port 3099 --rounds 3                 # the current branch, on another port
 ```
+
+Use `--push=false` to keep fixes local; pushing is enabled by default.
+
+Use `--web=false` (or `--web false`) to disable the console and exit when review finishes.
+`--web`, `--web=true`, and `--web true` enable it explicitly.
+
+The browser opens with `?run=<current-run>` so it shows the review just started,
+including when the server falls back to another port.
 
 The console outlives the loop — it stays up until you ctrl-c, which is the point: the run finishing
 is when there is finally something worth reading. `jury web` still serves the same console
@@ -101,22 +109,29 @@ standalone, against runs that already exist.
 
 ## Who writes, and who only reads
 
-Exactly one agent has role `main`; it is the default **judge**. The built-in default is Claude Code.
+Exactly one agent has role `main`; it is the default **judge**. The built-in default is Codex.
 The judge owns the working tree and commit, triages every finding, and is the only writer. Choose a
-different enabled agent for one run with `--judge`; without that flag Claude remains the default:
+different enabled agent for one run with `--judge`; without that flag the configured main agent is used (Codex by default):
 
 ```bash
-jury https://github.com/owner/repo/pull/1                 # Claude judges
-jury --judge codex https://github.com/owner/repo/pull/1   # Codex judges
+jury https://github.com/owner/repo/pull/1                 # Codex judges
+jury --judge claude https://github.com/owner/repo/pull/1  # Claude judges
 ```
 
+When upgrading from 0.1.x, a configuration that disables Codex or marks it as a reviewer
+needs an explicit judge: use `--judge claude`, or assign role `main` to the intended
+agent in `jury.config.json`. For scripts, use `--web=false` to exit after review.
+
 `--judge` accepts exactly one agent name. The selected judge is removed from that run's reviewer
-pool, so it never reviews its own work.
+pool, so it never reviews its own work. Codex uses a read-only sandbox for reviews
+and a workspace-write sandbox for judging. Claude uses plan mode for reviews and
+acceptEdits for judging. Custom agent `argv` remains authoritative; `judgeArgv` can
+provide a separate judge command when needed.
 `jury agents` shows the configured roles:
 
 ```
-ok      claude   main     /usr/local/bin/claude
-ok      codex    reviewer /usr/local/bin/codex
+ok      claude   reviewer /usr/local/bin/claude
+ok      codex    main     /usr/local/bin/codex
 ok      agy      reviewer /usr/local/bin/agy
 ```
 
@@ -127,7 +142,7 @@ The judge then holds **one conversation per reviewer**, concurrently, each about
 own findings and nothing else:
 
 ```
-claude ──▶ codex   its 5 findings, resumed session
+codex ──▶ claude   its 5 findings, fresh run with its own words quoted back
        └──▶ agy     its 5 findings, fresh run with its own words quoted back
 ```
 

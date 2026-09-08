@@ -65,7 +65,7 @@ test("the CLI gives checkout guidance when a merge request clone fails", async (
         cli,
         "https://git.example.com/example/project/merge_requests/195",
         "--dir", dir,
-        "--agents", "codex",
+        "--agents", "claude",
         "--rounds", "1",
         "--dry-run",
       ]),
@@ -154,7 +154,7 @@ test("a GitLab-style merge request is cloned and checked out from its standard r
   assert.equal(removed, "/tmp/jury-mr-195-test");
 });
 
-test("a merge request with no unique source branch requires --no-push", async () => {
+test("a merge request with no unique source branch cannot be pushed", async () => {
   const head = "c".repeat(40);
   const exec = async (command, args) => {
     if (command === "git" && args[0] === "rev-parse") return { stdout: `${head}\n` };
@@ -168,7 +168,7 @@ test("a merge request with no unique source branch requires --no-push", async ()
     }),
     (err) => {
       assert.match(err.message, /^Can't determine where to push fixes for merge request !7/);
-      assert.match(err.message, /--no-push/);
+      assert.match(err.message, /Check out the source branch/);
       assert.doesNotMatch(err.message, /could not resolve/);
       return true;
     },
@@ -336,7 +336,7 @@ test("trunk comes from the real remote, not the branch the caller had checked ou
   assert.equal(resolved.trunk, "main");
 });
 
-test("a --no-push review of local commits touches the network for nothing", async () => {
+test("resolving local commits with allowPush false avoids the network", async () => {
   const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
   const exec = async (command, args) => {
     const a = args.join(" ");
