@@ -71,7 +71,7 @@ Other commands
   jury help --all            every command and flag
 `;
 
-const USAGE_FULL = `jury — multi-agent code review
+const USAGE_FULL = `jury — review a pull request with multiple AI reviewers until they agree
 
   jury <pr-url>              review a PR until every reviewer approves, one conversation per reviewer
   jury review-once [flags]   a single round, no triage or reply
