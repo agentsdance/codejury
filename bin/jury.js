@@ -122,6 +122,8 @@ finding commands                     (--dir picks state root; --run picks run)
   jury finding resolve <id> --verdict <${VERDICTS.join("|")}> [--reason <text>] [--test <text>]
   jury finding settled       print the regenerated settled list
 
+Use --push=false (or --push false) to disable pushing; --push enables it.
+
 state commands
   jury runs [--dir <path>]
   jury reply [--dir <path>] [--run <slug>]
