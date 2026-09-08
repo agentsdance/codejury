@@ -469,7 +469,7 @@ test("a clean round does not converge while an earlier finding is still open", a
   const r = await run(process.execPath, [
     path.resolve("bin/jury.js"), "agent",
     "--dir", repo, "--resume", runDir, "--trunk", "master",
-    "--rounds", "1", "--no-push", "--dry-run",
+    "--rounds", "1", "--web=false", "--dry-run",
   ], { cwd: repo });
 
   // Round 2's reviewer is clean. Exiting there would announce convergence with
@@ -508,7 +508,7 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
 
   const result = await run(process.execPath, [
     path.resolve("bin/jury.js"), "agent", "--dir", repo, "--trunk", "master",
-    "--rounds", "1", "--no-push", "--dry-run", "--judge", "codex", "--agents", "droid",
+    "--rounds", "1", "--web=false", "--dry-run", "--judge", "codex", "--agents", "droid",
   ], { cwd: repo });
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /judge\s+codex/);
@@ -532,7 +532,7 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
 
   const missing = await run(process.execPath, [
     path.resolve("bin/jury.js"), "agent", "--dir", repo, "--trunk", "master",
-    "--rounds", "1", "--no-push", "--dry-run", "--agents", "traecli",
+    "--rounds", "1", "--web=false", "--dry-run", "--agents", "traecli",
   ], { cwd: repo });
   assert.match(missing.stderr, /requested reviewer "traecli" is not configured or is disabled/);
   assert.match(missing.stderr, /Add or enable it with role "reviewer" in jury\.config\.json/);

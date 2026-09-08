@@ -159,7 +159,7 @@ test("the triage path executes end to end without an undefined name", async () =
     }));
 
     const cli = path.join(process.cwd(), "bin", "jury.js");
-    const { stdout } = await run("node", [cli, "--rounds", "1", "--no-push"], { cwd: dir });
+    const { stdout } = await run("node", [cli, "--rounds", "1", "--web=false"], { cwd: dir });
 
     // The whole point: it got past launch, raised a finding, and TRIAGED it.
     // Matches the words, not the spacing: this guards that triage RAN, and it
