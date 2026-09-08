@@ -108,7 +108,7 @@ review-once flags
   --summary <text>           a few lines of intent, passed to reviewers
   --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
   --round <n>                round number                                          (default: next)
-  --agents a,b               only these reviewers                                  (default: all enabled)
+  --agents a,b               only these reviewers                                  (default: configured reviewers)
   --max-rounds <n>           keep going until every reviewer approves, at most n   (default 1)
 
 web flags
