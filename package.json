@@ -37,7 +37,7 @@
   },
   "scripts": {
     "prepublishOnly": "npm test",
-    "start": "node bin/jury.js web --open",
+    "start": "node bin/jury.js --web-only",
     "test": "node --test \"test/*.test.js\""
   },
   "license": "MIT"

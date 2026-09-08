@@ -67,7 +67,6 @@ Other commands
 
   jury agents                which reviewers are installed
   jury runs                  every PR under review
-  jury web                   the console, on its own
   jury version
 
   jury help --all            every command and flag
@@ -76,8 +75,6 @@ Other commands
 const USAGE_FULL = `jury — review a pull request with multiple AI reviewers until they agree
 
   jury <pr-url>              review a PR until every reviewer approves, one conversation per reviewer
-  jury review-once [flags]   a single round, no triage or reply
-  jury web [flags]           serve the console                                     (default: http://127.0.0.1:3080)
   jury finding <cmd>         list | reproduce | resolve | settled — appends events, enforces the gate
   jury reply [flags]         send each reviewer your verdicts on ITS findings, one conversation each
   jury runs                  list every PR under review, with its slug for --run
@@ -99,25 +96,15 @@ review                           (triages, fixes, commits, and pushes automatica
   --judge <agent>            one agent that triages and fixes                      (default: codex)
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
+  --web-only                 view saved reviews without running agents
+  --run <slug>               select a saved run with --web-only
   --port <n>                 console port                                          (default: 3080)
   --push <true|false>        commit and push fixes                                 (default: true)
 
 
-review-once flags
-  --dir <path>               working/state root                                    (default: Git cwd or ~/.jury)
-  --pr <url>                 pull request URL, recorded on the run
-  --title <text>             what the change does, shown in the console
-  --summary <text>           a few lines of intent, passed to reviewers
-  --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
-  --round <n>                round number                                          (default: next)
-  --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured reviewers)
-  --jury <name>              same as --reviewer
-  --max-rounds <n>           keep going until every reviewer approves, at most n   (default: 1)
-
-web flags
-  --dir <path>               working/state root                                    (default: Git cwd or ~/.jury)
-  --port <n>                 default 3080, walks forward if busy
-  --open                     open a browser
+console only
+  jury --web-only [--dir <path>] [--run <slug>] [--port <n>]
+Open saved reviews without starting agents. The server stays up until ctrl-c.
 
 finding commands                     (--dir picks state root; --run picks run)
   jury finding list
@@ -171,8 +158,6 @@ try {
         await new Promise(() => {});
       }
       break;
-    case "review-once": await cmdReview(rest); break;
-    case "web": await cmdWeb(rest); break;
     case "finding": case "findings": await cmdFinding(rest); break;
     case "reply": await cmdReply(rest); break;
     case "runs": await cmdRuns(rest); break;
@@ -238,76 +223,6 @@ async function commandDirectory(value) {
       }
     },
   });
-}
-
-async function cmdReview(argv) {
-  const { values } = parseArgs({
-    args: argv, allowPositionals: false,
-    options: {
-      dir: { type: "string" },
-      pr: { type: "string" },
-      title: { type: "string" },
-      summary: { type: "string", default: "" },
-      trunk: { type: "string" },
-      round: { type: "string" },
-      ...reviewerOptions,
-      "max-rounds": { type: "string", default: "1" },
-      "dry-run": { type: "boolean", default: false },
-    },
-  });
-
-  const maxRounds = Number(values["max-rounds"]);
-  if (!Number.isInteger(maxRounds) || maxRounds < 1) {
-    throw new Error("--max-rounds must be a positive integer");
-  }
-
-  const worktree = await commandDirectory(values.dir);
-  const cfg = await loadConfig(worktree);
-  const pool = selectReviewers(cfg, requestedReviewers(values));
-
-  values.trunk ??= await defaultTrunk(worktree);
-  const git = await describe(worktree, values.trunk);
-  if (values.pr) assertPrCheckout(values.pr, git.remote, worktree);
-  const target = {
-    repo: values.pr ? repoFromUrl(values.pr) : git.repo,
-    id: values.pr ? idFromUrl(values.pr) : git.branch,
-    url: values.pr ?? "",
-    title: values.title ?? git.subject,
-    branch: git.branch,
-    trunk: values.trunk,
-    state: "review",
-    // Always set, never left to inherit. Target events are merged key by key,
-    // so omitting this would carry the previous round's note onto the new
-    // state — a live round labelled "converged".
-    stateNote: "",
-  };
-
-  const dir = path.join(runsDir(worktree), slugFor(target));
-  const prior = await readEvents(dir);
-  const firstRound = values.round
-    ? Number(values.round)
-    : Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
-
-  console.log(`target   ${target.repo} ${target.id}`);
-  console.log(`worktree ${worktree} @ ${git.sha}`);
-  console.log(`agents   ${pool.map((a) => a.name).join(", ")}${values["dry-run"] ? "  (dry run)" : ""}`);
-  if (maxRounds > 1) console.log(`rounds   ${firstRound}..${firstRound + maxRounds - 1} (until every reviewer approves)`);
-  console.log("");
-
-  for (let i = 0; i < maxRounds; i++) {
-    const round = firstRound + i;
-    // Re-read HEAD each round: between rounds the operator fixes what
-    // reproduced and pushes, so a later round must review the new commit, not
-    // the one the loop started on.
-    const head = await describe(worktree, values.trunk);
-    const converged = await runRound({
-      dir, round, pool, cfg, target, worktree, values, sha: head.sha,
-    });
-    if (converged) break;
-    if (i + 1 < maxRounds) {
-      console.log(`\nfix what reproduces and push, then round ${round + 1} reviews the new HEAD.\n`);
-    }
-  }
 }
 
 /** One round: prompt, launch every reviewer, record what they said. */
@@ -520,6 +435,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
  *   the round cap      --rounds, default 10
  */
 async function cmdAgent(argv) {
+  if (argv.includes("--web-only")) return cmdConsole(argv);
   const judgeFlags = argv.filter((a) => a === "--judge" || a.startsWith("--judge="));
   if (judgeFlags.length > 1) throw new Error("--judge accepts exactly one agent");
   const { values, positionals } = parseReviewArgs(argv, {
@@ -672,8 +588,6 @@ async function cmdAgent(argv) {
     console.log(st.field("console", `${liveConsole}${st.muted("  →  the conversation streams live")}`));
     openBrowser(liveConsole);
     console.log("");
-  } else {
-    console.log(st.field("watch", st.muted("jury web  →  the conversation streams live")) + "\n");
   }
 
   let pushFailed = false;
@@ -927,20 +841,26 @@ async function cleanupResolvedCheckout() {
   if (cleanup) await cleanup();
 }
 
-async function cmdWeb(argv) {
+async function cmdConsole(argv) {
   const { values } = parseArgs({
     args: argv, allowPositionals: false,
     options: {
       dir: { type: "string" },
       port: { type: "string", default: "3080" },
-      open: { type: "boolean", default: false },
+      "web-only": { type: "boolean" },
+      run: { type: "string" },
     },
   });
   const root = await commandDirectory(values.dir);
-  const { url, port } = await serve({ port: Number(values.port), cwd: root });
-  console.log(`console: ${url}`);
+  if (values.run && !(await readEvents(path.join(runsDir(root), path.basename(values.run)))).length) {
+    throw new Error(`no recorded run "${values.run}"`);
+  }
+  const { url } = await serve({ port: Number(values.port), cwd: root });
+  const selected = new URL(url);
+  if (values.run) selected.searchParams.set("run", path.basename(values.run));
+  console.log(`console: ${selected}`);
   console.log(`runs:    ${runsDir(root)}/`);
-  if (values.open) openBrowser(url);
+  openBrowser(String(selected));
   process.on("SIGINT", () => { console.log("\nstopped"); process.exit(0); });
   return new Promise(() => {}); // serve until interrupted
 }

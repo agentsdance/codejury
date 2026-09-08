@@ -562,6 +562,7 @@ test("an explicitly requested configured reviewer is actually launched", async (
   await g("commit", "-qam", "change");
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
     { name: "codex", enabled: false },
+    { name: "claude", role: "main", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
     { name: "grok", enabled: false },
     { name: "droid", enabled: false },
     {
@@ -571,7 +572,7 @@ test("an explicitly requested configured reviewer is actually launched", async (
   ] }));
 
   const result = await run(process.execPath, [
-    path.resolve("bin/jury.js"), "review-once", "--dir", repo, "--trunk", "master",
+    path.resolve("bin/jury.js"), "review", "--rounds", "1", "--web=false", "--push=false", "--judge", "claude", "--dir", repo, "--trunk", "master",
     "--agents", "traecli",
   ], { cwd: repo });
   assert.equal(result.stderr, "");
