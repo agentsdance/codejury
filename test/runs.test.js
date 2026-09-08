@@ -112,7 +112,7 @@ test("listRuns puts the newest run first, across PRs as well as within one", asy
       { target: { repo: "agentsdance/aigit", id, state: "review", attempt }, rounds: [], exchanges: [] },
     );
     // An older review of #3 and a newer one of #5. Sorting on the id first put
-    // #3 on top, so bare `jury web` opened the stale run.
+    // #3 on top, so bare `jury --web-only` opened the stale run.
     await mk("#3", "20260826-1000");
     await mk("#5", "20260826-1200");
     await mk("#5", "20260826-1100");

@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 const cli = new URL("../bin/jury.js", import.meta.url).pathname;
 const help = (...args) => execFileSync(process.execPath, [cli, ...args], { encoding: "utf8" });
 test("command help works without executing a command and is scoped to its topic", () => {
-  for (const topic of ["review", "review-once", "web", "finding", "reply", "runs", "agents", "version"]) {
+  for (const topic of ["review", "finding", "reply", "runs", "agents", "version"]) {
     const out = help("help", topic);
     assert.equal(out, help(topic, "--help"));
     assert.match(out, new RegExp(topic));
