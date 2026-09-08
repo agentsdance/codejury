@@ -5,6 +5,7 @@
 // said, recording it, serving the console. It deliberately does NOT triage —
 // deciding whether a finding reproduces is the calling agent's job, and roughly
 // a third of suggestions do not survive that step.
+import { commandHelp } from "../lib/help.js";
 import { parseArgs } from "node:util";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -142,6 +143,11 @@ if (cmd && (/^https?:\/\//.test(cmd) || cmd.startsWith("-")) && cmd !== "-h" && 
   cmd = "review";
 }
 
+if (rest[0] === "--help" || rest[0] === "-h") {
+  rest = [cmd];
+  cmd = "help";
+}
+
 try {
   switch (cmd) {
     // `agent` collided with both --agents and `jury agents`, three different
@@ -166,11 +172,17 @@ try {
     case "agents": await cmdAgents(); break;
     case "version": case "-v": case "--version": console.log(`jury ${VERSION}`); break;
     case "help": case "-h": case "--help": case undefined:
-      // --all, -a, or the bare word: every command and flag. Anything else
-      // gets the short form, which is what a person at a prompt wants.
-      process.stdout.write(
-        rest.some((a) => a === "--all" || a === "-a" || a === "all") ? USAGE_FULL : USAGE,
-      );
+      if (!rest.length) process.stdout.write(USAGE);
+      else if (rest.length === 1 && ["--all", "-a", "all"].includes(rest[0])) process.stdout.write(USAGE_FULL);
+      else {
+        const help = rest.length === 1 ? commandHelp(rest[0], USAGE_FULL) : null;
+        if (!help) {
+          console.error(`jury: unknown help topic "${rest.join(" ")}"`);
+          process.stdout.write(USAGE);
+          process.exit(2);
+        }
+        process.stdout.write(help);
+      }
       break;
     default:
       console.error(`jury: unknown command "${cmd}"\n`);
