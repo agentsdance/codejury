@@ -16,6 +16,19 @@ npm install -g @agentsdance/codejury     # then: jury <pr-url>
 npx @agentsdance/codejury <pr-url>       # or without installing
 ```
 
+Choose reviewers with `--reviewer` or its synonym `--jury`:
+
+```sh
+jury review <pr-url> --reviewer claude --reviewer grok
+jury review <pr-url> --jury claude,grok
+jury review <pr-url> --reviewer claude --jury grok
+```
+
+Repeated flags and comma-separated names can be mixed. These options also work
+with `review-once` and `reply`. The default is the configured reviewers, excluding
+the selected judge where applicable. `--agents` remains a hidden compatibility
+alias for one release. The `jury agents` command is unchanged.
+
 The GitHub PR URL is authoritative. `jury` resolves its base, source branch and exact
 head commit, reviews an isolated temporary checkout, and pushes accepted fixes
 back to the source branch. It is safe to invoke from `master` or from outside

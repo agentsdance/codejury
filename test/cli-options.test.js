@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseReviewArgs } from "../lib/cli-options.js";
+import { parseReviewArgs, reviewerOptions, requestedReviewers } from "../lib/cli-options.js";
 
 const options = { title: { type: "string" }, rounds: { type: "string" } };
 const parse = (args) => parseReviewArgs(args, options);
@@ -32,4 +32,12 @@ test("push defaults on and can be explicitly disabled without --no-push", () => 
   assert.equal(parsed.values.web, false);
   assert.equal(parsed.positionals.length, 1);
   assert.throws(() => parse(["--push=maybe"]), /true or false/);
+});
+
+test("reviewer options combine aliases and repeated comma-separated lists", () => {
+  const get = args => requestedReviewers(parseReviewArgs(args, reviewerOptions).values);
+  assert.equal(get([]), undefined);
+  assert.deepEqual(get(["--reviewer", "a,b", "--reviewer", "c", "--jury", "b,d", "--agents", "e"]), ["a", "b", "c", "d", "e"]);
+  assert.deepEqual(get(["--jury", " , "]), []);
+  assert.deepEqual(get(["--agents", "a,b"]), ["a", "b"]);
 });

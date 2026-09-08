@@ -23,7 +23,7 @@ import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
 import * as st from "../lib/style.js";
-import { parseReviewArgs } from "../lib/cli-options.js";
+import { parseReviewArgs, reviewerOptions, requestedReviewers } from "../lib/cli-options.js";
 import { startReviewConsole } from "../lib/review-console.js";
 
 const run = promisify(execFile);
@@ -55,12 +55,13 @@ const USAGE = `jury — review a pull request with multiple AI reviewers until t
 
 Common flags
 
-  --dir <path>               working/state root                   (default: Git cwd or ~/.jury)
-  --rounds <n>               stop after n rounds                  (default: 10)
-  --agents claude,grok       only these reviewers                 (default: configured reviewers)
-  --judge codex              one agent that triages and fixes     (default: codex)
-  --push <true|false>        commit and push fixes                (default: true)
-  --web <true|false>         open the browser console             (default: true)
+  --dir <path>               working/state root                                   (default: Git cwd or ~/.jury)
+  --rounds <n>               stop after n rounds                                  (default: 10)
+  --reviewer <name>          only these reviewers, repeatable or comma-separated  (default: configured reviewers)
+  --jury <name>              same as --reviewer
+  --judge codex              one agent that triages and fixes                     (default: codex)
+  --push <true|false>        commit and push fixes                                (default: true)
+  --web <true|false>         open the browser console                             (default: true)
 
 Other commands
 
@@ -93,7 +94,8 @@ review                           (triages, fixes, commits, and pushes automatica
   --title <text>             what the change does                                  (default: read from the PR)
   --summary <text>           intent, passed to reviewers                           (default: the PR description)
   --rounds <n>               maximum rounds                                        (default: 10)
-  --agents a,b               only these reviewers                                  (default: configured reviewers)
+  --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured reviewers)
+  --jury <name>              same as --reviewer
   --judge <agent>            one agent that triages and fixes                      (default: codex)
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
@@ -108,7 +110,8 @@ review-once flags
   --summary <text>           a few lines of intent, passed to reviewers
   --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
   --round <n>                round number                                          (default: next)
-  --agents a,b               only these reviewers                                  (default: configured reviewers)
+  --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured reviewers)
+  --jury <name>              same as --reviewer
   --max-rounds <n>           keep going until every reviewer approves, at most n   (default: 1)
 
 web flags
@@ -125,6 +128,10 @@ finding commands                     (--dir picks state root; --run picks run)
 With a PR URL, the default working/state root is ~/.jury.
 
 Use --push=false (or --push false) to disable pushing; --push enables it.
+
+reply flags
+  --reviewer <name>          only these reviewers, repeatable or comma-separated
+  --jury <name>              same as --reviewer
 
 state commands
   jury runs [--dir <path>]
@@ -200,8 +207,8 @@ function selectReviewers(cfg, requested, judge = null) {
   const eligible = reviewers(cfg).filter((a) => a.name !== judge);
   if (!requested) return eligible;
 
-  const names = [...new Set(requested.split(",").map((s) => s.trim()).filter(Boolean))];
-  if (!names.length) throw new Error("--agents needs at least one reviewer name");
+  const names = requested;
+  if (!names.length) throw new Error("--reviewer needs at least one reviewer name");
 
   const byName = new Map(cfg.agents.map((a) => [a.name, a]));
   const allowed = new Set(eligible.map((a) => a.name));
@@ -243,7 +250,7 @@ async function cmdReview(argv) {
       summary: { type: "string", default: "" },
       trunk: { type: "string" },
       round: { type: "string" },
-      agents: { type: "string" },
+      ...reviewerOptions,
       "max-rounds": { type: "string", default: "1" },
       "dry-run": { type: "boolean", default: false },
     },
@@ -256,7 +263,7 @@ async function cmdReview(argv) {
 
   const worktree = await commandDirectory(values.dir);
   const cfg = await loadConfig(worktree);
-  const pool = selectReviewers(cfg, values.agents);
+  const pool = selectReviewers(cfg, requestedReviewers(values));
 
   values.trunk ??= await defaultTrunk(worktree);
   const git = await describe(worktree, values.trunk);
@@ -522,7 +529,7 @@ async function cmdAgent(argv) {
     summary: { type: "string" },
     trunk: { type: "string" },
     rounds: { type: "string", default: "10" },
-    agents: { type: "string" },
+    ...reviewerOptions,
     judge: { type: "string" },
     push: { type: "boolean", default: true },
     resume: { type: "string" },
@@ -639,7 +646,7 @@ async function cmdAgent(argv) {
   // A judge cannot independently review its own work. Other configured main
   // agents stay out of the pool rather than being silently demoted to writers
   // with a read-only prompt.
-  const pool = selectReviewers(cfg, values.agents, judge.name);
+  const pool = selectReviewers(cfg, requestedReviewers(values), judge.name);
   if (!pool.length) throw new Error("no reviewers configured after excluding the judge");
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
@@ -1034,7 +1041,7 @@ async function cmdReply(argv) {
     options: {
       run: { type: "string" },
       dir: { type: "string" },
-      agents: { type: "string" },
+      ...reviewerOptions,
       "dry-run": { type: "boolean", default: false },
     },
   });
@@ -1047,7 +1054,7 @@ async function cmdReply(argv) {
   const findings = await findingsIn(dir);
   const { sha } = await describe(worktree, "master");
 
-  let pool = selectReviewers(cfg, values.agents, judge);
+  let pool = selectReviewers(cfg, requestedReviewers(values), judge);
   // Only reviewers that actually said something, and only once you have
   // answered them: a reply that says "still open" for every item is noise.
   pool = pool.filter((a) => {
