@@ -47,7 +47,8 @@ let resolvedCheckoutCleanup = null;
  */
 const USAGE = `jury — review a pull request with multiple AI reviewers until they agree
 
-  jury <pr-url>              review a pull request
+  jury review <pr-url>       review a pull request
+  jury <pr-url>              shorthand for jury review
   jury <pr-url> --rounds 3   review a pull request for up to 3 rounds
   jury <pr-url> --web=false  review without the browser console
 
