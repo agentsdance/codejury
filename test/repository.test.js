@@ -482,3 +482,38 @@ test("an auth failure is not mistaken for an unusual ref layout", async () => {
     },
   );
 });
+
+test("root and dir are different questions: output location vs what to resolve from", async () => {
+  const head = "3ca15f0dd883a810f31c87b54627d0fe41bcdacf";
+  const calls = [];
+  const exec = async (command, args) => {
+    const a = args.join(" ");
+    calls.push(a);
+    if (a.includes("remote -v")) {
+      return { stdout: "origin\thttps://git.example.com/acme/widgets.git (fetch)\n" };
+    }
+    if (a.includes("rev-parse --verify")) return { stdout: `${head}\n` };
+    if (args[0] === "rev-parse") return { stdout: `${head}\n` };
+    if (args[0] === "symbolic-ref") return { stdout: "origin/main\n" };
+    if (a.startsWith("ls-remote --symref")) return { stdout: "ref: refs/heads/main\tHEAD\n" };
+    if (args[0] === "ls-remote") return { stdout: `${head}\trefs/heads/fix/widget\n` };
+    return { stdout: "" };
+  };
+
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    {
+      allowPush: false, exec,
+      root: "/isolated",          // where the checkout is written
+      dir: "/repos/widgets",      // the repository to resolve FROM
+      makeTemp: async (prefix) => prefix + "test", remove: async () => {},
+    },
+  );
+
+  // Collapsing these two into one left dir unset, which made the local path
+  // unreachable and sent every review back to the ref the host may have pruned.
+  assert.ok(calls.some((c) => c.includes("clone --quiet --no-checkout /repos/widgets")));
+  assert.ok(!calls.some((c) => c.startsWith("fetch origin refs/merge-requests")));
+  assert.ok(resolved.worktree.startsWith("/isolated/"));
+  assert.equal(resolved.sha, head);
+});

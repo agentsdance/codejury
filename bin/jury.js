@@ -534,8 +534,17 @@ async function cmdAgent(argv) {
 
   values.push = values.push && !values["no-push"];
   const requestedWorktree = await commandDirectory(values.pr ? (values.dir ?? "") : values.dir);
+  // Two different questions, and conflating them cost the local path entirely.
+  // `root` is where the isolated checkout and run records are written; `dir` is
+  // the repository to resolve the request FROM. A caller sitting in the very
+  // repository under review already has its commits, and asking them for the
+  // one ref the host may have pruned — rather than reading what is on disk —
+  // is what issue #30 was.
+  const resolveFrom = values.dir ? path.resolve(values.dir) : process.cwd();
   const resolved = values.pr
-    ? await resolvePrCheckout(values.pr, { allowPush: values.push, root: requestedWorktree })
+    ? await resolvePrCheckout(values.pr, {
+      allowPush: values.push, root: requestedWorktree, dir: resolveFrom,
+    })
     : null;
   const worktree = resolved?.worktree ?? requestedWorktree;
   resolvedCheckoutCleanup = resolved?.cleanup ?? null;
