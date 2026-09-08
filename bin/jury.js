@@ -74,7 +74,7 @@ const USAGE_FULL = `jury — multi-agent code review
 
   jury <pr-url>              review a PR until every reviewer approves, one conversation per reviewer
   jury review-once [flags]   a single round, no triage or reply
-  jury web [flags]           serve the console                                     (default http://127.0.0.1:3080)
+  jury web [flags]           serve the console                                     (default: http://127.0.0.1:3080)
   jury finding <cmd>         list | reproduce | resolve | settled — appends events, enforces the gate
   jury reply [flags]         send each reviewer your verdicts on ITS findings, one conversation each
   jury runs                  list every PR under review, with its slug for --run
@@ -90,12 +90,12 @@ review                           (triages, fixes, commits, and pushes automatica
   --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
   --title <text>             what the change does                                  (default: read from the PR)
   --summary <text>           intent, passed to reviewers                           (default: the PR description)
-  --rounds <n>               maximum rounds                                        (default 10)
+  --rounds <n>               maximum rounds                                        (default: 10)
   --agents a,b               only these reviewers                                  (default: configured reviewers)
   --judge <agent>            one agent that triages and fixes                      (default: codex)
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
-  --port <n>                 console port                                          (default 3080)
+  --port <n>                 console port                                          (default: 3080)
   --push <true|false>        commit and push fixes                                 (default: true)
   --dry-run                  (internal) exercise the pipeline, spawn no agents. Always
                              reports clean and triages nothing, so it says whether the
@@ -109,7 +109,7 @@ review-once flags
   --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
   --round <n>                round number                                          (default: next)
   --agents a,b               only these reviewers                                  (default: configured reviewers)
-  --max-rounds <n>           keep going until every reviewer approves, at most n   (default 1)
+  --max-rounds <n>           keep going until every reviewer approves, at most n   (default: 1)
 
 web flags
   --dir <path>               working/state root                                    (default: Git cwd or ~/.jury)
