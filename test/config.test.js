@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadConfig, judgeAgent, CONFIG_NAMES } from "../lib/config.js";
+import { loadConfig, judgeAgent, reviewers, CONFIG_NAMES } from "../lib/config.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "jury-config-"));
 const write = (dir, name, obj) =>
@@ -43,11 +43,13 @@ test("no config at all is not an error — the defaults stand", async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-test("Claude is the default judge and an enabled agent can override it", async () => {
+test("Codex is the default judge and an enabled agent can override it", async () => {
   const dir = await tmp();
   const cfg = await loadConfig(dir);
-  assert.equal(judgeAgent(cfg).name, "claude");
-  assert.equal(judgeAgent(cfg, "codex").name, "codex");
+  assert.equal(judgeAgent(cfg).name, "codex");
+  assert.ok(!reviewers(cfg).some((a) => a.name === "codex"));
+  assert.ok(reviewers(cfg).some((a) => a.name === "claude"));
+  assert.equal(judgeAgent(cfg, "claude").name, "claude");
   assert.equal(judgeAgent(cfg, "missing"), null);
   await rm(dir, { recursive: true, force: true });
 });
@@ -63,4 +65,29 @@ test("the preferred name is current and both old names remain listed", async () 
   assert.equal(CONFIG_NAMES[0], "jury.config.json", "the current name must be tried first");
   assert.ok(CONFIG_NAMES.includes("cr.config.json"), "cr config must remain readable");
   assert.ok(CONFIG_NAMES.includes("macr.config.json"), "macr config must remain readable");
+});
+
+test("an explicit configured judge overrides the built-in Codex default", async (t) => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await write(dir, "jury.config.json", { agents: [{ name: "claude", role: "main" }] });
+  const cfg = await loadConfig(dir);
+  assert.equal(judgeAgent(cfg).name, "claude");
+  assert.ok(reviewers(cfg).some((a) => a.name === "codex"));
+  await write(dir, "jury.config.json", { agents: [
+    { name: "claude", role: "main" }, { name: "codex", role: "main" },
+  ] });
+  await assert.rejects(loadConfig(dir), /only one agent/);
+});
+
+test("judge permissions differ from reviewer permissions without replacing custom argv", async (t) => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const cfg = await loadConfig(dir);
+  assert.ok(judgeAgent(cfg).argv.includes("workspace-write"));
+  assert.ok(cfg.agents.find(a => a.name === "codex").argv.includes("read-only"));
+  assert.ok(judgeAgent(cfg, "claude").argv.includes("acceptEdits"));
+  assert.ok(reviewers(cfg).find(a => a.name === "claude").argv.includes("plan"));
+  await write(dir, "jury.config.json", { agents: [{ name: "codex", argv: ["custom-codex"] }] });
+  assert.deepEqual(judgeAgent(await loadConfig(dir)).argv, ["custom-codex"]);
 });

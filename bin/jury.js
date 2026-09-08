@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// jury — run a pull request past several independent AI reviewers.
+// jury — review a pull request with multiple independent AI reviewers.
 //
 // The CLI owns the mechanics: worktrees, spawning agents, capturing what they
 // said, recording it, serving the console. It deliberately does NOT triage —
@@ -22,6 +22,8 @@ import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
 import * as st from "../lib/style.js";
+import { parseReviewArgs } from "../lib/cli-options.js";
+import { startReviewConsole } from "../lib/review-console.js";
 
 const run = promisify(execFile);
 // Read from the manifest rather than restated here, where it drifted: the CLI
@@ -43,19 +45,20 @@ let resolvedCheckoutCleanup = null;
  * of it by default buried the one command that matters in a wall of options —
  * `jury help --all` still prints everything.
  */
-const USAGE = `jury — run a pull request past several AI reviewers until they agree
+const USAGE = `jury — review a pull request with multiple AI reviewers until they agree
 
   jury <pr-url>              review a pull request
-  jury --rounds 3            review the current branch, no PR
-  jury --web <pr-url>        …and watch it in the browser
+  jury <pr-url> --rounds 3   review a pull request for up to 3 rounds
+  jury <pr-url> --web=false  review without the browser console
 
 Common flags
 
-  --dir <path>             working/state root      (default: Git cwd or ~/.jury)
-  --rounds <n>             stop after n rounds            (default 10)
-  --agents codex,grok      only these reviewers           (default: all installed)
-  --judge codex            one agent that triages and fixes       (default: claude)
-  --no-push                fix locally, do not push
+  --dir <path>               working/state root                   (default: Git cwd or ~/.jury)
+  --rounds <n>               stop after n rounds                  (default: 10)
+  --agents claude,grok       only these reviewers                 (default: configured reviewers)
+  --judge codex              one agent that triages and fixes     (default: codex)
+  --push <true|false>        commit and push fixes                (default: true)
+  --web <true|false>         open the browser console             (default: true)
 
 Other commands
 
@@ -69,55 +72,55 @@ Other commands
 
 const USAGE_FULL = `jury — multi-agent code review
 
-  jury <pr-url>             review a PR until every reviewer approves, one conversation per reviewer
-  jury review-once [flags]  a single round, no triage or reply
-  jury web [flags]          serve the console (default http://127.0.0.1:3080)
-  jury finding <cmd>        list | reproduce | resolve | settled — appends events, enforces the gate
-  jury reply [flags]        send each reviewer your verdicts on ITS findings, one conversation each
-  jury runs                 list every PR under review, with its slug for --run
-  jury agents               check which configured agents are installed
+  jury <pr-url>              review a PR until every reviewer approves, one conversation per reviewer
+  jury review-once [flags]   a single round, no triage or reply
+  jury web [flags]           serve the console                                     (default http://127.0.0.1:3080)
+  jury finding <cmd>         list | reproduce | resolve | settled — appends events, enforces the gate
+  jury reply [flags]         send each reviewer your verdicts on ITS findings, one conversation each
+  jury runs                  list every PR under review, with its slug for --run
+  jury agents                check which configured agents are installed
   jury version
 
-review                           (drives itself; no operator between rounds)
+review                           (triages, fixes, commits, and pushes automatically)
   jury https://github.com/owner/repo/pull/1
-  jury --rounds 3                  the current branch, no PR
+  jury <pr-url> --rounds 3   review a pull request for up to 3 rounds
 
-  --dir <path>       repo/worktree      (default: cwd if Git, otherwise ~/.jury)
-  --pr <url>         same as the positional argument
-  --trunk <branch>   diff base branch          (default: the remote's own HEAD)
-  --title <text>     what the change does         (default: read from the PR)
-  --summary <text>   intent, passed to reviewers  (default: the PR description)
-  --rounds <n>       maximum rounds                           (default 10)
-  --agents a,b       only these reviewers            (default: all installed)
-  --judge <agent>    one agent that triages and fixes       (default: claude)
-  --resume <slug>    continue an existing run instead of starting a new one
-  --web              open the console on this run          (stays up when it ends)
-  --port <n>         console port, with --web              (default 3080)
-  --no-push          commit fixes to the worktree without pushing
-  --dry-run          (internal) exercise the pipeline, spawn no agents. Always
-                     reports clean and triages nothing, so it says whether the
-                     plumbing runs and never whether the code is good.
+  --dir <path>               repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
+  --pr <url>                 same as the positional argument
+  --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
+  --title <text>             what the change does                                  (default: read from the PR)
+  --summary <text>           intent, passed to reviewers                           (default: the PR description)
+  --rounds <n>               maximum rounds                                        (default 10)
+  --agents a,b               only these reviewers                                  (default: configured reviewers)
+  --judge <agent>            one agent that triages and fixes                      (default: codex)
+  --resume <slug>            continue an existing run instead of starting a new one
+  --web <true|false>         open the console; stays up after review               (default: true)
+  --port <n>                 console port                                          (default 3080)
+  --push <true|false>        commit and push fixes                                 (default: true)
+  --dry-run                  (internal) exercise the pipeline, spawn no agents. Always
+                             reports clean and triages nothing, so it says whether the
+                             plumbing runs and never whether the code is good.
 
 review-once flags
-  --dir <path>       repo/worktree       (default: cwd if Git, otherwise ~/.jury)
-  --pr <url>         pull request URL, recorded on the run
-  --title <text>     what the change does, shown in the console
-  --summary <text>   a few lines of intent, passed to reviewers
-  --trunk <branch>   diff base branch                        (default master)
-  --round <n>        round number                            (default: next)
-  --agents a,b       only these reviewers                    (default: all enabled)
-  --max-rounds <n>   keep going until every reviewer approves, at most n (default 1)
+  --dir <path>               repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
+  --pr <url>                 pull request URL, recorded on the run
+  --title <text>             what the change does, shown in the console
+  --summary <text>           a few lines of intent, passed to reviewers
+  --trunk <branch>           diff base branch                                      (default master)
+  --round <n>                round number                                          (default: next)
+  --agents a,b               only these reviewers                                  (default: all enabled)
+  --max-rounds <n>           keep going until every reviewer approves, at most n   (default 1)
 
 web flags
-  --dir <path>       run-state root       (default: cwd if Git, otherwise ~/.jury)
-  --port <n>         default 3080, walks forward if busy
-  --open             open a browser
+  --dir <path>               run-state root                                        (default: cwd if Git, otherwise ~/.jury)
+  --port <n>                 default 3080, walks forward if busy
+  --open                     open a browser
 
 finding commands                     (--dir picks state root; --run picks run)
   jury finding list
   jury finding reproduce <id> --evidence <text> [--test <text>]
   jury finding resolve <id> --verdict <${VERDICTS.join("|")}> [--reason <text>] [--test <text>]
-  jury finding settled                          print the regenerated settled list
+  jury finding settled       print the regenerated settled list
 
 state commands
   jury runs [--dir <path>]
@@ -496,24 +499,19 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
 async function cmdAgent(argv) {
   const judgeFlags = argv.filter((a) => a === "--judge" || a.startsWith("--judge="));
   if (judgeFlags.length > 1) throw new Error("--judge accepts exactly one agent");
-  const { values, positionals } = parseArgs({
-    args: argv, allowPositionals: true,
-    options: {
-      dir: { type: "string" },
-      pr: { type: "string" },
-      title: { type: "string" },
-      summary: { type: "string" },
-      trunk: { type: "string" },
-      rounds: { type: "string", default: "10" },
-      agents: { type: "string" },
-      judge: { type: "string" },
-      push: { type: "boolean", default: true },
-      "no-push": { type: "boolean", default: false },
-      resume: { type: "string" },
-      "dry-run": { type: "boolean", default: false },
-      web: { type: "boolean", default: false },
-      port: { type: "string", default: "3080" },
-    },
+  const { values, positionals } = parseReviewArgs(argv, {
+    dir: { type: "string" },
+    pr: { type: "string" },
+    title: { type: "string" },
+    summary: { type: "string" },
+    trunk: { type: "string" },
+    rounds: { type: "string", default: "10" },
+    agents: { type: "string" },
+    judge: { type: "string" },
+    push: { type: "boolean", default: true },
+    resume: { type: "string" },
+    "dry-run": { type: "boolean", default: false },
+    port: { type: "string", default: "3080" },
   });
   if (values.judge?.includes(",")) throw new Error("--judge accepts exactly one agent, not a list");
 
@@ -532,7 +530,6 @@ async function cmdAgent(argv) {
     throw new Error("--rounds must be a positive integer");
   }
 
-  values.push = values.push && !values["no-push"];
   const requestedWorktree = await commandDirectory(values.pr ? (values.dir ?? "") : values.dir);
   // Two different questions, and conflating them cost the local path entirely.
   // `root` is where the isolated checkout and run records are written; `dir` is
@@ -615,7 +612,11 @@ async function cmdAgent(argv) {
     if (requestedJudge) {
       throw new Error(`judge "${requestedJudge}" is not an enabled configured agent — available: ${available}`);
     }
-    throw new Error('no agent has role "main" — configure one or pass --judge <agent>');
+    throw new Error('no agent has role "main" — Codex is the default judge; enable it or pass --judge <agent>');
+  }
+  if (!values["dry-run"]) {
+    const installed = await probe(judge);
+    if (!installed.ok) throw new Error(`judge "${judge.name}" is not installed (${installed.bin}); install it or select --judge <agent>`);
   }
   target.judge = judge.name;
 
@@ -641,10 +642,12 @@ async function cmdAgent(argv) {
   // directory and nothing else: the server re-reads it per request and tails
   // the event log, so it sees each round land without the loop telling it.
   if (values.web) {
-    const { url } = await serve({ port: Number(values.port), cwd: requestedWorktree, onLog: (m) => console.log(st.field("console", st.muted(m))) });
-    liveConsole = url;
-    console.log(st.field("console", `${url}${st.muted("  →  the conversation streams live")}`));
-    openBrowser(url);
+    liveConsole = await startReviewConsole({
+      dir, target, cwd: requestedWorktree, port: Number(values.port),
+      onLog: (m) => console.log(st.field("console", st.muted(m))),
+    });
+    console.log(st.field("console", `${liveConsole}${st.muted("  →  the conversation streams live")}`));
+    openBrowser(liveConsole);
     console.log("");
   } else {
     console.log(st.field("watch", st.muted("jury web  →  the conversation streams live")) + "\n");

@@ -4,7 +4,7 @@
     "and gitignored: which reviewers you have installed is a property of your box,",
     "not of the project.",
     "",
-    "Built-in defaults already cover claude (main), codex and droid, so this file is",
+    "Built-in defaults already cover codex (main), claude and droid, so this file is",
     "only needed to add an agent or disable one.",
     "",
     "Placeholders: {{worktree}} {{promptFile}} {{promptText}} {{sha}}"

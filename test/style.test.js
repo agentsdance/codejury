@@ -97,6 +97,18 @@ test("the default help stays short, and everything it names is real", async () =
   assert.ok(short.length < full.length, "USAGE must be shorter than USAGE_FULL");
   assert.match(short, /jury help --all/, "it must say where the rest is");
 
+  for (const [name, text] of [["short", short], ["full", full]]) {
+    const columns = text.split("\n").flatMap((line) => {
+      const row = line.match(/^  (\S.*?) {2,}(\S.*)$/);
+      return row ? [row[0].length - row[2].length] : [];
+    });
+    assert.equal(new Set(columns).size, 1, `${name} help descriptions must align`);
+    const defaults = text.split("\n").filter((line) => /^  /.test(line) && line.includes("(default"))
+      .map((line) => line.indexOf("(default"));
+    assert.equal(new Set(defaults).size, 1, `${name} help defaults must align`);
+  }
+
+
   // Every flag the short help advertises has to exist in the real reference,
   // or it documents behaviour the CLI does not have. `jury` bare prints help
   // rather than reviewing, and the short help claimed otherwise once.
