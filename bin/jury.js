@@ -85,7 +85,7 @@ review                           (triages, fixes, commits, and pushes automatica
   jury https://github.com/owner/repo/pull/1
   jury <pr-url> --rounds 3   review a pull request for up to 3 rounds
 
-  --dir <path>               repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
+  --dir <path>               working/state root                                    (default: Git cwd or ~/.jury)
   --pr <url>                 same as the positional argument
   --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
   --title <text>             what the change does                                  (default: read from the PR)
@@ -102,7 +102,7 @@ review                           (triages, fixes, commits, and pushes automatica
                              plumbing runs and never whether the code is good.
 
 review-once flags
-  --dir <path>               repo/worktree                                         (default: cwd if Git, otherwise ~/.jury)
+  --dir <path>               working/state root                                    (default: Git cwd or ~/.jury)
   --pr <url>                 pull request URL, recorded on the run
   --title <text>             what the change does, shown in the console
   --summary <text>           a few lines of intent, passed to reviewers
@@ -112,7 +112,7 @@ review-once flags
   --max-rounds <n>           keep going until every reviewer approves, at most n   (default 1)
 
 web flags
-  --dir <path>               run-state root                                        (default: cwd if Git, otherwise ~/.jury)
+  --dir <path>               working/state root                                    (default: Git cwd or ~/.jury)
   --port <n>                 default 3080, walks forward if busy
   --open                     open a browser
 
@@ -121,6 +121,8 @@ finding commands                     (--dir picks state root; --run picks run)
   jury finding reproduce <id> --evidence <text> [--test <text>]
   jury finding resolve <id> --verdict <${VERDICTS.join("|")}> [--reason <text>] [--test <text>]
   jury finding settled       print the regenerated settled list
+
+With a PR URL, the default working/state root is ~/.jury.
 
 Use --push=false (or --push false) to disable pushing; --push enables it.
 
