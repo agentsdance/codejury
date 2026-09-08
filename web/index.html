@@ -733,7 +733,7 @@ function draw(){
   const all = RUN.exchanges ?? [];
   const rows = all.filter(x => show.has(x.res ?? x.resolution));
   const t = RUN.target ?? {};
-  const cmd = t.url ? `jury review ${t.url}` : `jury review --dir . --trunk ${t.trunk ?? "master"}`;
+  const cmd = t.targets?.length ? `jury review ${t.targets.map(p => p.url).join(" ")}` : t.url ? `jury review ${t.url}` : `jury review --dir . --trunk ${t.trunk ?? "master"}`;
 
   // This copy has to describe THIS run. A line about the rejected finding was
   // being printed over a run that raised no findings at all.
@@ -756,7 +756,7 @@ function draw(){
         <span class="tag" data-r="${x.res ?? x.resolution}">${x.res ?? x.resolution}</span>
         <span class="meta">${esc(x.id ?? "")} · ${esc(x.loc ?? "")}</span>
       </div>
-      ${(x.turns ?? []).map(tt => `
+      ${(x.turns ?? []).filter(tt => typeof tt.body === "string").map(tt => `
         <div class="ln" data-who="${tt.who}">
           <span class="at">${when(tt)}</span>
           <span class="nm"${tt.who === judgeName() ? ' style="color:var(--t-claude)"' : ""}>${icon(tt.who)}${esc(tt.who)}</span>
@@ -779,6 +779,14 @@ function draw(){
     if (!who.includes(k)) who.push(k);
   }
 
+  const cards = mine => {
+    if (!t.targets?.length) return mine.map(card).join("");
+    return [...t.targets, { key: null, title: "Unassigned PR" }].map(pr => {
+      const items = mine.filter(x => (x.pr ?? null) === pr.key);
+      if (!items.length) return "";
+      return `<div class="rule"><span class="lbl">${esc(pr.key ?? "Unassigned")} · ${esc(pr.title)}</span><i></i></div>${items.map(card).join("")}`;
+    }).join("");
+  };
   const body = !rows.length
     ? `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`
     // Follows the conversation picked above, so the findings on screen are the
@@ -798,7 +806,7 @@ function draw(){
               <span class="lbl">${icon(agent)}${esc(judgeName())} ⇄ ${esc(agent)}</span><i></i>
               <span class="rt">${mine.length} of ${shown} finding(s)</span>
             </div>
-            ${mine.map(card).join("")}
+            ${cards(mine)}
           </div>`;
       }).join("") || `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`;
 
@@ -809,7 +817,7 @@ function draw(){
         <span class="t">${esc(t.repo ?? "")} ${esc(t.id ?? "")} — exchange</span>
       </div>
       <div class="term-body">
-        <div class="cmdline"><span class="cwd">~/${esc((t.repo ?? "repo").split("/").pop())}</span> <span class="branch">git:(${esc(t.branch ?? "?")})</span></div>
+        <div class="cmdline"><span class="cwd">~/${esc((t.repo ?? "repo").split("/").pop())}</span> ${t.targets?.length ? "" : `<span class="branch">git:(${esc(t.branch ?? "?")})</span>`}</div>
         <div class="cmdline"><span class="p">❯</span><span class="c">${esc(cmd)}</span></div>
         ${body}
       </div>
@@ -832,13 +840,15 @@ function renderHeader(){
   // below the title: the chips read "#46 / #48" and a bare number does not say
   // what project it belongs to.
   const scope = [...new Set(ALL.map(r => r.target?.repo).filter(Boolean))];
-  $("t-kicker").textContent = ALL.length > 1
+  $("t-kicker").textContent = t.targets?.length ? `${t.targets.length} related PRs · one review task` : ALL.length > 1
     ? `${scope.length === 1 ? scope[0] : `${scope.length} repos`} · ${ALL.length} pull requests`
     : `${t.repo ? `${t.repo} · ` : ""}single pull request`;
   $("t-title").textContent = t.title ?? "(untitled change)";
   $("t-summary").textContent = t.summary ?? "";
 
-  const link = t.url
+  const link = t.targets?.length
+    ? t.targets.map(pr => `<a href="${esc(pr.url)}" target="_blank" rel="noopener">${esc(pr.key)} · ${esc(pr.repo)} #${esc(pr.id)}</a>`).join(" ")
+    : t.url
     ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.repo ?? "")} ${esc(t.id ?? "")}</a>`
     : `<span>${esc(t.repo ?? "")} ${esc(t.id ?? "")}</span>`;
   const branch = t.branch ? `<span>${esc(t.branch)} → ${esc(t.trunk ?? "master")}</span>` : "";
@@ -847,7 +857,7 @@ function renderHeader(){
   const commit = reviewedCommit(t);
   const badge = t.state
     ? `<span class="${cls}"><span class="d"></span>${esc(statusLabel(t))}</span>` : "";
-  const reviewed = commit ? `<span>Reviewed commit <code>${esc(commit)}</code></span>` : "";
+  const reviewed = commit ? `<span>Reviewed ${t.targets?.length ? "commits" : "commit"} <code>${esc(commit)}</code></span>` : "";
   $("t-meta").innerHTML = [link, branch, stat, badge, reviewed].filter(Boolean).join("");
 
   // Only worth showing when there is something to switch between.
@@ -944,6 +954,7 @@ function runSummary(r) {
 }
 
 function reviewedCommit(t) {
+  if (t?.reviewedCommits) return Object.entries(t.reviewedCommits).map(([key, sha]) => `${key} ${sha.slice(0, 8)}`).join(" · ");
   if (t?.reviewedCommit) return t.reviewedCommit;
   return (t?.stateNote?.match(/\bconverged on ([0-9a-f]{7,40})\b/i)?.[1] ?? "").toLowerCase();
 }
@@ -1108,7 +1119,7 @@ function render(){
 
   $("rounds").innerHTML = RUN.rounds.map(r=>`
     <article class="rcard">
-      <header><b>Round ${r.n}</b><span class="sha">${esc(r.sha)}</span></header>
+      <header><b>Round ${r.n}</b><span class="sha" title="${esc(r.sha)}">${esc(String(r.sha ?? "").replace(/(PR\d+=)([0-9a-f]{40})/g, (_, key, sha) => key + sha.slice(0, 8)))}</span></header>
       ${r.verdicts.map(v=>`
         <div class="verd" data-s="${v.s}">
           <span class="ag"><span class="ic" style="color:${hueFor(v.a)}">${icon(v.a)}</span>${esc(v.a)}</span>
@@ -1267,7 +1278,7 @@ function turnHTML(t, agent) {
         >${t.claim ? `<span class="re">${esc(t.claim)}</span>` : ""}${t.text ? `\n${esc(t.text)}` : ""}</div>`;
       break;
     case "commit":
-      body = `<div class="bub" data-k="commit">pushed ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
+      body = `<div class="bub" data-k="commit">${esc(t.pr ? `${t.pr} · ` : "")}${t.pushed === false ? "push failed" : t.pushed === null ? "committed locally" : "pushed"} ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
       break;
     case "waiting": {
       // Counted up client-side between heartbeats, so it ticks every second
@@ -1602,7 +1613,7 @@ function foldConversation(events) {
         break;
       case "commit.pushed":
         for (const t of threads.values()) {
-          t.turns.push({ who: e.who ?? judge, kind: "commit", sha: e.sha, text: e.subject ?? "", ts: e.ts });
+          t.turns.push({ who: e.who ?? judge, kind: "commit", sha: e.sha, pr: e.pr ?? null, pushed: e.pushed, text: e.subject ?? "", ts: e.ts });
         }
         break;
     }
