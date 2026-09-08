@@ -533,9 +533,9 @@ async function cmdAgent(argv) {
   }
 
   values.push = values.push && !values["no-push"];
-  const requestedWorktree = await commandDirectory(values.dir);
+  const requestedWorktree = await commandDirectory(values.pr ? (values.dir ?? "") : values.dir);
   const resolved = values.pr
-    ? await resolvePrCheckout(values.pr, { allowPush: values.push, dir: requestedWorktree })
+    ? await resolvePrCheckout(values.pr, { allowPush: values.push, root: requestedWorktree })
     : null;
   const worktree = resolved?.worktree ?? requestedWorktree;
   resolvedCheckoutCleanup = resolved?.cleanup ?? null;
