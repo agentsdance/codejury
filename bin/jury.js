@@ -106,7 +106,7 @@ review-once flags
   --pr <url>                 pull request URL, recorded on the run
   --title <text>             what the change does, shown in the console
   --summary <text>           a few lines of intent, passed to reviewers
-  --trunk <branch>           diff base branch                                      (default master)
+  --trunk <branch>           diff base branch                                      (default: the remote's own HEAD)
   --round <n>                round number                                          (default: next)
   --agents a,b               only these reviewers                                  (default: all enabled)
   --max-rounds <n>           keep going until every reviewer approves, at most n   (default 1)
@@ -245,6 +245,7 @@ async function cmdReview(argv) {
   const cfg = await loadConfig(worktree);
   const pool = selectReviewers(cfg, values.agents);
 
+  values.trunk ??= await defaultTrunk(worktree);
   const git = await describe(worktree, values.trunk);
   if (values.pr) assertPrCheckout(values.pr, git.remote, worktree);
   const target = {
