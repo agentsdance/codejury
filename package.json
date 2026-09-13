@@ -1,7 +1,7 @@
 {
   "name": "@agentsdance/codejury",
-  "version": "0.2.0",
-  "description": "Independent AI reviewers that iterate until your pull request is clean.",
+  "version": "0.3.0",
+  "description": "Independent AI code reviewers, one judge, and a local console for pull request review and fixes.",
   "keywords": [
     "code-review",
     "ai",
@@ -30,15 +30,22 @@
     "lib",
     "web/index.html",
     "prompts",
-    "jury.config.example.json"
+    "jury.config.example.json",
+    "docs",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CASE-STUDY.md",
+    "TODO.md"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "prepublishOnly": "npm test",
+    "prepublishOnly": "npm test && npm run test:package",
     "start": "node bin/jury.js --web-only",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node scripts/test.mjs",
+    "test:package": "node scripts/check-package.mjs"
   },
   "license": "MIT"
 }

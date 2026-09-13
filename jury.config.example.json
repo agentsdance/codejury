@@ -1,43 +1,7 @@
 {
-  "_comment": [
-    "Copy to jury.config.json to override or add agents. That file is per-machine",
-    "and gitignored: which reviewers you have installed is a property of your box,",
-    "not of the project.",
-    "",
-    "Built-in defaults already cover codex (main), claude and droid, so this file is",
-    "only needed to add an agent or disable one.",
-    "",
-    "Placeholders: {{worktree}} {{promptFile}} {{promptText}} {{sha}}"
-  ],
+  "_comment": "Copy to jury.config.json in the reviewed repository. This example uses Codex as judge and Claude as reviewer; install and authenticate both CLIs first. See docs/configuration.md.",
   "agents": [
-    { "name": "droid", "enabled": false },
-
-    {
-      "name": "agy",
-      "enabled": true,
-      "role": "reviewer",
-      "promptDelivery": "argv",
-      "cwd": "worktree",
-      "argv": [
-        "agy",
-        "--dangerously-skip-permissions",
-        "--add-dir",
-        "{{worktree}}",
-        "--print-timeout",
-        "20m",
-        "--print",
-        "{{promptText}}"
-      ],
-      "resume": { "supported": false, "reason": "print mode starts a fresh session per run" },
-      "report": "whole",
-      "expectSeconds": 300,
-      "_notes": [
-        "Two quirks, each of which cost a wasted run:",
-        "  1. --dangerously-skip-permissions must precede --print, or every file",
-        "     read is auto-denied and the reviewer returns an empty report.",
-        "  2. agy picks its own working directory, so the worktree needs --add-dir",
-        "     AND a mention in the prompt text; process cwd alone is ignored."
-      ]
-    }
+    { "name": "grok", "enabled": false },
+    { "name": "droid", "enabled": false }
   ]
 }

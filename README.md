@@ -1,336 +1,124 @@
 # Code Jury
 
-**Multiple reviewers. One clean PR.**
+**Independent AI reviewers. One judge. A review you can follow.**
 
-A convergence loop that runs independent review agents against a pushed commit, applies the findings
-that survive verification, and repeats until every agent reports nothing new.
+[![CI](https://github.com/agentsdance/codejury/actions/workflows/ci.yml/badge.svg)](https://github.com/agentsdance/codejury/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@agentsdance/codejury)](https://www.npmjs.com/package/@agentsdance/codejury)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Derived from a real run on `worker-pool` #128 (exponential CreateSandbox retry backoff).
-Three rounds, two agents (`codex`, `droid`), converged. See [CASE-STUDY.md](CASE-STUDY.md) for the
-findings and the numbers.
+Code Jury is a local CLI that asks independent coding agents to review a pull request,
+then lets one judge reproduce findings, apply fixes, and ask the reviewers to check again.
+Follow each conversation in a browser console, with prompts, reports, verdicts, and commits saved locally.
+It also reviews related PRs across repositories as one coordinated task.
 
-## Install
+[Download the interactive console demo](docs/console-demo.html) and open the HTML file in a browser.
+It uses illustrative data and does not start agents.
 
-```bash
-npm install -g @agentsdance/codejury     # then: jury <pr-url>
-npx @agentsdance/codejury <pr-url>       # or without installing
+## Quick start
+
+You need Node.js 20+, Git, and authenticated coding-agent CLIs. GitHub PRs also need
+[GitHub CLI](https://cli.github.com/) (`gh auth login`) and Git credentials that can clone the repository.
+Start with an installed Codex judge and Claude reviewer, or choose your own configured agents.
+Agent installation, login, subscriptions, and usage charges are separate from Code Jury.
+
+```sh
+npm install -g @agentsdance/codejury
+jury agents
+jury review https://github.com/OWNER/REPO/pull/123 --reviewer claude --push=false
 ```
 
-Choose reviewers with `--reviewer` or its synonym `--jury`:
+Replace the example URL with your PR. `jury agents` lists configured executables and roles;
+it checks installation, not authentication or available quota. Authenticate each selected agent
+using its own CLI before the review. With the command above, Codex judges and Claude reviews.
+
+**Reviews can edit files and create commits. Pushing is enabled by default.**
+`--push=false` disables Jury's pushes; it is not a read-only mode or an agent sandbox.
+Single-PR URL checkouts are temporary and removed on completion; for durable local-only fixes,
+use your own checkout without a URL. See [state and retention](docs/usage.md).
+The console opens automatically and stays up after the review; press Ctrl-C when finished.
+For terminal-only use, add `--web=false`.
+
+```text
+jury agents                           # installed executables and configured roles
+jury review <pr-url> --push=false      # review and fix without pushing
+jury review <pr-url>                   # review, fix, commit, and push
+jury runs --dir ""                    # list saved URL-based reviews
+jury --web-only --dir ""               # reopen their console
+jury help review                      # complete review options
+```
+
+`jury <pr-url>` is shorthand for `jury review <pr-url>`. You can also run without installing:
+`npx @agentsdance/codejury review <pr-url> --reviewer claude --push=false`.
+
+## How it works
+
+1. Resolve the PR's base branch and head commit into an isolated checkout.
+2. Run selected reviewers concurrently. Each reports independently.
+3. Let one judge investigate each finding and record a verdict. Accepting a finding requires reproduction evidence and a test description.
+4. Commit fixes and, unless disabled, push to the source branch. Send each reviewer feedback about its own findings.
+5. Repeat until reviewers agree and no findings remain open, or the round limit is reached.
+
+Agent agreement is a review result, not proof that code is defect-free. The evidence is recorded
+so you can inspect it. Judge-provided test evidence is not an independent certification.
+The default limit is 10 rounds, with up to three exchanges per disputed finding.
+
+Missing selected executables stop the run before agents start. A reviewer that exits unsuccessfully
+stops the loop after the current review or reply round; its failure is saved and never counted as approval.
+Fix the installation, login, or quota issue and resume with the same target arguments and `--resume <slug>`.
+
+## Choose your reviewers
 
 ```sh
 jury review <pr-url> --reviewer claude --reviewer grok
 jury review <pr-url> --jury claude,grok
-jury review <pr-url> --reviewer claude --jury grok
+jury review <pr-url> --judge claude --reviewer droid --push=false
 ```
 
-Repeated flags and comma-separated names can be mixed. These options also work
-with `reply`. The default is the configured reviewers, excluding
-the selected judge where applicable. `--agents` remains a hidden compatibility
-alias for one release. The `jury agents` command is unchanged.
+`--reviewer` and `--jury` accept repeated flags and comma-separated names. The selected judge
+is excluded from the reviewer pool. Built-in agents are Codex (default judge), Claude, Grok, and Droid.
+Without an explicit selection, enabled agents with the reviewer role are used; disable unavailable ones
+or select installed reviewers explicitly.
 
-The GitHub PR URL is authoritative. `jury` resolves its base, source branch and exact
-head commit, reviews an isolated temporary checkout, and pushes accepted fixes
-back to the source branch. It is safe to invoke from `master` or from outside
-the target repository; the caller's working tree is not switched or modified.
+Use [`jury.config.example.json`](jury.config.example.json) to configure agents in the target repository.
+See [configuration and permissions](docs/configuration.md) for the actual execution boundary and custom commands.
 
-GitLab and compatible self-hosted services are supported through
-`/merge_requests/<id>` URLs. Jury clones with Git and fetches the standard
-`refs/merge-requests/<id>/head` ref, so existing Git credentials are used.
-When that ref is missing, Jury discovers `refs/merge-requests/<shard>/<id>/<revision>`
-refs and fetches the highest numeric revision, verifying the advertised commit.
-The shard is discovered independently of the MR number. If
-the source branch is not uniquely visible on the target remote (commonly a
-fork), check out the source branch
-locally, omit the MR URL, and run
-`jury --dir /path/to/checkout --trunk <target-branch>`.
-
-Node 20 or newer. The reviewers are separate CLIs you install yourself — `jury` spawns whatever you
-have and skips the rest:
-
-```bash
-jury agents          # which are installed, and which role each holds
-```
-
-`jury` reads `jury.config.json` from the repo you are reviewing, if present; copy
-[`jury.config.example.json`](jury.config.example.json) to start. Without one, the built-in registry is
-used. The former `cr.config.json` and `macr.config.json` names remain readable for compatibility.
-
-The former `cr` command remains available as a compatibility alias.
-
-## Working and state directory
-
-With an MR/PR URL, Jury always resolves the URL into an isolated checkout. By default,
-checkouts live under `~/.jury/checkouts/` and run records under `~/.jury/runs/`, regardless
-of the current directory. `--dir <path>` instead uses `<path>/checkouts/` and `<path>/runs/`.
-The integrated `--web` console reads records from the same root.
-
-Without a URL, Jury reviews the current repository, or the repository selected by `--dir`.
-Other commands keep the current directory when it is a Git worktree and otherwise use
-`~/.jury`. An explicitly empty `--dir ""` selects `~/.jury`. `~` is expanded consistently.
-
-Run records live in `<dir>/runs`. For example, `jury runs --dir ""` and `jury --web-only --dir ""` read
-`~/.jury/runs`. Use those commands to inspect URL-based reviews launched with the default root.
-
-## Related PRs in one task
+## Review related PRs together
 
 ```sh
-jury review https://github.com/acme/api/pull/12 https://github.com/acme/client/pull/34
-jury review <pr-url-1> <pr-url-2> --reviewer claude,grok --push=false
+jury review https://github.com/acme/api/pull/12 https://github.com/acme/client/pull/34 \
+  --reviewer claude --push=false
 ```
 
-Every reviewer sees all PRs together, including available descriptions, base branches,
-and separate checkouts. The judge can fix cross-PR problems in the appropriate
-branches. Reviewers reassess the whole set after fixes. The console lists every
-PR and groups findings by PR within each independent reviewer conversation.
-No `--parallel` flag is needed. GitHub PRs and GitLab-style MRs can be mixed.
-GitLab MRs retain the existing Git-based resolver: the base is the remote HEAD,
-and MR descriptions are unavailable. Use this mode for MRs targeting that default branch.
+Every reviewer sees all supplied PRs, their descriptions, and separate checkouts. The judge can fix
+cross-repository problems in the appropriate branches. Findings and commits stay associated with each PR.
+The first PR supplies configuration. Omit `--trunk`: each PR has its own base branch.
+See [usage and troubleshooting](docs/usage.md) for resume behavior, GitLab limitations, and state directories.
 
-The first PR supplies the agent configuration. Each PR uses its own base branch;
-`--trunk` is not accepted for a related-PR task. Findings use paths such as
-`PR1/src/api.js:12` and `PR2/src/client.js:34`. PRs sharing a source branch are
-rejected to avoid conflicting pushes from separate checkouts.
+## Data and permissions
 
-Task workspaces are retained under `<state-root>/checkouts/jury-group-*`, including
-local commits when `--push=false` and commits whose push failed. Resume with the
-same URLs in the same order and `--resume <slug>`. Resume keeps the task's previous
-push setting unless explicitly overridden; `--push=true` publishes retained fixes
-with normal fast-forward pushes. If a remote branch changed independently, start
-a new task to review the new heads. After finishing, retained task workspaces can
-be removed manually when they are no longer needed.
+- Jury runs agent CLIs on your machine. Those agents may send source code, prompts, and outputs to their providers under your account settings and terms.
+- Agents inherit the process environment. Repository configuration defines executable commands; inspect it before running on an unfamiliar repository.
+- Read-only intent is enforced only as far as each agent's configured permissions allow. Some built-in/custom agents use broad approval settings. Jury is not a security sandbox.
+- Prompts, transcripts, findings, and run metadata are saved under the selected state root. They may contain sensitive source material; review them before sharing.
+- The console binds to `127.0.0.1` and has no login. Keep it local. See [SECURITY.md](SECURITY.md).
 
-## The loop
+## Project status and contributing
 
-```
-round N
-  ├─ worktree at the pushed HEAD
-  ├─ launch every agent in parallel, in the background
-  │
-  ├─ per agent: triage each finding
-  │    ├─ reproduce it against the code            ← before touching anything
-  │    ├─ fix, and add a regression test
-  │    └─ reintroduce the bug, confirm the test fails
-  │
-  ├─ gofmt + vet + full suite → amend → push --force-with-lease
-  ├─ append newly-settled items to the prompt
-  │
-  └─ stop iff every agent emitted the stop token on the SAME commit
-     else round N+1
-```
+Code Jury is pre-1.0. CLI changes are recorded in the [changelog](CHANGELOG.md).
+CI exercises Node.js 20, 22, and 24 on Linux and macOS, including a fresh package installation.
+Windows is experimental; the complete workflow has not been validated there.
+External agent services are tested with local fixtures in CI, so provider CLI compatibility still depends on your installed versions.
+The Go console prototype is retained for development; the npm CLI is the supported distribution.
 
-Two properties make it terminate rather than churn:
+[Report a bug](https://github.com/agentsdance/codejury/issues/new/choose) ·
+[Contribute](CONTRIBUTING.md) · [Security reports](SECURITY.md) ·
+[Case study](CASE-STUDY.md) · [Known limitations](TODO.md)
 
-- **A growing settled list.** Without it each fresh agent rediscovers the same deferred issues every
-  round, forever.
-- **A literal stop token.** Termination is a `grep`, not a judgement call.
+## Sponsors
 
-## Watching it happen
+Supported by OpenAI's [Codex for Open Source](https://openai.com/form/codex-for-oss/)
+program with ChatGPT Pro (20x) access.
 
-A round is a reviewer talking for several minutes and then a wall of text. Reviews start the console by default
-in the same process as the run, so the conversation streams as it is spoken rather than arriving at
-the end:
+## License
 
-```
-jury https://github.com/owner/repo/pull/1   # review, with the console open on it
-jury --port 3099 --rounds 3                 # the current branch, on another port
-```
-
-Use `--push=false` to keep fixes local; pushing is enabled by default.
-
-Use `--web=false` (or `--web false`) to disable the console and exit when review finishes.
-`--web`, `--web=true`, and `--web true` enable it explicitly.
-
-The browser opens with `?run=<current-run>` so it shows the review just started,
-including when the server falls back to another port.
-
-The console outlives the loop — it stays up until you ctrl-c, which is the point: the run finishing
-is when there is finally something worth reading. `jury --web-only` opens saved reviews without starting agents.
-Use `--run <slug>` to select a saved run, and `--dir <path>` to choose its state root.
-
-## Who writes, and who only reads
-
-Exactly one agent has role `main`; it is the default **judge**. The built-in default is Codex.
-The judge owns the working tree and commit, triages every finding, and is the only writer. Choose a
-different enabled agent for one run with `--judge`; without that flag the configured main agent is used (Codex by default):
-
-```bash
-jury https://github.com/owner/repo/pull/1                 # Codex judges
-jury --judge claude https://github.com/owner/repo/pull/1  # Claude judges
-```
-
-When upgrading from 0.1.x, a configuration that disables Codex or marks it as a reviewer
-needs an explicit judge: use `--judge claude`, or assign role `main` to the intended
-agent in `jury.config.json`. For scripts, use `--web=false` to exit after review.
-
-`--judge` accepts exactly one agent name. The selected judge is removed from that run's reviewer
-pool, so it never reviews its own work. Codex uses a read-only sandbox for reviews
-and a workspace-write sandbox for judging. Claude uses plan mode for reviews and
-acceptEdits for judging. Custom agent `argv` remains authoritative; `judgeArgv` can
-provide a separate judge command when needed.
-`jury agents` shows the configured roles:
-
-```
-ok      claude   reviewer /usr/local/bin/claude
-ok      codex    main     /usr/local/bin/codex
-ok      agy      reviewer /usr/local/bin/agy
-```
-
-Reviewers only read and report. A registry with two `main` entries is refused outright — two agents
-both believing they own the commit corrupts a run rather than merely failing it.
-
-The judge then holds **one conversation per reviewer**, concurrently, each about that reviewer's
-own findings and nothing else:
-
-```
-codex ──▶ claude   its 5 findings, fresh run with its own words quoted back
-       └──▶ agy     its 5 findings, fresh run with its own words quoted back
-```
-
-Never a broadcast. Two reviewers that see each other's findings stop being independent, and their
-agreement stops being evidence — which is the only reason to run more than one. On aigit #48 both
-independently found the same Windows `os.Rename` bug; neither was told the other had. `jury reply`
-redacts other agents' names and finding ids out of the verdict text, so independence does not depend
-on the operator remembering.
-
-## More than one PR
-
-Each PR is its own run directory — `runs/<repo>-<id>/` — with its own event log, findings, and settled
-list. Nothing is shared, so reviewing several at once needs no coordination:
-
-```
-jury runs                                  # every PR under review, with its slug
-jury finding list --run agentsdance-aigit-48
-```
-
-With one run, `--run` is optional. With several it is required, and the commands that need it refuse
-with the available slugs rather than guessing. The console serves them all and shows a chip per PR;
-picking one does not disturb a review running on another.
-
-The one thing genuinely shared is the machine: reviewers are subprocesses, so two PRs reviewing at
-once run two of every agent. The slowest still sets each round's wall clock.
-
-## Agents are configuration
-
-The loop is agent-agnostic; `codex` and `droid` are just the two entries that happen to be enabled.
-Adding a third is a config change, not a code change. See [config.example.yaml](config.example.yaml).
-
-Adding `agy` for the aigit #48 run was exactly that — a `jury.config.json` entry, no code:
-
-```json
-{ "name": "agy", "promptDelivery": "argv", "cwd": "worktree",
-  "argv": ["agy", "--dangerously-skip-permissions", "--add-dir", "{{worktree}}", "--print", "{{promptText}}"],
-  "report": "whole", "expectSeconds": 300 }
-```
-
-Two of its quirks are worth knowing, because both cost a wasted run: its permission flag must precede
-`--print` or every file read is auto-denied and it returns an empty report, and it picks its own
-working directory, so the worktree needs `--add-dir` *and* a mention in the prompt.
-
-Only three things actually vary between agents, and all three bit during the reference run:
-
-| dimension | values | why it matters |
-|---|---|---|
-| `promptDelivery` | `argv` \| `file` \| `stdin` | codex takes the prompt as an argument, droid needs `-f <path>` |
-| `cwd` | `worktree` \| `flag` | codex runs *in* the worktree, droid takes `--cwd` and ignores process cwd |
-| `resume.supported` | `true` \| `false` | decides whether feedback is a real conversation or a fresh run with prior findings quoted back |
-
-```yaml
-agents:
-  - name: codex
-    promptDelivery: argv
-    cwd: worktree
-    argv: ["codex", "exec", "--skip-git-repo-check", "{{promptText}}"]
-    resume: { supported: true, argv: ["codex", "exec", "resume", "--last", "{{promptText}}"] }
-    expect: { latencySeconds: 1100, verbose: true }
-
-  - name: droid
-    promptDelivery: file
-    cwd: flag
-    argv: ["droid", "exec", "--cwd", "{{worktree}}", "--auto", "medium", "-f", "{{promptFile}}"]
-    resume: { supported: false, reason: "exec text output carries no session id" }
-    expect: { latencySeconds: 130, verbose: false }
-```
-
-Run every enabled agent concurrently and in the background — the slowest sets the round's wall clock,
-so serialising a 20-minute agent behind a 2-minute one wastes most of it.
-
-One parsing subtlety worth encoding per agent: a verbose agent's stdout is a **full transcript that
-contains the prompt**, so grepping it for the stop token matches the instruction that asked for the
-token. Parse the final report block, not the whole stream — hence `parse.reportFrom`.
-
-## Prompt anatomy
-
-[`prompts/review-round.md`](prompts/review-round.md) — four sections, in this order:
-
-1. **What the change does** — the design in a few bullets, so the agent does not have to infer intent.
-2. **ALREADY SETTLED — do NOT re-report** — a numbered list, appended to after every round. For items
-   you are deliberately *deferring*, include the reasoning, so an agent can argue with the reasoning
-   instead of re-proposing a fix you already rejected.
-3. **What you want** — the specific classes of defect. Always include the test-quality question:
-   *"would each assertion actually fail if the behaviour it guards regressed? Read the assertions,
-   not the test names."* That question produced every finding in rounds 2 and 3.
-4. **The stop token** — `say exactly "NO NEW FINDINGS" on its own line`.
-
-Plus `DO NOT edit any files`. You want findings to triage, not competing patches to merge.
-
-[`prompts/feedback.md`](prompts/feedback.md) — structured per finding as
-**ACCEPTED / AGREE-BUT-DEFERRED / REJECTED**, each with reasoning, each ending in a direct question.
-Closing the loop this way is what turned two "you should fix this" items into explicit agreement to
-defer them.
-
-## Triage discipline
-
-This is the part that carries the value. In the reference run **roughly a third of suggestions did not
-survive verification**, and the loop also surfaced three of the operator's own mistakes.
-
-Rules that earned their place:
-
-1. **Reproduce before fixing.** Every accepted finding was demonstrated against the real code first.
-2. **Every fix gets a regression test, and the test gets verified by reintroducing the bug.** A test
-   that passes both with and without the fix is decoration.
-3. **A test that hangs on regression is worse than one that fails.** One deterministic test drained a
-   buffered channel and then blocked forever; it burned the CI timeout and read as an infra fault.
-   Close the channel so the regression terminates.
-4. **Distinguish "no hits" from "broken query."** When verifying against logs or metrics, run a control
-   that you know should return rows. A zero is not evidence until you have proven the pipe works.
-5. **An agent's suggested fix can be wrong even when its finding is right.** One reviewer correctly
-   identified a cancellation gap, then proposed a guard that consumed a queued job without releasing
-   its accounting reservation — trading a bounded extra RPC for a permanent resource leak.
-
-## Known traps
-
-- **Diff base.** `git diff origin/master` shows commits master gained *since* your branch point as
-  deletions in your diff. Always diff against `git merge-base HEAD origin/master`. This produced a
-  confident, completely spurious finding on round zero.
-- **Prompt-induced findings are your bug, not theirs.** Fix the prompt and say so.
-- **`timeout` does not exist on macOS.** Wrapping a verification in it exits 127 and the command never
-  runs — you get an empty result that looks like a pass.
-- **Removing a call can orphan an import**, turning "the test caught it" into a compile error. Keep the
-  import used when simulating a regression.
-- **Mock frameworks may not re-apply inside a loop.** Build the mock once outside; re-`Build()`ing per
-  iteration silently kept the real implementation in the reference run (mockey).
-- **Agents recycle suggestions when they have nothing left.** A verbatim repeat of a prior cosmetic note
-  is a decent signal of convergence.
-- **Skipping fenced text to avoid quoted material will also skip real findings.** The prompt shows the
-  `FINDING:`/`WHERE:` header inside a fence, so agents answer in the same shape — on aigit #48 that
-  silently dropped all five of one reviewer's findings while its report sat there in full. A fence
-  containing *only* the header pair is the reviewer speaking; one holding a diff or code is not.
-- **Two review processes on one round corrupt the record.** Relaunching without killing the first run
-  gave round 1 two codex reports and merged their findings. Kill the prior run, or start a new round.
-
-## What a system built on this would need
-
-The manual run was the loop above driven by hand. To automate:
-
-- an agent registry: invocation, cwd handling, whether sessions resume, expected latency
-- prompt assembly: template + accumulated settled list, versioned per round
-- a findings model: `{id, agent, round, severity, file, line, claim, status}` where status is one of
-  `accepted | deferred | rejected | superseded`, so the settled list generates itself
-- the reproduce/fix/verify gate as an explicit state machine — the step most worth enforcing, since it
-  is the step most easily skipped
-- convergence detection across N agents on a single commit sha
-- a per-round budget, because the long-tail agent dominates wall clock
-
-Deliberately **not** automated in the reference run: applying a fix without first reproducing the
-finding. That gate is where the value was.
+[MIT](LICENSE).
