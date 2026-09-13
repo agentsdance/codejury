@@ -76,7 +76,7 @@ Other commands
 
 const USAGE_FULL = `jury — review a pull request with multiple AI reviewers until they agree
 
-  jury <pr-url>              review a PR until every reviewer approves, one conversation per reviewer
+  jury review <pr-url>       review a PR until every reviewer approves, one conversation per reviewer
   jury finding <cmd>         list | reproduce | resolve | settled — appends events, enforces the gate
   jury reply [flags]         send each reviewer your verdicts on ITS findings, one conversation each
   jury runs                  list every PR under review, with its slug for --run
