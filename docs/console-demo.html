@@ -1,0 +1,1716 @@
+<!doctype html>
+<title>Code Jury — Illustrative Console Demo</title>
+<style>
+  :root {
+    --ground:#F4F6F8; --surface:#FFFFFF; --surface-alt:#EDF0F4;
+    --line:#D7DDE4; --line-soft:#E6EAEF; --ink:#14181D; --ink-2:#39434F; --muted:#5A6572;
+    --accent:#3A6B8A; --accent-soft:#E2ECF3; --main-hue:#6A4E8C; --main-soft:#EDE6F4;
+    --codex:#3A6B8A; --droid:#1F7A6B; --droid-soft:#DDF0EC; --agy:#4E7BD6;
+    --ok:#2E7D5B; --ok-soft:#E0F0E8; --warn:#B07A2B; --warn-soft:#F6ECD9;
+    --bad:#A8443A; --bad-soft:#F6E3E0;
+    --shadow:0 1px 2px rgba(20,24,29,.05), 0 8px 24px -14px rgba(20,24,29,.20);
+    --serif: ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans: ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0E1216; --surface:#161C23; --surface-alt:#1C232B;
+      --line:#2B343E; --line-soft:#222A33; --ink:#E4E9EE; --ink-2:#B4BEC9; --muted:#8593A2;
+      --accent:#7FB0D0; --accent-soft:#1A2B38; --main-hue:#B49AD4; --main-soft:#241C31;
+      --codex:#7FB0D0; --droid:#63C4B0; --droid-soft:#142C28; --agy:#8FB4F5;
+      --ok:#6FC49B; --ok-soft:#15271E; --warn:#D9A857; --warn-soft:#292013;
+      --bad:#E08076; --bad-soft:#2B1816;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -16px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0E1216; --surface:#161C23; --surface-alt:#1C232B;
+    --line:#2B343E; --line-soft:#222A33; --ink:#E4E9EE; --ink-2:#B4BEC9; --muted:#8593A2;
+    --accent:#7FB0D0; --accent-soft:#1A2B38; --main-hue:#B49AD4; --main-soft:#241C31;
+    --codex:#7FB0D0; --droid:#63C4B0; --droid-soft:#142C28; --agy:#8FB4F5;
+    --ok:#6FC49B; --ok-soft:#15271E; --warn:#D9A857; --warn-soft:#292013;
+    --bad:#E08076; --bad-soft:#2B1816;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -16px rgba(0,0,0,.75);
+  }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans);
+         font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1060px; margin:0 auto; padding:34px 22px 80px; display:flex; flex-direction:column; gap:38px; }
+
+  /* header */
+  .hd { display:flex; flex-direction:column; gap:14px; }
+  .kicker { font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  h1 { font-family:var(--serif); font-size:clamp(26px,3.6vw,38px); font-weight:600; margin:0;
+       line-height:1.12; letter-spacing:-.015em; text-wrap:balance; }
+  .meta { display:flex; flex-wrap:wrap; gap:9px 20px; align-items:center;
+          font-family:var(--mono); font-size:12.5px; color:var(--muted); }
+  .meta a { color:var(--accent); text-decoration:none; border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent); }
+  .meta a:hover { border-bottom-color:var(--accent); }
+  .meta a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .badge-ok { display:inline-flex; align-items:center; gap:7px; color:var(--ok); background:var(--ok-soft);
+              border:1px solid color-mix(in srgb,var(--ok) 34%,transparent); padding:4px 12px; border-radius:999px;
+              font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
+  .badge-ok .d { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .badge-warn { display:inline-flex; align-items:center; gap:7px; color:var(--warn); background:var(--warn-soft);
+                border:1px solid color-mix(in srgb,var(--warn) 34%,transparent); padding:4px 12px; border-radius:999px;
+                font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
+  .badge-mute { display:inline-flex; align-items:center; gap:7px; color:var(--muted); background:var(--surface-alt);
+                border:1px solid var(--line); padding:4px 12px; border-radius:999px;
+                font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
+  .badge-warn .d,.badge-mute .d { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  /* One control, not a chip per run. A row of chips is fine for five runs and
+     a wall for a hundred: it wrapped to two lines at seven, and the page header
+     stopped being a header. */
+  .switcher { position:relative; display:inline-block; }
+  .switcher:empty { display:none; }
+  .sw-btn {
+    display:inline-flex; align-items:center; gap:8px; max-width:min(560px, 90vw);
+    font:500 12px/1 var(--mono); color:var(--ink); background:var(--surface);
+    border:1px solid var(--line); border-radius:8px; padding:8px 11px; cursor:pointer;
+  }
+  .sw-btn:hover { border-color:var(--accent); }
+  .sw-btn .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sw-btn .cnt { color:var(--muted); font-size:11px; padding-left:8px;
+    margin-left:2px; border-left:1px solid var(--line-soft); }
+  .sw-btn .car { color:var(--muted); font-size:9px; margin-left:auto; }
+  .sw-pop {
+    position:absolute; top:calc(100% + 6px); left:0; z-index:40;
+    width:min(460px, 92vw); background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .sw-pop[hidden] { display:none; }
+  .sw-pop input {
+    width:100%; box-sizing:border-box; border:0; border-bottom:1px solid var(--line-soft);
+    background:transparent; color:var(--ink); font:400 13px/1 var(--sans); padding:11px 13px;
+  }
+  .sw-pop input:focus { outline:none; background:var(--surface-alt); }
+  .sw-list { max-height:min(52vh, 420px); overflow-y:auto; padding:5px; }
+  .sw-h {
+    font:600 10px/1 var(--sans); letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); padding:9px 9px 5px;
+  }
+  .sw-i {
+    display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+    background:none; border:0; border-radius:7px; padding:7px 9px; cursor:pointer;
+    font:400 12px/1.35 var(--sans); color:var(--ink);
+  }
+  .sw-i:hover, .sw-i[data-on="1"] { background:var(--surface-alt); }
+  .sw-i[aria-pressed="true"] { background:var(--accent-soft); }
+  .sw-i .d { width:7px; height:7px; border-radius:50%; flex:none; }
+  .sw-i .id { font-family:var(--mono); font-size:11.5px; flex:none; }
+  .sw-i .at { font:400 10.5px/1 var(--mono); color:var(--accent); flex:none; }
+  .sw-i .ti { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sw-i .rt { margin-left:auto; flex:none; font:400 10.5px/1 var(--mono); color:var(--muted); }
+  .sw-none { padding:18px 13px; text-align:center; color:var(--muted); font:400 12px/1 var(--sans); }
+  .pr-chip { font-family:var(--mono); font-size:11.5px; padding:5px 11px; border-radius:3px; cursor:pointer;
+             border:1px solid var(--line); background:var(--surface); color:var(--muted);
+             display:inline-flex; align-items:center; gap:7px; }
+  .pr-chip:hover { border-color:var(--accent); color:var(--accent); }
+  .pr-chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .pr-chip[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .pr-chip .d { width:7px; height:7px; border-radius:50%; }
+  /* Repo qualifier, shown only when more than one repo is on screen. Dimmed so
+     the PR number stays the thing you scan for. */
+  .pr-chip .repo { opacity:.65; margin-right:4px; }
+
+  h2 { font-family:var(--serif); font-size:22px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  section { display:flex; flex-direction:column; gap:14px; }
+  .note { margin:0; color:var(--muted); font-size:13.5px; max-width:66ch; }
+
+  /* timeline */
+  .tl { background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow);
+        padding:18px 20px 14px; display:flex; flex-direction:column; gap:12px; overflow-x:auto; }
+  .tl-inner { min-width:660px; display:flex; flex-direction:column; gap:10px; }
+  .tl-rounds { position:relative; height:20px; }
+  /* An abandoned span is drawn hollow: it happened, but it produced nothing,
+     and filling it the same as a completed round overstates the run. */
+  .seg[data-abandoned="1"] { opacity:.45; background:repeating-linear-gradient(
+    45deg, var(--line) 0 4px, transparent 4px 8px); color:var(--muted); }
+  .tl-rounds span { position:absolute; top:0; font-family:var(--mono); font-size:10.5px;
+                    letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+                    border-left:1px solid var(--line); padding-left:7px; }
+  .lane { display:grid; grid-template-columns:74px 1fr; gap:12px; align-items:center; }
+  .lane .who { font-family:var(--mono); font-size:12px; display:flex; align-items:center; gap:7px; }
+  .lane .who .sw { width:9px; height:9px; border-radius:2px; }
+  .track { position:relative; height:26px; background:var(--surface-alt); border-radius:3px; }
+  /* min-width so a span that is real but very short — or has not finished and
+     therefore has no width at all — still paints something hoverable. */
+  .seg { position:absolute; top:0; height:26px; border-radius:3px; display:flex; align-items:center;
+         min-width:4px; padding:0 7px; font-family:var(--mono); font-size:10.5px; color:#fff;
+         white-space:nowrap; overflow:hidden; }
+  /* Still running: striped rather than solid, and never flush to the right edge. */
+  .seg[data-open="1"] { min-width:10px; margin-left:-5px;
+    background-image:repeating-linear-gradient(115deg,rgba(255,255,255,.30) 0 4px,transparent 4px 8px); }
+  .seg[data-a="codex"] { background:var(--codex); }
+  .seg[data-a="droid"] { background:var(--droid); }
+  .seg[data-a="main"]  { background:var(--main-hue); }
+  .tl-foot { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+
+  /* rounds */
+  .rgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+  .rcard { background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow);
+           overflow:hidden; display:flex; flex-direction:column; }
+  .rcard header { padding:11px 15px; background:var(--surface-alt); border-bottom:1px solid var(--line-soft);
+                  display:flex; align-items:baseline; gap:10px; }
+  .rcard header b { font-family:var(--mono); font-size:13px; }
+  .rcard header .sha { font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-left:auto; }
+  .verd { display:flex; gap:10px; padding:11px 15px; border-top:1px solid var(--line-soft); align-items:flex-start; }
+  .verd:first-of-type { border-top:0; }
+  .verd .ag { font-family:var(--mono); font-size:11.5px; display:flex; align-items:center; gap:6px; min-width:76px; }
+  .verd .ag .sw { width:8px; height:8px; border-radius:2px; }
+  .verd .txt { font-size:13.2px; color:var(--ink-2); }
+  .verd .txt b { color:var(--ink); }
+  .verd[data-s="clean"] .txt b { color:var(--ok); }
+  .verd[data-s="found"] .txt b { color:var(--warn); }
+
+  /* exchanges */
+  .filters { display:flex; gap:7px; flex-wrap:wrap; }
+  .chip { font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+          padding:5px 11px; border-radius:999px; border:1px solid var(--line); background:var(--surface);
+          color:var(--muted); cursor:pointer; }
+  .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .chip[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--surface); }
+  :root[data-theme="dark"] .chip[aria-pressed="true"] { color:#0E1216; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .chip[aria-pressed="true"]{ color:#0E1216; } }
+
+  /* exchange — a terminal transcript. Deliberately dark in both themes: this is
+     agent output, and it reads as a session rather than a document. */
+  .term, .io { --t-bg:#0F1419; --t-fg:#C6CFD8; --t-dim:#6B7885; --t-line:#212A33;
+          --t-codex:#7FB0D0; --t-droid:#63C4B0; --t-claude:#B49AD4;
+          --t-ok:#6FC49B; --t-warn:#D9A857; --t-bad:#E08076;
+          background:var(--t-bg); border:1px solid var(--t-line); border-radius:6px;
+          overflow:hidden; box-shadow:var(--shadow); font-family:var(--mono); }
+  .term-bar { display:flex; align-items:center; gap:8px; padding:9px 13px;
+              background:#0A0E12; border-bottom:1px solid var(--t-line); }
+  .term-bar .dot { width:10px; height:10px; border-radius:50%; }
+  .term-bar .dot.r { background:#E0655B; } .term-bar .dot.y { background:#D9A857; }
+  .term-bar .dot.g { background:#59B87F; }
+  .term-bar .t { margin-left:8px; font-size:11.5px; color:var(--t-dim); }
+  .term-body { padding:14px 16px 16px; font-size:12.8px; line-height:1.62; color:var(--t-fg);
+               overflow-x:auto; }
+  .term .cwd { color:var(--t-droid); }
+  .term .branch { color:var(--t-claude); }
+  .term .cmdline { margin:0 0 12px; white-space:pre-wrap; word-break:break-all; }
+  .term .cmdline .p { color:var(--t-ok); margin-right:7px; }
+  .term .cmdline .c { color:var(--t-fg); }
+
+  .xb { border-top:1px solid var(--t-line); padding:13px 0 4px; }
+  .xb:first-of-type { border-top:0; padding-top:2px; }
+  .xb-head { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin-bottom:9px; }
+  .xb-head .claim { color:#E7EDF3; font-weight:600; flex:1 1 300px; }
+  .xb-head .meta { color:var(--t-dim); font-size:11.5px; width:100%; }
+  .tag { font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; padding:2px 8px;
+         border-radius:3px; white-space:nowrap; }
+  .tag[data-r="accepted"] { color:var(--t-ok);   background:rgba(111,196,155,.13); }
+  .tag[data-r="deferred"] { color:var(--t-warn); background:rgba(217,168,87,.13); }
+  .tag[data-r="rejected"] { color:var(--t-bad);  background:rgba(224,128,118,.13); }
+  .tag[data-r="open"]     { color:var(--t-codex); background:rgba(127,176,208,.13); }
+
+  .ln { display:grid; grid-template-columns:82px 78px minmax(0,1fr); gap:10px; padding:5px 0;
+        align-items:start; }
+  .ln .at { color:var(--t-dim); font-size:11.5px; line-height:1.35; }
+  .ln .at b { display:block; font-weight:500; color:#8A99A8; }
+  .ln .at i { display:block; font-style:normal; font-size:10.5px; opacity:.72; }
+  .ln .nm { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+  .ln .nm svg { width:12px; height:12px; }
+  .ln[data-who="codex"]  .nm { color:var(--t-codex); }
+  .ln[data-who="droid"]  .nm { color:var(--t-droid); }
+  .ln[data-who="claude"] .nm { color:var(--t-claude); }
+  .ln .say { white-space:pre-wrap; }
+  .ln .say strong { color:#EDF2F7; font-weight:600; }
+  @media (max-width:720px){ .ln{ grid-template-columns:1fr; gap:2px; } }
+
+  .term .q { margin:7px 0 3px 0; padding:8px 11px; background:#0A0E12; border-left:2px solid var(--t-line);
+             color:#9FB0BF; font-size:12px; white-space:pre; overflow-x:auto; }
+  .term .ask { margin:7px 0 3px; padding-left:10px; border-left:2px solid var(--t-codex); color:#DCE5EC; }
+  .term .out { margin:9px 0 2px; font-size:12.2px; }
+  .term .out[data-r="accepted"] { color:var(--t-ok); }
+  .term .out[data-r="deferred"] { color:var(--t-warn); }
+  .term .out[data-r="rejected"] { color:var(--t-bad); }
+  .term .out b { text-transform:uppercase; letter-spacing:.08em; font-size:11px; }
+
+  /* What went in and what came out, as one session. A clean verdict still has a
+     report, and hiding it was why a converged run looked like nothing happened. */
+  .io { background:var(--t-bg); border:1px solid var(--t-line); border-radius:6px;
+        overflow:hidden; box-shadow:var(--shadow); font-family:var(--mono); }
+  .io-body { padding:13px 16px 18px; font-size:12.6px; line-height:1.6; color:var(--t-fg);
+             overflow-x:auto; }
+
+  /* One column per reviewer. They are side by side to make the independence
+     legible at a glance; below the breakpoint they stack, which is the same
+     claim in one dimension. */
+  /* Full width, one at a time — a report needs the room to be readable. */
+  .convo-grid { display:block; }
+  /* The selected tab has to be unmistakable. When it was only tinted, clicking
+     the already-selected first tab looked like a dead button rather than a
+     no-op — the state was there, it just was not legible enough. */
+  .convo-switch { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px; }
+  .convo-switch .pr-chip { font-weight:600; }
+  /* Literal, not var(--t-bg): that variable is scoped to .term/.io, so on a
+     chip it resolves to nothing and left white text on a transparent
+     background — invisible, and only a screenshot showed it. */
+  .convo-switch .pr-chip[aria-pressed="true"] {
+    background:#0F1419; color:#fff; border-color:#0F1419;
+    box-shadow:inset 0 -2px 0 var(--accent); }
+  .convo-switch .pr-chip[aria-pressed="true"]:hover { color:#fff; }
+  .convo-switch .pr-chip[aria-pressed="false"] { opacity:.7; }
+  .convo-note { margin:0 0 10px; font-size:12.5px; color:var(--muted); }
+  /* A long unbroken report must scroll inside its own column rather than
+     widening the grid and pushing the other conversation off-screen. */
+  .convo .stream { white-space:pre-wrap; overflow-wrap:anywhere; }
+
+  /* Findings carry the same grouping as the transcripts above: one block per
+     reviewer, so a claim is always read next to who raised it. */
+  .xgroup { margin:0 0 6px; }
+  .xgroup + .xgroup { margin-top:18px; padding-top:4px; border-top:1px dashed var(--t-line); }
+  .xgroup > .rule { margin-bottom:8px; }
+  .io .cmdline { margin:0 0 4px; white-space:pre-wrap; word-break:break-all; }
+  .io .cmdline .p { color:var(--t-ok); margin-right:7px; }
+
+  /* A divider that carries its own metadata, the way a TUI labels a pane. */
+  .rule { display:flex; align-items:center; gap:10px; margin:20px 0 9px;
+          font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--t-dim); }
+  .rule:first-child { margin-top:4px; }
+  .rule i { flex:1 1 auto; height:1px; background:var(--t-line); }
+  .rule .lbl { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+  .rule .lbl svg { width:12px; height:12px; }
+  .rule[data-who="codex"] .lbl { color:var(--t-codex); }
+  .rule[data-who="droid"] .lbl { color:var(--t-droid); }
+  .rule[data-who="stdin"] .lbl { color:var(--t-claude); }
+  .rule .rt { color:var(--t-dim); white-space:nowrap; }
+  .rule .rt b { font-weight:600; }
+  .rule .rt b[data-s="clean"] { color:var(--t-ok); }
+  .rule .rt b[data-s="found"] { color:var(--t-warn); }
+  .rule .rt b[data-s="error"] { color:var(--t-bad); }
+
+  .io .stream { margin:0; white-space:pre-wrap; overflow-x:auto; color:var(--t-fg);
+                border-left:2px solid var(--t-line); padding:2px 0 2px 13px; }
+  .io .stream.raw { white-space:pre; }
+  .io .stream.stdin { color:#9FB0BF; }
+
+  /* Terminal-style toggles: they read as flags, not as buttons. */
+  .tabs { display:flex; gap:6px; margin:8px 0 0 13px; }
+  .tabs button { font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; cursor:pointer;
+                 padding:2px 8px; border-radius:2px; border:1px solid var(--t-line);
+                 background:transparent; color:var(--t-dim); }
+  .tabs button:hover { border-color:var(--t-codex); color:var(--t-codex); }
+  .tabs button:focus-visible { outline:2px solid var(--t-codex); outline-offset:2px; }
+  .tabs button[aria-pressed="true"] { border-color:var(--t-ok); color:var(--t-ok); }
+  .io .fold { cursor:pointer; }
+  .io .fold:focus-visible { outline:2px solid var(--t-codex); outline-offset:2px; }
+
+  /* shipped */
+  .ship { display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:1px;
+          background:var(--line-soft); border:1px solid var(--line); }
+  .ship div { background:var(--surface); padding:15px 17px; display:flex; flex-direction:column; gap:3px; }
+  .ship .n { font-family:var(--mono); font-size:24px; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .ship .k { font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); }
+  .ship .s { font-size:12.4px; color:var(--muted); }
+  footer { border-top:1px solid var(--line); padding-top:16px; color:var(--muted); font-size:12.6px; max-width:78ch; }
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+
+  /* ── Conversation ───────────────────────────────────────────────────
+     Two speakers, two sides. claude always left, the reviewer always right,
+     so which side a bubble sits on tells you who is talking before you read
+     a word of it. One column per reviewer: codex and agy are independent
+     conversations and must never be shown merged, or their agreement stops
+     being evidence of anything. */
+  .convo-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:0 0 14px; }
+  .convo-tabs { display:flex; gap:6px; flex-wrap:wrap; min-width:0; }
+  .convo-bar .spacer { flex:1 1 auto; }
+  /* Side by side stopped scaling at three: a fourth reviewer either overflowed
+     or squeezed every column below the width a report needs to be readable in.
+     One thread at full width is the default, and stacking is a deliberate
+     choice for comparing — never something the layout does to you because a
+     fifth agent was configured. */
+  .convo-grid { display:flex; flex-direction:column; gap:18px; }
+  /* A per-reviewer count on the tab, so an unread thread is visible without
+     opening it — the reason to run five reviewers is to notice the one that
+     found something. */
+  .convo-tabs .pr-chip .n {
+    font:600 10px/1 var(--mono); color:var(--muted);
+    padding:2px 5px; border-radius:20px; background:var(--surface-alt); margin-left:2px;
+  }
+  .convo-tabs .pr-chip[aria-pressed="true"] .n { background:rgba(255,255,255,.22); color:inherit; }
+  .convo-tabs .pr-chip .n[data-live="1"] { color:var(--warn); }
+  .stack-btn {
+    font:600 11px/1 var(--sans); color:var(--ink-2); background:var(--surface);
+    border:1px solid var(--line); border-radius:20px; padding:7px 12px; cursor:pointer;
+  }
+  .stack-btn[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  /* Stacked: every thread visible, each collapsible, so one long conversation
+     does not bury the four below it. */
+  .convo > header { cursor:default; }
+  .convo-grid[data-stack="1"] .convo > header { cursor:pointer; }
+  .convo .tw { margin-right:2px; font-size:10px; color:var(--muted); display:none; }
+  .convo-grid[data-stack="1"] .convo .tw { display:inline; }
+  .convo[data-open="0"] .msgs { display:none; }
+  .convo {
+    border:1px solid var(--line); border-radius:12px; background:var(--surface);
+    box-shadow:var(--shadow); display:flex; flex-direction:column; min-width:0;
+  }
+  .convo > header {
+    display:flex; align-items:center; gap:8px; padding:10px 14px;
+    border-bottom:1px solid var(--line-soft); font:600 13px/1.3 var(--sans);
+  }
+  .convo > header .who { color:var(--ink); }
+  .convo > header .st { margin-left:auto; font:500 11px/1 var(--mono); color:var(--muted); }
+  .convo > header .d { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; }
+  .convo > header .d[data-live="1"] { background:var(--warn); animation:blip 1.4s ease-in-out infinite; }
+  @keyframes blip { 0%,100%{opacity:1} 50%{opacity:.25} }
+  /* Completed threads grow with their content. The page owns vertical
+     scrolling; neither the thread nor an individual message hides findings in
+     a nested scroll region. */
+  .msgs { padding:14px 16px; display:flex; flex-direction:column; gap:10px;
+    min-height:min(34em, 58vh); }
+  .convo-grid[data-stack="1"] .msgs { min-height:0; }
+  /* Wider than before: bubbles now carry the reviewer's report in full, and a
+     narrow column turns a report into a ribbon. */
+  .msg { max-width:min(88%, 940px); display:flex; flex-direction:column; gap:4px; min-width:0; }
+  /* Popped out: the thread and nothing else, filling the window. Same fold and
+     same live stream as the embedded view — only the frame around it differs. */
+  /* Descendant, not child: the page nests everything inside div.wrap, so a
+     `body > header` selector matches nothing at all. */
+  body[data-view="conversation"] .wrap > header,
+  body[data-view="conversation"] section:not(#convo-sec) { display:none; }
+  body[data-view="conversation"] #convo-sec > h2,
+  body[data-view="conversation"] #c-note { display:none; }
+  body[data-view="conversation"] #convo-pop { display:none; }
+  body[data-view="conversation"] { padding:0; }
+  body[data-view="conversation"] .wrap { max-width:none; width:100%; margin:0;
+    padding:0; height:100vh; display:flex; flex-direction:column; }
+  body[data-view="conversation"] #convo-sec { margin:0; padding:12px 16px 16px;
+    height:100vh; display:flex; flex-direction:column; gap:10px; }
+  body[data-view="conversation"] .convo-grid { flex:1; min-height:0; }
+  body[data-view="conversation"] .convo { height:100%; }
+  body[data-view="conversation"] .msgs { max-height:none; min-height:0; flex:1; }
+  .msg[data-side="l"] { align-self:flex-start; }
+  .msg[data-side="r"] { align-self:flex-end; }
+  .msg .nm { font:600 11px/1 var(--sans); color:var(--muted); padding:0 4px; }
+  .msg .nm time {
+    font:400 10px/1 var(--mono); color:var(--muted); opacity:.72; margin-left:6px;
+    cursor:help; letter-spacing:.02em;
+  }
+  .msg .nm time:hover { opacity:1; }
+  .msg[data-side="r"] .nm { text-align:right; }
+  .bub {
+    /* Named so a scrolling .tall inside can fade to its own bubble's colour,
+       which differs per side. */
+    --bub-bg:var(--surface-alt);
+    border:1px solid var(--line); border-radius:12px; padding:9px 12px;
+    font:400 13px/1.55 var(--sans); color:var(--ink); white-space:pre-wrap;
+    overflow-wrap:anywhere; background:var(--bub-bg);
+  }
+  .msg[data-side="l"] .bub { --bub-bg:var(--main-soft);
+    border-bottom-left-radius:4px; border-color:var(--main-hue); }
+  .msg[data-side="r"] .bub { border-bottom-right-radius:4px; }
+  .bub .hd { display:block; font:600 12px/1.4 var(--sans); margin-bottom:3px; }
+  .bub .loc { font:500 11px/1.4 var(--mono); color:var(--muted); }
+  /* Names the finding a verdict answers, now that findings are not
+     bubbles of their own. Quiet: the reviewer already said it in full. */
+  .bub .re { display:block; font:500 11px/1.45 var(--sans); color:var(--muted);
+    border-left:2px solid var(--line); padding-left:7px; margin-bottom:5px; }
+  .bub .re:last-child { margin-bottom:0; }
+  /* A re-argued claim. Deliberately quiet and textless: the words are in the
+     reply bubble above it, and this only marks that the argument continues. */
+  .bub[data-k="rebuttal"] { border-left:3px solid var(--warn); }
+  .bub[data-k="verdict"] { border-left:3px solid var(--accent); }
+  .bub[data-k="verdict"][data-v="accepted"] { border-left-color:var(--ok); background:var(--ok-soft); }
+  .bub[data-k="verdict"][data-v="rejected"] { border-left-color:var(--bad); background:var(--bad-soft); }
+  .bub[data-k="verdict"][data-v="deferred"] { border-left-color:var(--warn); background:var(--warn-soft); }
+  .bub[data-k="commit"] { font:500 12px/1.5 var(--mono); background:transparent; border-style:dashed; }
+  .bub[data-k="waiting"] {
+    font:500 12px/1.5 var(--sans); color:var(--muted);
+    background:transparent; border-style:dashed;
+  }
+  .bub[data-k="waiting"] .tick { font-family:var(--mono); color:var(--ink-2); }
+  .bub[data-k="waiting"] .q { color:var(--warn); }
+  .bub[data-k="waiting"]::after {
+    content:"●"; margin-left:6px; font-size:9px; color:var(--warn);
+    animation:blip 1.4s ease-in-out infinite;
+  }
+  .bub[data-k="streaming"] { font:400 12px/1.5 var(--mono); color:var(--ink-2); }
+  .bub[data-k="streaming"]::after {
+    content:"▍"; animation:blip 1s steps(2) infinite; color:var(--accent);
+  }
+  /* Only a live transcript is compact. Once the report completes, it is
+     rendered directly in the conversation at full height. */
+  .bub .tall { max-height:26em; overflow-y:auto; overscroll-behavior:contain;
+    scrollbar-width:thin; border-radius:3px;
+    background:
+      linear-gradient(var(--bub-bg) 30%, transparent) top / 100% 1.2em no-repeat,
+      linear-gradient(transparent, var(--bub-bg) 70%) bottom / 100% 1.2em no-repeat,
+      radial-gradient(farthest-side at 50% 0, rgba(0,0,0,.10), transparent) top / 100% .5em no-repeat,
+      radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,.10), transparent) bottom / 100% .5em no-repeat;
+    background-attachment:local, local, scroll, scroll; }
+  .bub .tall:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .convo[data-a="agy"] > header .who, .msg[data-side="r"] .nm { color:var(--muted); }
+  .convo-tabs .pr-chip .ic, .convo > header .ic, .msg .nm .ic {
+    display:inline-flex; align-items:center; vertical-align:-2px; margin-right:4px;
+  }
+  .msg .nm .ic svg { width:11px; height:11px; }
+  /* Inline-flex, not flex: a full-width flex row on the right side rendered as
+     an empty box beside the name. */
+  .msg[data-side="r"] .nm { display:inline-flex; align-items:center; align-self:flex-end; }
+  .msg[data-side="l"] .nm { display:inline-flex; align-items:center; align-self:flex-start; }
+  .convo > header .who { display:inline-flex; align-items:center; gap:2px; }
+  .convo > header .sw { margin:0 4px; color:var(--muted); font-weight:400; }
+  .convo .empty { padding:26px 14px; text-align:center; font:400 13px/1.5 var(--sans); color:var(--muted); }
+</style>
+
+<div class="wrap">
+
+  <header class="hd">
+    <div class="switcher" id="switcher"></div>
+    <div class="kicker" id="t-kicker"></div>
+    <h1 id="t-title"></h1>
+    <div class="meta" id="t-meta"></div>
+    <p class="note" id="t-summary"></p>
+  </header>
+
+  <section>
+    <h2>How the run actually went</h2>
+    <p class="note">Reviewers run concurrently; the main agent works between rounds. Bar width is real elapsed time.</p>
+    <div class="tl"><div class="tl-inner" id="tl"></div></div>
+    <p class="tl-foot" id="tlfoot"></p>
+  </section>
+
+  <section>
+    <h2>Round by round</h2>
+    <div class="rgrid" id="rounds"></div>
+  </section>
+
+  <section id="convo-sec">
+    <h2>The conversation</h2>
+    <p class="note" id="c-note">The judge on the left, the reviewer on the right. Each reviewer is a
+      separate thread — they never see each other's findings, which is the only reason running more
+      than one counts as evidence.</p>
+    <div class="convo-bar">
+      <div class="convo-tabs" id="convo-tabs"></div>
+      <span class="spacer"></span>
+      <button class="stack-btn" id="convo-stack" aria-pressed="false">stack all</button>
+      <a class="stack-btn" id="convo-pop" href="#" target="_blank" rel="noopener"
+         title="Open the conversation in its own window">pop out ↗</a>
+    </div>
+    <div class="convo-grid" id="convo-grid"></div>
+  </section>
+
+  <section>
+    <h2>The exchange</h2>
+    <p class="note" id="x-note"></p>
+    <div class="filters" id="filters"></div>
+    <div id="thread" style="display:flex;flex-direction:column;gap:16px"></div>
+  </section>
+
+  <section id="ship-sec">
+    <h2>What shipped</h2>
+    <div class="ship" id="ship"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+let RUN = {
+  target: {
+    repo: "acme/worker-pool", id: "#128",
+    url: "https://github.com/acme/worker-pool/pull/128",
+    title: "Demo: review retry backoff across three rounds",
+    branch: "fix/sandbox-manager-create-backoff", trunk: "master",
+    judge: "claude",
+    diffstat: "2 files · +418 −13", state: "merged", stateNote: "Merged", reviewedCommit: "ae473ab",
+    summary: "Two reviewers — codex and droid — read each pushed commit independently. The main agent triages what they find, fixes what survives verification, answers every finding including the ones it rejects, and pushes again. Three rounds until both reported nothing new."
+  },
+  totalMin: 100,
+  lanes: [
+    { who:"codex",  label:"codex",  segs:[ {r:1,s:0,e:18},{r:2,s:40,e:58},{r:3,s:78,e:96} ] },
+    { who:"droid",  label:"droid",  segs:[ {r:1,s:0,e:2},{r:2,s:40,e:42},{r:3,s:78,e:80} ] },
+    { who:"main",   label:"claude", segs:[ {r:1,s:18,e:40,t:"triage · fix · push"},
+                                           {r:2,s:58,e:78,t:"triage · fix · push"},
+                                           {r:3,s:96,e:100,t:"merge prep"} ] }
+  ],
+  marks: [ {at:0,l:"round 1"}, {at:40,l:"round 2"}, {at:78,l:"round 3"} ],
+  tlfoot:"codex ~18 min per round, droid ~2 min. Every round's wall clock is set by the slower reviewer — running them in series would add the faster reviewer’s time to each round.",
+  xnote:"Every finding gets a reply. The rejected one matters most — it caught a bug in the prompt, not the code.",
+  rounds: [
+    { n:1, sha:"bf94454", verdicts:[
+      { a:"codex", s:"found", t:"<b>1 finding</b> — tests derive their bounds from the constants they check" },
+      { a:"droid", s:"clean", t:"<b>NO NEW FINDINGS</b>" } ] },
+    { n:2, sha:"6901882", verdicts:[
+      { a:"codex", s:"found", t:"<b>2 findings</b> — jitter is deletable; cancellation test is probabilistic" },
+      { a:"droid", s:"clean", t:"<b>NO NEW FINDINGS</b>" } ] },
+    { n:3, sha:"ae473ab", verdicts:[
+      { a:"codex", s:"clean", t:"<b>NO NEW FINDINGS</b>" },
+      { a:"droid", s:"clean", t:"<b>NO NEW FINDINGS</b>" } ] }
+  ],
+  exchanges: [
+    { id:"X1", round:2, res:"accepted", loc:"main_test.go:2237 · low · found by codex",
+      claim:"Jitter could be deleted and every test would still pass",
+      outcome:"Fixed. Test_createBackoff now asserts jitter shortens and varies across 200 draws — verified to fail when jitter is removed.",
+      turns:[
+        { who:"codex", ts:"round 2 · T+18m", body:"Every assertion accepts the nominal delay itself. Replacing createBackoff's final expression with <strong>return delay</strong> removes jitter entirely yet passes all new backoff and worker tests. The sampling assertion only enforces the ceiling, not that waits are ever shortened or varied." },
+        { who:"claude", ts:"round 2 · T+41m", body:"Reproduced — and my first attempt to reproduce it was itself wrong. Deleting the jitter expression orphaned the <strong>math/rand/v2</strong> import, so the FAIL I saw was a compile error, not an assertion. Kept the import used and re-ran: every test passed. You were right.",
+          quote:"_ = rand.Float64()\nreturn delay          // jitter gone\nall backoff tests: PASS", ask:"Fixed by asserting jitter actually moves. Does that close it?" },
+        { who:"codex", ts:"round 3 · T+96m", body:"NO NEW FINDINGS." } ] },
+
+    { id:"X2", round:2, res:"accepted", loc:"main_test.go:2476 · low · found by codex",
+      claim:"The cancellation test could pass by luck",
+      outcome:"Fixed. The wait is now stubbed to report an unfinished wait with the context still live, so a looping worker has no race to hide behind. Fails deterministically in 0.00s.",
+      turns:[
+        { who:"codex", ts:"round 2 · T+18m", body:"If the worker regresses from <strong>return</strong> to <strong>continue</strong>, its next select can still choose ctx.Done() before a buffered job. All 20 runs can therefore report exactly one call and pass incorrectly — roughly a 1-in-1,048,576 false pass." },
+        { who:"claude", ts:"round 2 · T+52m", body:"Accepted. Made it deterministic rather than merely improbable. Writing it surfaced a second problem of my own: under regression the test <strong>hung</strong> instead of failing — the worker drained the buffered channel then blocked on an open, empty one. Closing the channel makes it fail fast.",
+          quote:"before: 20 runs, P(false pass) ≈ 2⁻²⁰\nafter:  deterministic, fails in 0.00s",
+          ask:"A test that hangs on regression is worse than one that fails — it burns the CI timeout and reads as infra. Agreed?" },
+        { who:"codex", ts:"round 3 · T+96m", body:"NO NEW FINDINGS." } ] },
+
+    { id:"X3", round:1, res:"accepted", loc:"main_test.go:2223 · low · found by codex",
+      claim:"The tests validate their own constants",
+      outcome:"Fixed. Test_backoffLimits pins 1s / 60s / 0.2 / 60s independently, so a constant change has to be deliberate.",
+      turns:[
+        { who:"codex", ts:"round 1 · T+18m", body:"The expected bounds are derived from createBackoffJitter and maxCreateBackoff. Changing jitter to 50% or lowering the cap to 48s leaves all new tests green despite violating the specified behaviour. Pin those contractual values independently." },
+        { who:"claude", ts:"round 1 · T+33m", body:"Reproduced exactly as described — with the cap at 48s and jitter at 50%, every existing backoff test stayed green and only the new pinning test failed.",
+          quote:"cap 60s→48s, jitter 0.2→0.5\nother backoff tests: PASS\nTest_backoffLimits:  FAIL" } ] },
+
+    { id:"X4", round:1, res:"rejected", loc:"acquire_route_handler.go · info · raised by droid",
+      claim:"The diff also deletes IdlePoolMissReason and a response header",
+      outcome:"Rejected — an artifact of the diff base, caused by my prompt. The prompt now pins the merge-base, and droid confirmed against it.",
+      turns:[
+        { who:"droid", ts:"round 1 · T+02m", body:"The diff also removes the IdlePoolMissReason type, the X-Assign-Missed-Reason response header, and ~80 lines of sanitization. This is a feature removal that changes the public API surface — a separate concern from the backoff change." },
+        { who:"claude", ts:"round 1 · T+29m", body:"<strong>Rejected, and this one is my fault rather than yours.</strong> My prompt told you to run <strong>git diff origin/master</strong>. The trunk gained that commit after our branch point, so another commit's addition showed up inverted as our deletion.",
+          quote:"git diff origin/master        → 8 files\ngit diff $(git merge-base …)  → 2 files", ask:"Please re-check against the merge-base and confirm." },
+        { who:"droid", ts:"round 1 · T+36m", body:"Confirmed. The diff against the merge-base touches exactly two files, and no mention of IdlePoolMissReason appears. The commit that added it landed on the trunk after the branch point. Purely an artifact of the diff base." } ] },
+
+    { id:"X5", round:1, res:"deferred", loc:"main.go:289 · medium · found by codex",
+      claim:"Producer can over-reserve the in-flight count",
+      outcome:"Deferred by agreement. Pre-existing and untouched by this change; tracked as its own PR rather than widening this one.",
+      turns:[
+        { who:"codex", ts:"round 1 · T+18m", body:"The producer reads the in-flight count, unlocks, calculates need, and only later locks again to add it. During manager replacement two producers can observe the same count and both reserve the full deficit. The mutex prevents a data race but not this check-then-act race." },
+        { who:"claude", ts:"round 1 · T+33m", body:"<strong>Agree it is real. Not fixing it here</strong> — producer and the in-flight map are untouched by this change, which only edits the worker retry path. Widening the PR to cover it would mix two concerns.",
+          ask:"Do you agree it is (a) pre-existing and (b) not made materially more likely by this change? If the new backoff widens that window, say so and I will reconsider." },
+        { who:"codex", ts:"round 1 · T+51m", body:"Accepted. The producer reservation code is byte-for-byte outside this commit's diff, so the issue is pre-existing. The new backoff does not materially widen the concurrent-producer window; cancellation-aware worker exit arguably reduces old/new manager overlap. I agree it belongs in a separate PR." } ] }
+  ],
+  ship: [
+    { n:"3",  k:"rounds",       s:"until complete" },
+    { n:"5",  k:"exchanges",    s:"3 fixed · 1 deferred · 1 rejected" },
+    { n:"11", k:"turns",        s:"every finding answered" },
+    { n:"0",  k:"prod bugs",    s:"found in these 3 rounds" },
+    { n:"3",  k:"test defects", s:"tests that proved nothing" },
+    { n:"~1.7h", k:"agent time", s:"~20 min per round" }
+  ],
+  foot:"Illustrative example adapted from the case study; repository identifiers are placeholders. The main agent's turns include two of its own mistakes — a compile error misread as a caught regression, and a test that hung rather than failed — because both changed what shipped. Deferred findings became their own pull requests; rejected ones stay on the record with the evidence that settled them."
+};
+
+// One mark per agent. Inline SVG on currentColor: no external asset, so the
+// console works served locally and as a self-contained page, and both themes
+// get the right contrast for free. Unknown agents fall back to a plain dot.
+const ICONS = {
+  // Official marks (simple-icons, CC0 icon set; the marks themselves remain the
+  // trademarks of their owners and are used here only to identify the tools).
+  claude: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>',
+  codex: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>',
+  // agy is Google Antigravity. No mark is published in the CC0 icon set, so this
+  // is Antigravity's own shape rather than a borrowed one: an upward chevron
+  // over a horizon, which is what the product's own iconography reads as.
+  agy: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="M12 2.8 22 19.2h-4.36L12 9.9 6.36 19.2H2z"/>' +
+    '<path fill="currentColor" d="M7.6 21.2h8.8v1.9H7.6z" opacity=".55"/></svg>',
+  // Grok's own mark, taken from grok.com. Not the xAI slash logo — that is the
+  // company, this is the product doing the reviewing.
+  grok: '<svg viewBox="0 0 34 33" width="16" height="16" aria-hidden="true">' +
+    '<path fill="currentColor" d="M13.2371 21.0407L24.3186 12.8506C24.8619 12.4491 25.6384 12.6057 25.8973 13.2294C27.2597 16.5185 26.651 20.4712 23.9403 23.1851C21.2297 25.8989 17.4581 26.4941 14.0108 25.1386L10.2449 26.8843C15.6463 30.5806 22.2053 29.6665 26.304 25.5601C29.5551 22.3051 30.562 17.8683 29.6205 13.8673L29.629 13.8758C28.2637 7.99809 29.9647 5.64871 33.449 0.844576C33.5314 0.730667 33.6139 0.616757 33.6964 0.5L29.1113 5.09055V5.07631L13.2343 21.0436"/>' +
+    '<path fill="currentColor" d="M10.9503 23.0313C7.07343 19.3235 7.74185 13.5853 11.0498 10.2763C13.4959 7.82722 17.5036 6.82767 21.0021 8.2971L24.7595 6.55998C24.0826 6.07017 23.215 5.54334 22.2195 5.17313C17.7198 3.31926 12.3326 4.24192 8.67479 7.90126C5.15635 11.4239 4.0499 16.8403 5.94992 21.4622C7.36924 24.9165 5.04257 27.3598 2.69884 29.826C1.86829 30.7002 1.0349 31.5745 0.36364 32.5L10.9474 23.0341"/></svg>',
+  // Factory publishes no mark in the icon set, so droid keeps an honest generic
+  // machine glyph rather than an invented "official" logo.
+  // Factory's own mark, taken from factory.ai's nav logo.
+  droid: '<svg viewBox="0 0 67 65" width="15" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="M47.75 11.15a.867.867 0 0 1-.671-.806.84.84 0 0 1 .067-.362c1.688-4.007 2.433-7.213 1.23-8.555-3.183-3.56-15.952 3.52-20.024 5.919a.9.9 0 0 1-1.273-.41c-1.711-3.998-3.51-6.78-5.334-6.9-4.833-.323-8.73 13.49-9.87 17.992a.85.85 0 0 1-.459.563.9.9 0 0 1-.737.027c-4.109-1.647-7.398-2.373-8.773-1.2-3.651 3.104 3.609 15.557 6.068 19.528a.85.85 0 0 1-.11 1.031.9.9 0 0 1-.31.21C3.455 39.856.604 41.61.478 43.389c-.329 4.713 13.834 8.513 18.452 9.625q.186.046.337.163a.87.87 0 0 1 .332.642.84.84 0 0 1-.067.362c-1.688 4.007-2.433 7.214-1.23 8.555 3.183 3.561 15.954-3.519 20.025-5.917a.9.9 0 0 1 1.058.107.9.9 0 0 1 .215.302c1.711 3.997 3.509 6.779 5.334 6.9 4.833.322 8.73-13.49 9.868-17.993a.85.85 0 0 1 .168-.33.88.88 0 0 1 .659-.324.9.9 0 0 1 .371.066c4.109 1.647 7.397 2.372 8.773 1.2 3.651-3.105-3.61-15.559-6.07-19.53a.85.85 0 0 1 .111-1.03.9.9 0 0 1 .31-.21c4.1-1.67 6.952-3.424 7.075-5.203.331-4.713-13.833-8.513-18.45-9.623m-5.546-4.518c.93 1.624-3.858 12.446-7.42 20.015a.7.7 0 0 1-.28.303.71.71 0 0 1-.796-.059.7.7 0 0 1-.23-.341c-1.439-4.921-3.082-10.704-4.841-15.612a.84.84 0 0 1 .01-.594.87.87 0 0 1 .401-.446c4.392-2.34 11.908-5.446 13.156-3.266m-21.048 1.34c1.833.507 6.294 11.46 9.264 19.268a.67.67 0 0 1-.2.754.71.71 0 0 1-.794.08c-4.589-2.485-9.94-5.444-14.743-7.702a.87.87 0 0 1-.422-.427.84.84 0 0 1-.04-.591c1.414-4.679 4.471-12.063 6.935-11.383M7.243 23.433c1.664-.906 12.762 3.763 20.522 7.235.13.058.239.154.311.274a.67.67 0 0 1-.06.776.7.7 0 0 1-.35.225c-5.045 1.403-10.976 3.006-16.01 4.721a.9.9 0 0 1-.607-.01.88.88 0 0 1-.456-.391c-2.395-4.284-5.586-11.613-3.35-12.83M8.617 43.96c.519-1.788 11.752-6.14 19.758-9.035a.72.72 0 0 1 .773.195.67.67 0 0 1 .081.774c-2.548 4.475-5.582 9.694-7.898 14.377a.87.87 0 0 1-.437.413.9.9 0 0 1-.607.039c-4.797-1.37-12.37-4.36-11.67-6.763m15.855 13.568c-.93-1.623 3.859-12.446 7.42-20.014a.7.7 0 0 1 .28-.303.715.715 0 0 1 .796.059.7.7 0 0 1 .23.34c1.439 4.92 3.083 10.705 4.841 15.613a.84.84 0 0 1-.01.593.87.87 0 0 1-.402.445c-4.391 2.335-11.908 5.447-13.15 3.267zm21.049-1.34c-1.836-.506-6.297-11.461-9.266-19.269a.67.67 0 0 1 .2-.755.71.71 0 0 1 .795-.078c4.587 2.484 9.94 5.445 14.742 7.703.189.088.339.24.423.426a.84.84 0 0 1 .039.592c-1.413 4.686-4.47 12.063-6.933 11.381m13.912-15.462c-1.665.907-12.762-3.763-20.523-7.236a.7.7 0 0 1-.311-.273.67.67 0 0 1 .06-.777.7.7 0 0 1 .35-.225c5.046-1.402 10.975-3.005 16.009-4.72a.9.9 0 0 1 .609.01.88.88 0 0 1 .457.392c2.393 4.282 5.584 11.613 3.349 12.829M58.06 20.2c-.521 1.79-11.753 6.14-19.759 9.036a.72.72 0 0 1-.774-.195.67.67 0 0 1-.08-.776c2.547-4.474 5.581-9.694 7.897-14.377a.87.87 0 0 1 .437-.412.9.9 0 0 1 .607-.038c4.797 1.377 12.37 4.359 11.672 6.762"/></svg>',
+};
+/**
+ * A mark for an agent with no official one.
+ *
+ * A single dot for every unknown agent made three reviewers look like the same
+ * anonymous thing, and unbranded next to codex's real mark. These are
+ * deliberately geometric rather than logo-like: inventing an "official" mark
+ * for someone else's product would be worse than having none. The shape is
+ * picked by hashing the name, so an agent keeps its glyph across reloads and
+ * two agents in the same run are distinguishable at a glance.
+ */
+const GLYPHS = [
+  // hexagon
+  '<path fill="currentColor" d="M12 2.6 20.1 7v10L12 21.4 3.9 17V7z" opacity=".9"/>',
+  // rounded square, hollow centre
+  '<path fill="currentColor" d="M6 3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm0 3v12h12V6Z"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>',
+  // triangle
+  '<path fill="currentColor" d="M12 3.2 21.5 20H2.5z"/>',
+  // four-point star
+  '<path fill="currentColor" d="M12 2c.6 5 2.4 7.4 10 10-7.6 2.6-9.4 5-10 10-.6-5-2.4-7.4-10-10 7.6-2.6 9.4-5 10-10Z"/>',
+  // concentric rings
+  '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="3.4" fill="currentColor"/>',
+  // diamond
+  '<path fill="currentColor" d="M12 2.2 21.8 12 12 21.8 2.2 12z"/>',
+  // three bars
+  '<path fill="currentColor" d="M3 5h18v3.4H3zM3 10.3h18v3.4H3zM3 15.6h18V19H3z"/>',
+  // pentagon
+  '<path fill="currentColor" d="M12 2.4 22 9.7l-3.8 11.7H5.8L2 9.7z"/>',
+];
+
+const icon = (name) => {
+  if (ICONS[name]) return ICONS[name];
+  const n = String(name ?? "");
+  let h = 0;
+  for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0;
+  const g = GLYPHS[Math.abs(h) % GLYPHS.length];
+  return `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">${g}</svg>`;
+};
+
+// Times are pinned to Singapore, not the viewer's locale: a review record should
+// read the same wherever it is opened, and 24-hour reads better against log data.
+const TZ = "Asia/Singapore";
+const TZ_LABEL = "SGT";
+const clockFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TZ, hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
+// A turn carries an ISO time when it was measured; the round/offset label is
+// secondary context, shown under it rather than wrapped into the same line.
+function when(t) {
+  let clock = "";
+  if (t?.at) {
+    const d = new Date(t.at);
+    if (!Number.isNaN(+d)) clock = clockFmt.format(d);
+  }
+  const ctx = t?.ts ?? "";
+  return `${clock ? `<b>${esc(clock)}</b>` : ""}${ctx ? `<i>${esc(ctx)}</i>` : ""}`;
+}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const rich = s => esc(s).replace(/&lt;strong&gt;/g,"<strong>").replace(/&lt;\/strong&gt;/g,"</strong>")
+                        .replace(/&lt;b&gt;/g,"<b>").replace(/&lt;\/b&gt;/g,"</b>");
+const pct = m => (m / RUN.totalMin) * 100;
+
+/**
+ * Merge timeline marks too close together to render side by side.
+ *
+ * A label is roughly 8% of the track at the widths this is read at, so marks
+ * nearer than that collide. Rather than dropping the later one — which would
+ * misreport how many rounds ran — they collapse into a range: "rounds 3-6",
+ * with the full list on hover.
+ */
+function collapseMarks(marks = []) {
+  const sorted = [...marks].sort((a, b) => a.at - b.at);
+  const out = [];
+  const MIN_GAP = 8; // percent of the track
+  for (const m of sorted) {
+    const last = out[out.length - 1];
+    if (last && pct(m.at) - pct(last.at) < MIN_GAP) {
+      last.group.push(m.l);
+      const ns = last.group.map((l) => String(l).replace(/\D+/g, "")).filter(Boolean);
+      last.l = ns.length > 1 ? `rounds ${ns[0]}-${ns[ns.length - 1]}` : last.group[0];
+      last.title = last.group.join(", ");
+      continue;
+    }
+    out.push({ at: m.at, l: m.l, title: m.l, group: [m.l] });
+  }
+  return out;
+}
+
+// exchanges. "open" is a finding the main agent has not answered yet, and it is
+// the state a live run spends most of its time in — leaving it out of the
+// filters hid every finding the CLI recorded.
+
+const STATES = ["open","accepted","deferred","rejected"];
+let show = new Set(STATES);
+$("filters").innerHTML = STATES
+  .map(v=>`<button class="chip" data-v="${v}" aria-pressed="true">${v}</button>`).join("");
+
+function draw(){
+  const all = RUN.exchanges ?? [];
+  const rows = all.filter(x => show.has(x.res ?? x.resolution));
+  const t = RUN.target ?? {};
+  const cmd = t.targets?.length ? `jury review ${t.targets.map(p => p.url).join(" ")}` : t.url ? `jury review ${t.url}` : `jury review --dir . --trunk ${t.trunk ?? "master"}`;
+
+  // This copy has to describe THIS run. A line about the rejected finding was
+  // being printed over a run that raised no findings at all.
+  const verdicts = (RUN.rounds ?? []).flatMap(r => r.verdicts ?? []);
+  const allClean = verdicts.length > 0 && verdicts.every(v => v.s === "clean");
+  $("x-note").textContent = RUN.xnote ?? (all.length
+    ? "Every finding gets a reply, including the ones the main agent rejects — with the evidence that settled them."
+    : allClean
+      ? "Nothing to answer: every reviewer read the diff and reported no new problems."
+      : "Nothing tracked yet for this run.");
+
+  const empty = all.length ? "no exchanges match this filter"
+    : allClean ? "no findings raised — every reviewer reported clean"
+    : "no findings recorded yet";
+
+  const card = x => `
+    <div class="xb">
+      <div class="xb-head">
+        <span class="claim">${esc(x.claim)}</span>
+        <span class="tag" data-r="${x.res ?? x.resolution}">${x.res ?? x.resolution}</span>
+        <span class="meta">${esc(x.id ?? "")} · ${esc(x.loc ?? "")}</span>
+      </div>
+      ${(x.turns ?? []).filter(tt => typeof tt.body === "string").map(tt => `
+        <div class="ln" data-who="${tt.who}">
+          <span class="at">${when(tt)}</span>
+          <span class="nm"${tt.who === judgeName() ? ' style="color:var(--t-claude)"' : ""}>${icon(tt.who)}${esc(tt.who)}</span>
+          <span class="say">${rich(tt.body)}
+            ${tt.quote ? `<div class="q">${esc(tt.quote)}</div>` : ""}
+            ${tt.ask ? `<div class="ask">${esc(tt.ask)}</div>` : ""}
+          </span>
+        </div>`).join("")}
+      ${x.outcome ? `<div class="out" data-r="${x.res ?? x.resolution}"><b>${x.res ?? x.resolution}</b> — ${esc(x.outcome)}</div>` : ""}
+    </div>`;
+
+  // Grouped by reviewer, in the order they first spoke. A single flat list
+  // reads as one debate among everyone; these were N separate conversations,
+  // and which reviewer raised a claim is most of what makes it worth weighing.
+  // An unattributed finding still has to appear somewhere, or grouping would
+  // silently drop it — a finding nobody can see is worse than an ugly heading.
+  const who = [];
+  for (const x of all) {
+    const k = x.with || "unattributed";
+    if (!who.includes(k)) who.push(k);
+  }
+
+  const cards = mine => {
+    if (!t.targets?.length) return mine.map(card).join("");
+    return [...t.targets, { key: null, title: "Unassigned PR" }].map(pr => {
+      const items = mine.filter(x => (x.pr ?? null) === pr.key);
+      if (!items.length) return "";
+      return `<div class="rule"><span class="lbl">${esc(pr.key ?? "Unassigned")} · ${esc(pr.title)}</span><i></i></div>${items.map(card).join("")}`;
+    }).join("");
+  };
+  const body = !rows.length
+    ? `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`
+    // Follows the conversation picked above, so the findings on screen are the
+    // ones raised in the thread you are reading. Stacked means "show me all of
+    // them", and with only one reviewer there is nothing to follow.
+    // Derived, not read off a global: draw() runs before drawConvo() on the
+    // first paint, so consulting CONVO_PICK directly showed every reviewer once
+    // and then silently disagreed with the tab that ended up pressed.
+    : who.filter(a => who.length < 2 || CONVO_STACK || a === (who.includes(CONVO_PICK) ? CONVO_PICK : who[0])).map(agent => {
+        const is = x => (x.with || "unattributed") === agent;
+        const mine = rows.filter(is);
+        if (!mine.length) return "";
+        const shown = all.filter(is).length;
+        return `
+          <div class="xgroup">
+            <div class="rule" data-who="${esc(agent)}">
+              <span class="lbl">${icon(agent)}${esc(judgeName())} ⇄ ${esc(agent)}</span><i></i>
+              <span class="rt">${mine.length} of ${shown} finding(s)</span>
+            </div>
+            ${cards(mine)}
+          </div>`;
+      }).join("") || `<div style="color:var(--t-dim);padding:8px 0">${esc(empty)}</div>`;
+
+  $("thread").innerHTML = `
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="t">${esc(t.repo ?? "")} ${esc(t.id ?? "")} — exchange</span>
+      </div>
+      <div class="term-body">
+        <div class="cmdline"><span class="cwd">~/${esc((t.repo ?? "repo").split("/").pop())}</span> ${t.targets?.length ? "" : `<span class="branch">git:(${esc(t.branch ?? "?")})</span>`}</div>
+        <div class="cmdline"><span class="p">❯</span><span class="c">${esc(cmd)}</span></div>
+        ${body}
+      </div>
+    </div>`;
+}
+
+$("filters").addEventListener("click", e=>{
+  const b=e.target.closest(".chip"); if(!b) return;
+  const v=b.dataset.v;
+  if(show.has(v)){ show.delete(v); b.setAttribute("aria-pressed","false"); }
+  else { show.add(v); b.setAttribute("aria-pressed","true"); }
+  draw();
+});
+
+const BADGE = { merged:"badge-ok", converged:"badge-ok", review:"badge-warn", human:"badge-warn", queued:"badge-mute" };
+
+function renderHeader(){
+  const t = RUN.target ?? {};
+  // Name the repo here, next to the switcher, rather than only in the meta row
+  // below the title: the chips read "#46 / #48" and a bare number does not say
+  // what project it belongs to.
+  const scope = [...new Set(ALL.map(r => r.target?.repo).filter(Boolean))];
+  $("t-kicker").textContent = t.targets?.length ? `${t.targets.length} related PRs · one review task` : ALL.length > 1
+    ? `${scope.length === 1 ? scope[0] : `${scope.length} repos`} · ${ALL.length} pull requests`
+    : `${t.repo ? `${t.repo} · ` : ""}single pull request`;
+  $("t-title").textContent = t.title ?? "(untitled change)";
+  $("t-summary").textContent = t.summary ?? "";
+
+  const link = t.targets?.length
+    ? t.targets.map(pr => `<a href="${esc(pr.url)}" target="_blank" rel="noopener">${esc(pr.key)} · ${esc(pr.repo)} #${esc(pr.id)}</a>`).join(" ")
+    : t.url
+    ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.repo ?? "")} ${esc(t.id ?? "")}</a>`
+    : `<span>${esc(t.repo ?? "")} ${esc(t.id ?? "")}</span>`;
+  const branch = t.branch ? `<span>${esc(t.branch)} → ${esc(t.trunk ?? "master")}</span>` : "";
+  const stat = t.diffstat ? `<span>${esc(t.diffstat)}</span>` : "";
+  const cls = BADGE[t.state] ?? "badge-mute";
+  const commit = reviewedCommit(t);
+  const badge = t.state
+    ? `<span class="${cls}"><span class="d"></span>${esc(statusLabel(t))}</span>` : "";
+  const reviewed = commit ? `<span>Reviewed ${t.targets?.length ? "commits" : "commit"} <code>${esc(commit)}</code></span>` : "";
+  $("t-meta").innerHTML = [link, branch, stat, badge, reviewed].filter(Boolean).join("");
+
+  // Only worth showing when there is something to switch between.
+  //
+  // A bare "#48" does not say which project it belongs to, and PR numbers
+  // collide across repos — two chips reading #48 would be indistinguishable.
+  // The repo name is carried whenever more than one is on screen; with a single
+  // repo it is redundant, and the title is what actually tells them apart.
+  const repos = new Set(ALL.map(r => r.target?.repo).filter(Boolean));
+  drawSwitcher();
+}
+
+/* ── Run switcher ───────────────────────────────────────────────────────
+   A chip per run wrapped to two rows at seven runs; at a hundred it is a
+   wall. One control names the current run, and opening it gives a filterable
+   list with whatever is LIVE first — a running review is the thing you came
+   to look at, and it must never be somewhere down a list of two hundred. */
+let SW_OPEN = false;
+let SW_Q = "";
+
+// "Live" cannot be the state field alone. A run that was killed keeps whatever
+// state it was last written with, so six abandoned runs all claimed to be
+// under review — and the one actually running was lost among them. A run is
+// live if it says it is reviewing AND something happened in the last few
+// minutes.
+const LIVE_WINDOW_MS = 6 * 60 * 1000;
+function lastActivity(r) {
+  // A verdict is the best signal, but a run whose reviewer never reported has
+  // none — and those are exactly the runs you just started and want at the top.
+  // Fall back to the newest round, so nothing sorts as "no activity ever".
+  const verdict = (r.rounds ?? []).flatMap((x) => x.verdicts ?? []).map((v) => v.at).filter(Boolean).pop();
+  if (verdict) return Date.parse(verdict);
+  const started = (r.rounds ?? []).map((x) => x.startedAt).filter(Boolean).pop();
+  return started ? Date.parse(started) : null;
+}
+function isLive(r) {
+  if (r.target?.state !== "review") return false;
+  // A launched round with no verdict yet is live by definition: the reviewer
+  // has not reported, which is exactly the case worth watching.
+  if (r === RUN && EVENTS.length) {
+    const last = EVENTS[EVENTS.length - 1];
+    if (last?.ts && Date.now() - Date.parse(last.ts) < LIVE_WINDOW_MS) return true;
+  }
+  const at = lastActivity(r);
+  return at !== null && Date.now() - at < LIVE_WINDOW_MS;
+}
+
+function runLabel(r) {
+  const t = r.target ?? {};
+  const repo = (t.repo ?? "").split("/").pop() || "run";
+  return `${repo} · ${t.id ?? "?"}`;
+}
+
+/**
+ * Which attempt this is, when the same PR has been reviewed more than once.
+ *
+ * Every run of PR #2 is labelled "#2", so without this three separate reviews
+ * are three identical rows. Shown only when there IS more than one — a lone run
+ * does not need to defend its uniqueness.
+ */
+function attemptOf(r) {
+  const m = /-(\d{8})-(\d{4})$/.exec(r.slug ?? "");
+  if (!m) return "";
+  const [, d, hm] = m;
+  return `${d.slice(4, 6)}/${d.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2)}`;
+}
+function hasSiblings(r, all) {
+  const key = `${r.target?.repo}#${r.target?.id}`;
+  return all.filter((x) => `${x.target?.repo}#${x.target?.id}` === key).length > 1;
+}
+
+// "16h", "3d" — a run's age is glanceable, an ISO timestamp is not.
+function ago(r) {
+  const last = lastActivity(r);
+  if (!last) return "";
+  const s = (Date.now() - last) / 1000;
+  if (!Number.isFinite(s) || s < 0) return "";
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)}m`;
+  if (s < 172800) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+
+function runSummary(r) {
+  const t = r.target ?? {};
+  if (isLive(r) && t.stateNote) return t.stateNote;
+  const n = (r.exchanges ?? []).length;
+  if (t.state === "converged") return "Review complete";
+  const found = n ? `${n} finding${n === 1 ? "" : "s"}` : "";
+  // A stale "review" is a run that stopped without finishing. Saying "review"
+  // would repeat the claim that misled the grouping in the first place.
+  if (t.state === "review") return found ? `${found} · stopped` : "stopped";
+  return found || t.stateNote || t.state || "";
+}
+
+function reviewedCommit(t) {
+  if (t?.reviewedCommits) return Object.entries(t.reviewedCommits).map(([key, sha]) => `${key} ${sha.slice(0, 8)}`).join(" · ");
+  if (t?.reviewedCommit) return t.reviewedCommit;
+  return (t?.stateNote?.match(/\bconverged on ([0-9a-f]{7,40})\b/i)?.[1] ?? "").toLowerCase();
+}
+
+function statusLabel(t) {
+  if (t?.state === "converged") return "Review complete";
+  if (t?.state === "merged" && /converged/i.test(t.stateNote ?? "")) return "Merged";
+  return t?.stateNote || t?.state || "";
+}
+
+function drawSwitcher() {
+  const el = $("switcher");
+  if (!el) return;
+  if (ALL.length < 2) { el.innerHTML = ""; return; }
+
+  const q = SW_Q.trim().toLowerCase();
+  const match = (r) => {
+    if (!q) return true;
+    const t = r.target ?? {};
+    return [t.repo, t.id, t.title, t.branch, r.slug]
+      .filter(Boolean).join(" ").toLowerCase().includes(q);
+  };
+
+  const hits = ALL.filter(match);
+  // Newest first, full stop. Grouping by repo read well in the abstract and
+  // badly in practice: it floated 9-day-old runs above ones from ten minutes
+  // ago, so the list did not answer "what was I just looking at?" — which is
+  // the only question this control gets asked.
+  hits.sort((a, b) => (lastActivity(b) ?? 0) - (lastActivity(a) ?? 0));
+  const live = hits.filter(isLive);
+  const rest = hits.filter((r) => !isLive(r));
+
+  const item = (r) => {
+    const t = r.target ?? {};
+    const on = r === RUN;
+    return `<button class="sw-i" role="option" data-slug="${esc(r.slug ?? "")}" aria-pressed="${on}"
+      ><span class="d" style="background:${isLive(r) ? "var(--warn)" : t.state === "converged" ? "var(--ok)" : "var(--muted)"}"></span
+      ><span class="id">${esc(runLabel(r))}</span
+      >${hasSiblings(r, ALL) && attemptOf(r) ? `<span class="at">${esc(attemptOf(r))}</span>` : ""
+      }<span class="ti">${esc(runSummary(r))}</span
+      ><span class="rt">${esc(ago(r))}</span></button>`;
+  };
+
+  const group = (label, rows) =>
+    rows.length ? `<div class="sw-h">${label}</div>${rows.map(item).join("")}` : "";
+
+  el.innerHTML = `
+    <button class="sw-btn" id="sw-btn" aria-expanded="${SW_OPEN}"
+      ><span class="d" style="width:7px;height:7px;border-radius:50%;background:${
+        isLive(RUN) ? "var(--warn)" : "var(--ok)"};flex:none"></span
+      ><span class="nm">${esc(runLabel(RUN))}${
+        hasSiblings(RUN, ALL) && attemptOf(RUN) ? ` · ${attemptOf(RUN)}` : ""}</span
+      ><span class="cnt">of ${ALL.length}</span><span class="car">▼</span></button>
+    <div class="sw-pop" id="sw-pop" ${SW_OPEN ? "" : "hidden"} role="listbox">
+      <input id="sw-q" type="search" placeholder="filter by repo, number, title, branch…"
+        value="${esc(SW_Q)}" autocomplete="off">
+      <div class="sw-list">${
+        hits.length
+          ? group(live.length ? `running now · ${live.length}` : "", live)
+            + group(`recent · ${rest.length}`, rest)
+          : `<div class="sw-none">nothing matches “${esc(SW_Q)}”</div>`
+      }</div>
+    </div>`;
+
+  if (SW_OPEN) {
+    const input = $("sw-q");
+    input?.focus();
+    input?.setSelectionRange(SW_Q.length, SW_Q.length);
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#sw-btn")) { SW_OPEN = !SW_OPEN; SW_Q = ""; drawSwitcher(); return; }
+  const pick = e.target.closest("#sw-pop .sw-i");
+  if (pick) {
+    const next = ALL.find((r) => r.slug === pick.dataset.slug);
+    if (next) { RUN = next; setRunParam(next.slug); SW_OPEN = false; SW_Q = ""; render(); }
+    return;
+  }
+  // Anywhere else closes it — including the page behind.
+  if (SW_OPEN && !e.target.closest("#sw-pop")) { SW_OPEN = false; drawSwitcher(); }
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id !== "sw-q") return;
+  SW_Q = e.target.value;
+  drawSwitcher();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (!SW_OPEN) return;
+  if (e.key === "Escape") { SW_OPEN = false; drawSwitcher(); return; }
+  if (e.key !== "Enter") return;
+  // Enter takes the first match, so filtering to one run and pressing Enter is
+  // the whole interaction.
+  const first = document.querySelector("#sw-pop .sw-i");
+  if (first) { e.preventDefault(); first.click(); }
+});
+
+// Every reviewer's report in full, plus the prompt it answered. A round where
+// nobody found anything still has to show what was checked — the first line
+// alone ("NO NEW FINDINGS") hid caveats like a reviewer that could not run the
+// tests at all.
+const bytes = n => n < 1024 ? `${n} B` : `${(n/1024).toFixed(1)} kB`;
+
+// report ⇄ raw stream, now hung off the conversation rather than the removed
+// round-by-round transcript. Fetched on demand: a verbose agent's stream can
+// dwarf the rest of the payload, and most of it is transcript rather than
+// answer.
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("#convo-grid button[data-view]");
+  if (!b) return;
+  const tabs = b.closest(".tabs");
+  const pre = tabs.previousElementSibling;
+  const want = b.dataset.view;
+  if (b.getAttribute("aria-pressed") === "true") return;
+
+  if (want === "raw") {
+    if (!pre.dataset.report) pre.dataset.report = pre.textContent;
+    if (!pre.dataset.raw) {
+      b.textContent = "loading…";
+      try {
+        const res = await fetch(`api/raw?run=${encodeURIComponent(b.dataset.slug)}&file=${encodeURIComponent(b.dataset.for)}`);
+        pre.dataset.raw = res.ok ? await res.text() : `(${res.status} — raw stream not on disk for this round)`;
+      } catch { pre.dataset.raw = "(raw stream unavailable — is the console still serving?)"; }
+      b.textContent = "raw stream";
+    }
+    pre.textContent = pre.dataset.raw;
+    pre.classList.add("raw");
+  } else {
+    pre.textContent = pre.dataset.report ?? pre.textContent;
+    pre.classList.remove("raw");
+  }
+  for (const other of tabs.querySelectorAll("button[data-view]")) {
+    other.setAttribute("aria-pressed", String(other === b));
+  }
+});
+
+function render(){
+  renderHeader();
+  // timeline
+  $("tl").innerHTML =
+    // Marks that land within a label's width of each other are drawn as one.
+    // Absolute positioning with no collision handling rendered six rounds a
+    // few seconds apart as "ROUNDROUNDROUND23" — unreadable, and it hid how
+    // many rounds there actually were.
+    `<div class="tl-rounds">${collapseMarks(RUN.marks).map(m=>
+      `<span style="left:${pct(m.at)}%" title="${esc(m.title ?? m.l)}">${esc(m.l)}</span>`).join("")}</div>` +
+    RUN.lanes.map(l=>`
+      <div class="lane">
+        <span class="who"><span class="ic" style="color:${l.who==="main"?"var(--main-hue)":hueFor(l.who)}">${icon(l.label)}</span>${esc(l.label)}</span>
+        <div class="track">${l.segs.map(s=>{
+          // Rounded at the point of display: these are differences of floats,
+          // so a span reads "8.300000000000004 min" without it.
+          const w = pct(s.e - s.s), mins = +(s.e - s.s).toFixed(1);
+          return `<div class="seg" data-a="${l.who}"${s.open ? ' data-open="1"' : ""}
+                   style="left:${pct(s.s)}%;width:${w}%"${s.abandoned ? ' data-abandoned="1"' : ""}
+                   title="${esc(s.t || ("round "+s.r+" · "+mins+" min"))}">${w > 9 ? esc(s.t || mins+" min") : ""}</div>`;
+        }).join("")}</div>
+      </div>`).join("");
+  $("tlfoot").textContent = RUN.tlfoot;
+
+  $("rounds").innerHTML = RUN.rounds.map(r=>`
+    <article class="rcard">
+      <header><b>Round ${r.n}</b><span class="sha" title="${esc(r.sha)}">${esc(String(r.sha ?? "").replace(/(PR\d+=)([0-9a-f]{40})/g, (_, key, sha) => key + sha.slice(0, 8)))}</span></header>
+      ${r.verdicts.map(v=>`
+        <div class="verd" data-s="${v.s}">
+          <span class="ag"><span class="ic" style="color:${hueFor(v.a)}">${icon(v.a)}</span>${esc(v.a)}</span>
+          <span class="txt">${rich(v.t)}</span>
+        </div>`).join("")}
+    </article>`).join("");
+
+  // A run that has not shipped anything yet has no tally. An empty grid under a
+  // heading reads as a rendering failure, so drop the whole section.
+  const ship = RUN.ship ?? [];
+  $("ship-sec").style.display = ship.length ? "" : "none";
+  $("ship").innerHTML = ship.map(s=>`
+    <div><span class="n">${esc(s.n)}</span><span class="k">${esc(s.k)}</span><span class="s">${esc(s.s)}</span></div>`).join("");
+  // Same reason as the ship grid: an empty footer still draws its rule, which
+  // reads as content that failed to load.
+  $("foot").textContent = RUN.foot ?? "";
+  $("foot").style.display = RUN.foot ? "" : "none";
+  draw();
+  // The stream follows whichever run is on screen; switching PRs switches it.
+  connect(RUN.slug ?? null);
+  drawConvo();
+}
+
+/* ── Conversation ─────────────────────────────────────────────────────
+   Rendered from the event stream, not from run.json. The timeline needs a
+   folded run; a conversation needs the events in the order they were spoken,
+   and folding throws that order away.
+
+   Side is fixed by speaker, never by turn order: judge left, reviewer right.
+   A reader should be able to tell who is talking from across the room. */
+let THREADS = [];        // [{agent, turns:[…]}]
+let CONVO_STACK = false; // one thread full width, or every thread stacked
+let CONVO_PICK = null;   // which thread, when not stacked
+const CONVO_SHUT = new Set(); // collapsed threads, by agent, while stacked
+
+const judgeName = () => RUN.target?.judge ?? "claude";
+const SIDE = (who) => (who === judgeName() ? "l" : "r");
+
+// A stable colour per agent. codex and droid have tokens already; anything else
+// is hashed to a hue so a five-reviewer run does not render five identical
+// chips — and so the same agent keeps its colour across reloads.
+const HUES = {
+  claude: "var(--main-hue)", codex: "var(--codex)", droid: "var(--droid)",
+  grok: "var(--ink-2)", agy: "var(--agy)",
+};
+function hueFor(name) {
+  if (HUES[name]) return HUES[name];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return `hsl(${Math.abs(h) % 360} 42% 45%)`;
+}
+
+const VERDICT_TEXT = {
+  accepted: "Accepted — fixed",
+  deferred: "Agreed, but not fixing here",
+  rejected: "Rejected",
+  superseded: "Superseded",
+};
+
+// A live transcript can be thousands of lines before it becomes a completed
+// report. Keep only that in-progress state compact; completed messages expand.
+const CLAMP = 700;
+/**
+ * Compact an in-progress transcript without truncating its DOM content.
+ * Completed reports bypass this helper and expand to their full height.
+ */
+function clamped(text) {
+  const t = text ?? "";
+  if (t.length <= CLAMP) return esc(t);
+  return `<div class="tall" tabindex="0" role="region"
+    aria-label="long message, ${bytes(t.length)}, scrollable">${esc(t)}</div>`;
+}
+function bubble(text, k, attrs = "") {
+  return `<div class="bub" data-k="${k}" ${attrs}>${esc(text ?? "")}</div>`;
+}
+/** m:ss, or h:mm:ss once a reviewer has been going that long. */
+function hms(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h
+    ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`
+    : `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+
+/**
+ * When a turn was spoken.
+ *
+ * Relative inline, absolute on hover. An offset ("+4m") is what you want when
+ * reading the exchange as a conversation; the wall clock is what you want when
+ * correlating against a log, and that is the rarer need. Pinned to SGT like
+ * everything else here: a review record should read the same wherever it is
+ * opened.
+ */
+let CONVO_T0 = null;
+let CONVO_SPREAD = 0;
+let CONVO_PREV = null;
+function stampFor(t) {
+  if (!t?.ts) return "";
+  const at = Date.parse(t.ts);
+  if (Number.isNaN(at)) return "";
+  const clock = clockFmt.format(new Date(at));
+  const abs = `${clock} ${TZ_LABEL}`;
+  // Offsets only say something when the turn is actually separated from what
+  // came before it. Every finding parsed from one report is appended in the
+  // same millisecond, so a whole batch reads "+0s" — truthful and useless.
+  //
+  // Decided per turn, not per thread. Keying it on the thread's total spread
+  // was all-or-nothing: one slow triage pushed the spread over a minute and
+  // then the same-instant batch of findings ABOVE it rendered "+0s" anyway,
+  // which is the case this rule exists to avoid.
+  if (CONVO_T0 === null || CONVO_SPREAD < 60000) {
+    return `<time title="${esc(abs)}">${esc(clock)}</time>`;
+  }
+  const d = Math.max(0, Math.round((at - CONVO_T0) / 1000));
+  // Within a minute of the turn before it, this one carries no offset worth
+  // reading; the wall clock is the more informative of the two.
+  const gap = CONVO_PREV === null ? d * 1000 : at - CONVO_PREV;
+  CONVO_PREV = at;
+  if (d === 0 || gap < 60000) {
+    return `<time title="${esc(abs)}">${esc(clock)}</time>`;
+  }
+  const rel = d < 60 ? `+${d}s` : d < 3600 ? `+${Math.round(d / 60)}m` : `+${(d / 3600).toFixed(1)}h`;
+  return `<time title="${esc(abs)}">${esc(rel)}</time>`;
+}
+
+function turnHTML(t, agent) {
+  const side = SIDE(t.who);
+  const nm = t.who === judgeName() ? judgeName() : agent;
+  let body = "";
+  switch (t.kind) {
+    case "finding":
+      body = `<div class="bub" data-k="finding"><span class="hd">${esc(t.claim ?? "")}</span
+        >${t.loc ? `<span class="loc">${esc(t.loc)}</span>\n` : ""}${esc(t.body ?? "")}</div>`;
+      break;
+    case "reproduced":
+      // Evidence is shown inline in full once reproduction has completed.
+      body = `<div class="bub" data-k="reproduced"
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}Reproduced. ${esc(t.text ?? "")}</div>`;
+      break;
+    case "verdict":
+      // The claim is named here because the findings are no longer bubbles of
+      // their own: without it a verdict floats free of what it answers.
+      body = `<div class="bub" data-k="verdict" data-v="${esc(t.verdict ?? "")}"
+        ><span class="hd">${esc(VERDICT_TEXT[t.verdict] ?? t.verdict ?? "")}</span
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>\n` : ""}${esc(t.text ?? "")}${t.test ? `\n\nRegression test: ${esc(t.test)} — verified failing with the fix reverted.` : ""}</div>`;
+      break;
+    case "rebuttal":
+      // A reviewer's rebuttal carries no text of its own: it was an excerpt of
+      // the reply rendered directly above it. What it marks is that the claim is
+      // being re-argued, so it names the claim and leaves the words to the
+      // report. Claude's turn in the thread does carry text, and shows it.
+      body = `<div class="bub" data-k="rebuttal"
+        ><span class="hd">${t.who === judgeName() ? "still open" : "not convinced"}</span
+        >${t.claim ? `<span class="re">${esc(t.claim)}</span>` : ""}${t.text ? `\n${esc(t.text)}` : ""}</div>`;
+      break;
+    case "commit":
+      body = `<div class="bub" data-k="commit">${esc(t.pr ? `${t.pr} · ` : "")}${t.pushed === false ? "push failed" : t.pushed === null ? "committed locally" : "pushed"} ${esc(t.sha ?? "")}${t.text ? ` · ${esc(t.text)}` : ""}</div>`;
+      break;
+    case "waiting": {
+      // Counted up client-side between heartbeats, so it ticks every second
+      // rather than jumping in five-second steps.
+      // An agent that streamed and then went quiet says so: "working 6:12 ·
+      // quiet 2m" is the difference between thinking and wedged, and the
+      // heartbeat alone cannot express it.
+      const quiet = t.quietSeconds
+        ? ` <span class="q">· quiet ${esc(hms(t.quietSeconds))}</span>`
+        : "";
+      body = `<div class="bub" data-k="waiting" data-since="${Date.now() - (t.seconds ?? 0) * 1000}"
+        >working <b class="tick">${esc(hms(t.seconds ?? 0))}</b>${quiet}</div>`;
+      break;
+    }
+    case "streaming":
+      // The tail only: a live agent's stdout is the transcript so far, and the
+      // interesting part is always the end of it.
+      body = `<div class="bub" data-k="streaming">${clamped(t.text ?? "")}</div>`;
+      break;
+    case "report":
+      body = bubble(t.text ?? "", "report");
+      break;
+    case "reply":
+      body = bubble(t.text ?? "(reply sent)", "reply");
+      break;
+    case "answer":
+      body = bubble(t.text ?? "", "answer");
+      break;
+    default:
+      body = bubble(t.text ?? "", esc(t.kind ?? "turn"));
+  }
+  return `<div class="msg" data-side="${side}"><span class="nm"
+    ><span class="ic" style="color:${nm === judgeName() ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}${stampFor(t)}</span>${body}</div>`;
+}
+
+/**
+ * `?view=conversation` renders the thread alone, filling the window, so it can
+ * sit in a second window beside the terminal while a round runs. It is the same
+ * fold and the same stream as the embedded view — CSS hides the rest of the
+ * page — so there is no second implementation to keep in step.
+ */
+const POPPED = new URL(location.href).searchParams.get("view") === "conversation";
+if (POPPED) document.body.dataset.view = "conversation";
+
+function drawConvo() {
+  const tabs = $("convo-tabs"), grid = $("convo-grid"), sec = $("convo-sec");
+  if (!tabs || !grid) return;
+  const threads = THREADS.filter((t) => t.agent && t.agent !== "?");
+  // Popped out there is nothing else on the page, so hiding the only section
+  // would leave a blank window rather than an empty-looking one.
+  if (!threads.length) { sec.style.display = POPPED ? "" : "none"; return; }
+  sec.style.display = "";
+
+  // The popout carries the run it was opened from, so the link is shareable and
+  // survives a reload.
+  const pop = $("convo-pop");
+  if (pop) {
+    const u = new URL(location.href);
+    u.searchParams.set("view", "conversation");
+    if (RUN?.slug) u.searchParams.set("run", RUN.slug);
+    pop.href = u.pathname + u.search;
+  }
+  if (POPPED) {
+    const who = threads.map((t) => t.agent).join(", ");
+    document.title = RUN?.target?.id
+      ? `${RUN.target.id} · ${who} — conversation`
+      : "conversation";
+  }
+
+  const names = threads.map((t) => t.agent);
+  if (!names.includes(CONVO_PICK)) CONVO_PICK = names[0];
+  const live = (a) => threads.find((t) => t.agent === a)?.turns.some((x) => x.kind === "streaming");
+
+  // The count sits on the tab because with five reviewers the question is
+  // which one to read, and that is answerable from turn count and liveness
+  // without opening any of them.
+  tabs.innerHTML = names.map((a) => {
+    const t = threads.find((x) => x.agent === a);
+    const on = !CONVO_STACK && CONVO_PICK === a;
+    // The agent's own mark, not a coloured dot: with five reviewers the name is
+    // the slowest thing on the chip to read, and an unknown agent still gets a
+    // legible fallback glyph.
+    return `<button class="pr-chip" data-ctab="${esc(a)}" aria-pressed="${on}"
+      ><span class="ic" style="color:${hueFor(a)}">${icon(a)}</span
+      >${esc(a)}<span class="n" data-live="${live(a) ? 1 : 0}">${t.turns.length}</span></button>`;
+  }).join("");
+
+  const btn = $("convo-stack");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(CONVO_STACK));
+    btn.textContent = CONVO_STACK ? `one at a time` : `stack all ${names.length}`;
+  }
+
+  const shown = CONVO_STACK ? threads : threads.filter((t) => t.agent === CONVO_PICK);
+  grid.dataset.stack = CONVO_STACK ? "1" : "0";
+  grid.innerHTML = shown.map((t) => {
+    const open = !CONVO_STACK || !CONVO_SHUT.has(t.agent);
+    const l = live(t.agent);
+    // Offsets are measured from this thread's own first turn, not the run's:
+    // each conversation reads from its own beginning.
+    const times = t.turns.map((x) => x.ts).filter(Boolean).map(Date.parse)
+      .filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+    CONVO_T0 = times[0] ?? null;
+    CONVO_SPREAD = times.length > 1 ? times[times.length - 1] - times[0] : 0;
+    // Per thread: turns render in order, so each stamp compares against the
+    // previous turn of THIS conversation.
+    CONVO_PREV = null;
+    const msgs = t.turns.length
+      ? t.turns.map((x) => turnHTML(x, t.agent)).join("")
+      : `<p class="empty">waiting for ${esc(t.agent)}…</p>`;
+    return `<div class="convo" data-a="${esc(t.agent)}" data-open="${open ? 1 : 0}">
+      <header data-fold-agent="${esc(t.agent)}"><span class="tw">${open ? "▾" : "▸"}</span
+        ><span class="d" data-live="${l ? 1 : 0}"></span>
+        <span class="who"><span class="ic" style="color:var(--main-hue)">${icon(judgeName())}</span>${esc(judgeName())}
+          <span class="sw">⇄</span>
+          <span class="ic" style="color:${hueFor(t.agent)}">${icon(t.agent)}</span>${esc(t.agent)}</span>
+        <span class="st">${t.turns.length} turn${t.turns.length === 1 ? "" : "s"}${l ? " · live" : ""}</span>
+      </header>
+      <div class="msgs" data-agent="${esc(t.agent)}">${msgs}</div>
+    </div>`;
+  }).join("");
+
+  for (const box of grid.querySelectorAll(".msgs")) {
+    if (box.dataset.at !== "0") box.scrollTop = box.scrollHeight;
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest("[data-ctab]");
+  if (tab) {
+    // Picking a reviewer while stacked means "show me that one", not "keep
+    // everything stacked and scroll to it".
+    CONVO_STACK = false;
+    CONVO_PICK = tab.dataset.ctab;
+    // The exchange below follows this selection, so it has to move with it.
+    drawConvo(); draw();
+    return;
+  }
+  if (e.target.closest("#convo-stack")) { CONVO_STACK = !CONVO_STACK; drawConvo(); draw(); return; }
+  const fold = e.target.closest("[data-fold-agent]");
+  if (fold && CONVO_STACK) {
+    const a = fold.dataset.foldAgent;
+    CONVO_SHUT.has(a) ? CONVO_SHUT.delete(a) : CONVO_SHUT.add(a);
+    drawConvo();
+    return;
+  }
+});
+
+// Remember whether each column was pinned to the bottom before a re-render.
+document.addEventListener("scroll", (e) => {
+  const box = e.target.closest?.(".msgs");
+  if (!box) return;
+  const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.dataset.at = atEnd ? "1" : "0";
+}, true);
+
+/* Live events. The append-only log is the transport: the server replays it on
+   connect and pushes each new line, so a page opened mid-round catches up and
+   then follows in real time. Reconnects on drop — a run outlives any one
+   connection, and a console that silently stops updating is worse than one
+   that never started. */
+// One timer for every waiting bubble on the page. The heartbeat lands every
+// five seconds; this makes the display move every second in between, so a
+// reviewer that is alive looks alive rather than frozen.
+setInterval(() => {
+  for (const el of document.querySelectorAll('.bub[data-k="waiting"]')) {
+    const since = Number(el.dataset.since);
+    if (!since) continue;
+    const b = el.querySelector(".tick");
+    if (b) b.textContent = hms((Date.now() - since) / 1000);
+  }
+}, 1000);
+
+let ES = null;
+let ES_SLUG = null;
+let EVENTS = [];
+let REPLAY = [];         // events arriving during a reconnect replay
+let replaying = true;    // the first batch after connecting is always a replay
+
+function connect(slug) {
+  if (!slug || slug === ES_SLUG) return;
+  ES_SLUG = slug;
+  ES?.close();
+  EVENTS = [];
+  REPLAY = [];
+  replaying = true;
+  try {
+    ES = new EventSource(`api/stream?run=${encodeURIComponent(slug)}`);
+  } catch { return; }
+  ES.addEventListener("event", (m) => {
+    let e;
+    try { e = JSON.parse(m.data); } catch { return; }
+    (replaying ? REPLAY : EVENTS).push(e);
+    if (!replaying) schedule();
+  });
+  // EventSource reconnects on its own, and the server replays the log from byte
+  // zero every time it does. Appending that replay to history we already hold
+  // duplicated every finding and reply once per dropped connection, and the
+  // duplicates compounded. "ready" ends a replay, so the events that arrived
+  // during it ARE the whole history: keep those and drop what came before.
+  ES.addEventListener("ready", () => {
+    if (REPLAY.length) { EVENTS = REPLAY.slice(); REPLAY = []; }
+    replaying = false;
+    schedule();
+  });
+  ES.onerror = () => {
+    // The next batch is a fresh replay, not a continuation.
+    replaying = true;
+    REPLAY = [];
+  };
+}
+
+// Chunks arrive faster than anyone can read. Coalesce a burst into one paint.
+let pending = null;
+function schedule() {
+  if (pending) return;
+  pending = setTimeout(() => {
+    pending = null;
+    THREADS = foldConversation(EVENTS);
+    drawConvo();
+  }, 120);
+}
+
+/* The same fold as lib/loop.js conversation(), in the browser: applying it to
+   the live stream avoids a round trip per token, and the server-side copy stays
+   authoritative for anything that reads a finished run. */
+function foldConversation(events) {
+  const threads = new Map();
+  const thread = (a) => {
+    let t = threads.get(a);
+    if (!t) threads.set(a, (t = { agent: a, turns: [] }));
+    return t;
+  };
+  const owner = new Map();
+  const claimOf = new Map();
+  let judge = "claude";
+  for (const e of events) {
+    switch (e.t) {
+      case "target":
+        judge = e.target?.judge ?? judge;
+        break;
+      case "finding.raised":
+        owner.set(e.id, e.agent);
+        // Deliberately NOT a turn of its own. The reviewer already said this in
+        // its report, verbatim and in its own shape; a parsed copy underneath
+        // is the same words twice. The claim is kept only so a verdict further
+        // down can name what it is answering.
+        claimOf.set(e.id, e.claim ?? "");
+        // The reviewer still gets a thread even if this is the only thing it
+        // ever emitted: in production a report always precedes its findings,
+        // but a console that hides a reviewer entirely when it does not is
+        // worse than one that shows an empty column.
+        thread(e.agent);
+        break;
+      case "finding.reproduced":
+        thread(owner.get(e.id) ?? "?").turns.push({ who: e.who ?? judge, kind: "reproduced",
+          id: e.id, claim: claimOf.get(e.id) ?? "",
+          text: typeof e.evidence === "string" ? e.evidence : "", ts: e.ts });
+        break;
+      case "finding.resolved":
+        thread(owner.get(e.id) ?? "?").turns.push({ who: e.who ?? judge, kind: "verdict",
+          id: e.id, claim: claimOf.get(e.id) ?? "",
+          verdict: e.verdict, text: e.reason ?? "", test: e.test ?? "", ts: e.ts });
+        break;
+      case "finding.turn": {
+        // A reviewer's rebuttal is an excerpt cut from the reply it arrived in,
+        // and that reply is already rendered whole as its `answer` turn — so the
+        // text is deliberately dropped, exactly as a raised finding's is. What
+        // survives is the linkage: which claim is being re-argued, and by whom.
+        // The judge's own turn is the exception: it is not an excerpt of anything
+        // shown elsewhere, so dropping its text would lose it entirely.
+        const who = e.who ?? "?";
+        const turn = { who, kind: "rebuttal", id: e.id,
+          claim: claimOf.get(e.id) ?? "", ts: e.ts };
+        if (who === judge) turn.text = e.text ?? "";
+        thread(owner.get(e.id) ?? e.agent ?? "?").turns.push(turn);
+        break;
+      }
+      // A reviewer that does not stream. codex writes nothing until it exits,
+      // so without this its column is empty for nine minutes and "thinking" is
+      // indistinguishable from "wedged".
+      case "agent.alive": {
+        // `forAgent` names the reviewer whose finding is being judged, so the
+        // main agent's heartbeat lands inside that reviewer's conversation
+        // rather than opening a thread of its own.
+        const t = thread(e.forAgent ?? e.agent);
+        // Found by round, not by position. Two rounds running concurrently
+        // interleave their heartbeats, so "is it the last turn?" failed on
+        // every alternation and a nine-minute round grew 81 bubbles instead of
+        // one.
+        const w = t.turns.find(
+          (x) => x.kind === "waiting" && x.round === e.round && x.who === e.agent,
+        );
+        if (w) { w.seconds = e.seconds; w.quietSeconds = e.quietSeconds ?? null; break; }
+        // Real output already supersedes it; do not regress to a placeholder.
+        // Per speaker, not per thread: the reviewer's report ends the reviewer's
+        // turn, but the main agent triaging afterwards is a new speaker on the
+        // same thread — keying this on the thread dropped every triage
+        // heartbeat, which is the longest silence in the round and the reason
+        // the heartbeat exists.
+        if (t.turns.some((x) => (x.kind === "streaming" || x.kind === "report") && x.round === e.round && x.who === e.agent)) break;
+        t.turns.push({ who: e.agent, kind: "waiting", round: e.round, seconds: e.seconds, ts: e.ts });
+        break;
+      }
+      case "agent.chunk": {
+        const t = thread(e.agent);
+        const last = t.turns[t.turns.length - 1];
+        if (last?.kind === "streaming" && last.round === e.round) last.text += e.text ?? "";
+        else {
+          const w = t.turns.findIndex((x) => x.kind === "waiting" && x.round === e.round);
+          const turn = { who: e.agent, kind: "streaming", round: e.round, text: e.text ?? "", ts: e.ts };
+          if (w >= 0) t.turns.splice(w, 1, turn); else t.turns.push(turn);
+        }
+        break;
+      }
+      case "agent.report": {
+        const t = thread(e.agent);
+        const i = t.turns.findIndex(
+          (x) => (x.kind === "streaming" || x.kind === "waiting") && x.round === e.round,
+        );
+        const turn = { who: e.agent, kind: "report", round: e.round,
+          verdict: e.verdict, text: e.report ?? "", seconds: e.seconds, ts: e.ts };
+        if (i >= 0) t.turns.splice(i, 1, turn); else t.turns.push(turn);
+        break;
+      }
+      case "reply.sent":
+        thread(e.agent).turns.push({ who: e.who ?? judge, kind: "reply", text: e.text ?? "", ts: e.ts });
+        break;
+      case "reply.answered":
+        thread(e.agent).turns.push({ who: e.agent, kind: "answer",
+          text: e.report ?? "", verdict: e.verdict, seconds: e.seconds, ts: e.ts });
+        break;
+      case "commit.pushed":
+        for (const t of threads.values()) {
+          t.turns.push({ who: e.who ?? judge, kind: "commit", sha: e.sha, pr: e.pr ?? null, pushed: e.pushed, text: e.subject ?? "", ts: e.ts });
+        }
+        break;
+    }
+  }
+  return [...threads.values()];
+}
+
+let ALL = [RUN];
+let sig = null;          // last payload seen, so an unchanged poll costs nothing
+let assetStamp = null;   // index.html mtime; a change means reload, not re-render
+let served = false;
+
+/** Put the selected run in the query string, as a history entry you can go back through. */
+function setRunParam(slug, { replace = false } = {}) {
+  if (!slug) return;
+  const url = new URL(location.href);
+  if (url.searchParams.get("run") === slug) return;
+  url.searchParams.set("run", slug);
+  history[replace ? "replaceState" : "pushState"]({ run: slug }, "", url);
+}
+
+/** The run named by ?run=, if it is one we actually have. */
+function runFromParam(runs) {
+  const want = new URL(location.href).searchParams.get("run");
+  if (!want) return null;
+  return runs.find((r) => r.slug === want) ?? null;
+}
+
+// Back and forward move between PRs rather than leaving the console.
+addEventListener("popstate", () => {
+  const pick = runFromParam(ALL);
+  if (pick && pick !== RUN) { RUN = pick; render(); }
+});
+
+function stamp(note) {
+  const el = $("t-kicker");
+  if (!el || !served) return;
+  const t = new Date().toLocaleTimeString();
+  el.textContent = `${el.textContent.replace(/ · (updated|live).*$/, "")} · updated ${t}${note ?? ""}`;
+}
+
+async function poll({ first = false } = {}) {
+  let payload = null;
+  try {
+    const res = await fetch("api/run", { cache: "no-store" });
+    if (res.ok) payload = await res.text();
+  } catch (_) {
+    return false; // standalone, or the server went away — keep what is on screen
+  }
+
+  // The page itself may have been rebuilt while this tab was open.
+  try {
+    const h = await (await fetch("api/health", { cache: "no-store" })).json();
+    if (h?.assets) {
+      if (assetStamp && h.assets !== assetStamp) { location.reload(); return true; }
+      assetStamp = h.assets;
+    }
+  } catch (_) { /* health is optional */ }
+
+  if (payload === null) return first ? false : true;
+  served = true;
+  if (payload === sig) { stamp(); return true; }
+  sig = payload;
+
+  let live;
+  try { live = JSON.parse(payload); } catch { return true; }
+  const runs = Array.isArray(live?.targets) ? live.targets : live ? [live] : [];
+  const usable = runs.filter((x) => x && x.target && Array.isArray(x.rounds));
+  if (!usable.length) return true;
+
+  // Keep whatever the reader was looking at when new runs arrive. ?run= wins:
+  // it is an explicit request for one PR, and a poll that quietly moved off it
+  // would make the URL a lie.
+  const keep = RUN?.slug;
+  ALL = usable;
+  RUN = runFromParam(usable)
+    ?? usable.find((r) => r.slug === keep)
+    ?? usable[0];
+  // Stamp the address on first load so what is on screen is always linkable,
+  // without pushing a history entry nobody asked for.
+  setRunParam(RUN?.slug, { replace: true });
+  render();
+  stamp();
+  return true;
+}
+
+(async () => {
+  for (const finding of RUN.exchanges) finding.with = finding.id === "X4" ? "droid" : "codex";
+  const ok = false; // Standalone illustrative demo: never load local run data.
+  render();
+  if (!ok) return; // opened standalone: nothing to poll, embedded run stands
+
+  let timer = setInterval(poll, 3000);
+  // Do not poll a tab nobody is looking at; refresh at once when it returns.
+  document.addEventListener("visibilitychange", () => {
+    clearInterval(timer);
+    if (!document.hidden) { poll(); timer = setInterval(poll, 3000); }
+  });
+})();
+</script>

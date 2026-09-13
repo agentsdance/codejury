@@ -1,0 +1,51 @@
+{
+  "name": "@agentsdance/codejury",
+  "version": "0.3.0",
+  "description": "Independent AI code reviewers, one judge, and a local console for pull request review and fixes.",
+  "keywords": [
+    "code-review",
+    "ai",
+    "agents",
+    "pull-request",
+    "claude",
+    "codex"
+  ],
+  "homepage": "https://github.com/agentsdance/codejury#readme",
+  "bugs": "https://github.com/agentsdance/codejury/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentsdance/codejury.git"
+  },
+  "type": "module",
+  "bin": {
+    "jury": "bin/jury.js",
+    "codejury": "bin/jury.js",
+    "cr": "bin/jury.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "web/index.html",
+    "prompts",
+    "jury.config.example.json",
+    "docs",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CASE-STUDY.md",
+    "TODO.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepublishOnly": "npm test && npm run test:package",
+    "start": "node bin/jury.js --web-only",
+    "test": "node scripts/test.mjs",
+    "test:package": "node scripts/check-package.mjs"
+  },
+  "license": "MIT"
+}

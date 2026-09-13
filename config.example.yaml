@@ -1,0 +1,141 @@
+# Multi-agent code review — configuration
+#
+# Agents are registry entries, not code. Adding one is a config change.
+# Copy to config.yaml and edit.
+
+loop:
+  mode: conversation       # main agent proposes, reviewers critique, main answers, repeat
+  trunk: master            # diff base is `git merge-base HEAD origin/<trunk>`, never the tip
+  stopToken: "NO NEW FINDINGS"
+  maxRounds: 6             # backstop; a converging run uses 2-4
+  concurrency: 0           # 0 = all enabled agents at once. The slowest sets the round's wall clock.
+  worktree: .review-wt     # detached worktree of the pushed commit; agents read this, not your tree
+  promptTemplate: prompts/review-round.md
+  feedbackTemplate: prompts/feedback.md
+  settledList: state/settled.md   # regenerated each round from findings with status != accepted-new
+
+  # Conversation mode. Each round is a set of exchanges, not a one-shot report:
+  #   1. main pushes a commit
+  #   2. every reviewer reviews it independently and reports findings
+  #   3. main triages, fixes what survives, and REPLIES to each finding —
+  #      accepted / deferred / rejected, each with reasoning and a question
+  #   4. reviewers answer the replies (resumed session where supported,
+  #      otherwise a fresh run with their prior findings quoted back)
+  #   5. round ends; unresolved disagreements carry into the settled list
+  exchange:
+    replyToEveryFinding: true    # including rejections — silence is not a resolution
+    carryDisagreements: true     # an unresolved dispute is surfaced, never dropped
+    maxTurnsPerFinding: 3        # then escalate to the human rather than loop
+
+# ---------------------------------------------------------------------------
+# Agent registry
+#
+# role: main | reviewer
+#   main      exactly one. Writes the code, answers findings, decides what to
+#             accept, defer or reject, and owns the commit. Reviewers never
+#             edit files — the main agent is the only writer.
+#   reviewer  one or more. Read the diff, report findings, and answer the main
+#             agent's replies. Independent of each other: they do not see one
+#             another's findings, which is the point of running more than one.
+#
+# Placeholders substituted at launch:
+#   {{worktree}}    absolute path to the detached worktree
+#   {{promptFile}}  absolute path to the rendered prompt for this round
+#   {{promptText}}  the rendered prompt as a single argv string
+#   {{sha}}         commit under review
+#
+# promptDelivery declares which placeholder the agent actually accepts:
+#   argv | file | stdin
+# ---------------------------------------------------------------------------
+agents:
+
+  - name: claude
+    enabled: true
+    role: main
+    # The main agent is whoever is driving; when that is the session itself,
+    # leave argv empty and the loop calls in-process instead of spawning.
+    promptDelivery: argv
+    cwd: worktree
+    argv: []
+    resume: { supported: true }
+    expect: { latencySeconds: 0, verbose: false }
+    notes: >
+      Owns the working tree and the commit. Must reproduce a finding before
+      fixing it and prove the regression test fails without the fix — see the
+      triage gate below. Replies to every finding, including rejections.
+
+  - name: codex
+    enabled: true
+    role: reviewer
+    promptDelivery: argv
+    cwd: worktree                    # process cwd is the worktree; no path flag needed
+    argv: ["codex", "exec", "--skip-git-repo-check", "{{promptText}}"]
+    resume:
+      supported: true
+      argv: ["codex", "exec", "resume", "--last", "{{promptText}}"]
+    expect:
+      latencySeconds: 1100           # ~15-20 min observed per round
+      verbose: true                  # stdout is a full transcript; the report is the tail
+    parse:
+      # The transcript contains the prompt itself, so a naive grep for the stop
+      # token matches the instruction that asked for it. Read the final report
+      # block only.
+      reportFrom: last               # last agent turn in the transcript
+    notes: >
+      Keeps resumable sessions, which is what makes the feedback step a real
+      conversation rather than a fresh review. Runs verification commands on its
+      own initiative — it re-ran the suite under -race unprompted.
+
+  - name: droid
+    enabled: true
+    role: reviewer
+    promptDelivery: file
+    cwd: flag                        # takes an explicit --cwd; process cwd is irrelevant
+    argv: ["droid", "exec", "--cwd", "{{worktree}}", "--auto", "medium", "-f", "{{promptFile}}"]
+    resume:
+      supported: false
+      reason: >
+        `droid exec` text output carries no session id, so a follow-up must be a
+        fresh run with the prior findings quoted into the prompt.
+    expect:
+      latencySeconds: 130            # ~2 min observed per round
+      verbose: false                 # stdout is the report itself
+    parse:
+      reportFrom: whole
+    notes: >
+      Terse and fast. Good at auditing assertions when explicitly asked to be
+      skeptical of them; its --auto level gates what it may run.
+
+  # ---------------------------------------------------------------------------
+  # Template for a third agent. Every field above is required except `notes`;
+  # the two dimensions that actually vary are promptDelivery and cwd.
+  # ---------------------------------------------------------------------------
+  # - name: <id>
+  #   enabled: false
+  #   role: reviewer
+  #   promptDelivery: stdin
+  #   cwd: worktree
+  #   argv: ["<bin>", "review", "-"]
+  #   resume: { supported: false, reason: "unknown" }
+  #   expect: { latencySeconds: 600, verbose: false }
+  #   parse: { reportFrom: whole }
+
+# ---------------------------------------------------------------------------
+# Triage gate. Deliberately not "auto-apply findings" — a third of suggestions
+# did not survive verification in the reference run, and one correct finding
+# carried a fix that would have introduced a worse bug.
+# ---------------------------------------------------------------------------
+triage:
+  requireReproduction: true    # a finding must be demonstrated before it is fixed
+  requireFailingTest: true     # and its regression test must fail with the fix reverted
+  verifyCommands:
+    build: "go build ./..."
+    test:  "go test ./... -count=1 -gcflags='all=-N -l'"   # mockey needs inlining disabled
+    fmt:   "gofmt -l ."
+    vet:   "go vet ./..."
+  # A verification step must prove it ran. Empty output is not a pass:
+  # `timeout` is absent on macOS and exits 127, which reads as silent success.
+  requireNonEmptyProof: true
+
+publish:
+  runJson: web/run.json        # the view layer renders entirely from this
