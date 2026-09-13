@@ -128,3 +128,12 @@ test("a fence opening with FINDING: but carrying code is still quoted", () => {
   ].join("\n");
   assert.equal(parseFindings(report).length, 0);
 });
+
+
+test("nonzero agent exit with a stop token is an error, never approval", async () => {
+  const { runAgent } = await import("../lib/agents.js");
+  const result = await runAgent({ name: "broken", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS'); console.error('quota exhausted'); process.exit(1)"], report: "whole", cwd: "worktree" }, { worktree: process.cwd(), prompt: "review", stopToken: "NO NEW FINDINGS" });
+  assert.equal(result.ok, false);
+  assert.equal(result.verdict, "error");
+  assert.match(result.report, /quota exhausted/);
+});
