@@ -27,7 +27,7 @@ const values=dirs.map(p=>fs.readFileSync(path.join(p,'contract.txt'),'utf8').tri
 const heads=dirs.map(p=>cp.execFileSync('git',['rev-parse','HEAD'],{cwd:p,encoding:'utf8'}).trim());
 const diffs=dirs.map((p,i)=>{const base=cp.execFileSync('git',['merge-base','HEAD','origin/'+['main','stable'][i]],{cwd:p,encoding:'utf8'}).trim();return cp.execFileSync('git',['diff',base,'HEAD'],{cwd:p,encoding:'utf8'});});
 fs.appendFileSync(${JSON.stringify(receipt)},JSON.stringify({role,prompt,heads,values,diffs,cwd})+'\\n');
-if(process.env.JURY_FIXTURE_FAIL===role){console.error('fixture reviewer failure');process.exit(1);}
+if(process.env.JURY_FIXTURE_FAIL===role || (process.env.JURY_FIXTURE_FAIL_REPLY===role && values.every(v=>v==='v3'))){console.error('fixture reviewer failure');process.exit(1);}
 if(role==='judge'){
  if(values.every(v=>v==='v3')) {console.log(JSON.stringify({verdict:'rejected',reason:'Already fixed in this round'}));process.exit(0);}
  for(const p of dirs){

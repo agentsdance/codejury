@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible problem in Code Jury.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include expected behavior and actual behavior. Redact private code and credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a sanitized command and minimal example.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include jury version, Node version, OS, selected agent CLI versions, and whether push/web were enabled.
+    validations:
+      required: true

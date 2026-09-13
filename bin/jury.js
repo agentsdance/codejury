@@ -422,7 +422,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
 
   // A failed reviewer is not convergence. Stopping the loop here would report
   // agreement that one of the reviewers never actually expressed.
-  return clean && !errored.length;
+  return { clean: clean && !errored.length, failed: errored.map(r => r.agent) };
 }
 
 /**
@@ -583,6 +583,15 @@ async function cmdAgent(argv) {
   // with a read-only prompt.
   const pool = selectReviewers(cfg, requestedReviewers(values), judge.name);
   if (!pool.length) throw new Error("no reviewers configured after excluding the judge");
+  if (!values["dry-run"]) {
+    const checks = await Promise.all(pool.map(probe));
+    const missing = checks.filter(a => !a.ok);
+    if (missing.length) {
+      const reason = `reviewers not installed: ${missing.map(a => `${a.name} (${a.bin})`).join(", ")}`;
+      await publishRun(dir, { ...target, state: "human", stateNote: reason });
+      throw new Error(`${reason}. Install them, disable them in jury.config.json, or select installed reviewers with --reviewer <name>. No agents were started.`);
+    }
+  }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
   console.log(st.field("target", `${target.repo} ${st.bold(target.id)}`));
@@ -630,13 +639,20 @@ async function cmdAgent(argv) {
     await refreshSettled(dir);
 
     const head = group ? await groupHead(group.targets) : await describe(worktree, values.trunk);
-    const converged = await runRound({
+    const result = await runRound({
       dir, round, pool, cfg, target, worktree, values, sha: head.sha,
       // A clean round is not necessarily a complete review: an earlier finding
       // can still be open. This loop announces completion only after checking.
       announceCompletion: false,
     });
-    if (converged) {
+    if (result.failed.length) {
+      const reason = `reviewers failed: ${result.failed.join(", ")}`;
+      await publishRun(dir, { ...target, state: "human", stateNote: reason });
+      console.error(`Review stopped: ${reason}. Check the saved reports and agent authentication/quota, then resume with --resume ${path.basename(dir)} and the same target and --dir arguments.`);
+      process.exitCode = 1;
+      return;
+    }
+    if (result.clean) {
       // Clean is not enough on its own. A finding left open by the previous
       // round — triage failed, the gate refused the verdict, or a reply raised
       // it after the last triage had already run — is invisible to this round's
@@ -816,7 +832,11 @@ async function cmdAgent(argv) {
       console.log(st.warn(`\n${st.count(stillOpen.length, "finding")} still open — review incomplete.`));
     }
     if (broke.length) {
-      console.log(st.bad(`${broke.map((a) => a.agent).join(", ")} could not run — this review cannot complete.`));
+      const reason = `reviewer replies failed: ${broke.map(a => a.agent).join(", ")}`;
+      await publishRun(dir, { ...target, state: "human", stateNote: reason });
+      console.error(`Review stopped: ${reason}. Check authentication/quota and saved reports, then resume with --resume ${path.basename(dir)} and the same target and --dir arguments.`);
+      process.exitCode = 1;
+      return;
     }
     if (pushFailed) {
       console.log(st.bad("a push failed — the reviewers are reading code the PR does not have."));

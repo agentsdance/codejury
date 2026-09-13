@@ -1,3 +1,7 @@
 runs/
 node_modules/
 macr.config.json
+jury.config.json
+cr.config.json
+*.tgz
+.DS_Store

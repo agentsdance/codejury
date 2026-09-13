@@ -147,3 +147,55 @@ test("a stale task lock can be reclaimed by only one resumer", async t => {
   assert.equal(acquired.length, 1);
   await acquired[0].value.cleanup();
 });
+
+
+test("reviewer failure stops after one round, preserves evidence, and resumes after recovery", async t => {
+  const f = await groupFixture(t);
+  const failed = await f.review(["--push=false"], { JURY_FIXTURE_FAIL: "beta" });
+  assert.equal(failed.code, 1);
+  assert.match(failed.stderr, /Review stopped: reviewers failed: beta/);
+  const saved = await f.saved();
+  const events = await readEvents(saved.dir);
+  assert.equal(events.filter(e => e.t === "round.start").length, 1);
+  assert.match(saved.run.target.stateNote, /reviewers failed: beta/);
+  assert.ok(!(await f.receipts()).some(r => r.role === "judge"));
+  const resumed = await f.review(["--resume", saved.slug]);
+  assert.equal(resumed.code, 0, resumed.stderr);
+  assert.equal((await f.saved()).run.target.state, "converged");
+});
+
+test("missing reviewer fails preflight before any agent launches", async t => {
+  const f = await groupFixture(t);
+  for (const member of f.members) {
+    await f.git(member.repo, "checkout", member.branch);
+    const configPath = path.join(member.repo, "jury.config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.agents.find(a => a.name === "beta").argv = ["jury-nonexistent-reviewer-fixture"];
+    await writeFile(configPath, JSON.stringify(config));
+    await f.git(member.repo, "commit", "-qam", "missing reviewer");
+    await f.git(member.repo, "push", member.remote, member.branch);
+    member.sha = await f.git(member.repo, "rev-parse", "HEAD");
+    await f.git(member.remote, "update-ref", "refs/pull/7/head", member.sha);
+  }
+  await writeFile(path.join(f.root, "members.json"), JSON.stringify(f.members));
+  const result = await f.review(["--push=false"]);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /reviewers not installed: beta/);
+  const { dir, run } = await f.saved();
+  assert.equal(run.target.state, "human");
+  assert.equal((await readEvents(dir)).filter(e => e.t === "agent.launch").length, 0);
+});
+
+
+test("a failed reply stops the loop and keeps already-created fixes", async t => {
+  const f = await groupFixture(t);
+  const result = await f.review(["--push=false"], { JURY_FIXTURE_FAIL_REPLY: "beta" });
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /reviewer replies failed: beta/);
+  const { dir, run } = await f.saved();
+  assert.equal(run.target.state, "human");
+  const events = await readEvents(dir);
+  assert.equal(events.filter(e => e.t === "round.start").length, 1);
+  assert.ok(events.some(e => e.t === "commit.pushed" && !e.pushed));
+  assert.equal((await readFile(path.join(run.target.workspace, "PR1", "contract.txt"), "utf8")).trim(), "v3");
+});
