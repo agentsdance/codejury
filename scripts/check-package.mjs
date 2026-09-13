@@ -22,7 +22,7 @@ try {
   assert.match(help, /<pr-url-1> <pr-url-2>/);
   assert.match(help, /--push=false/);
   // Full related-PR path: subprocess agents, real local remotes, fixes, resume, failures.
-  exec(process.execPath, ['--test', 'test/review-group.test.js'], {
+  exec(process.execPath, ['--test', 'test/review-group.test.js', 'test/reviewer-selection.test.js'], {
     cwd: root, env: { ...process.env, JURY_TEST_CLI: installed }, maxBuffer: 8e6,
   });
   console.log(`Verified installed @agentsdance/codejury@${version}: ${files.length} files, command help, related-PR fixes/push/resume/failure tests.`);

@@ -98,6 +98,10 @@ test("the default help stays short, and everything it names is real", async () =
   assert.match(short, /jury help --all/, "it must say where the rest is");
 
   for (const [name, text] of [["short", short], ["full", full]]) {
+    assert.doesNotMatch(text, /--agents/);
+    assert.match(text, /jury review <pr-url>/);
+    assert.match(text, /--reviewer <name>/);
+    assert.match(text, /--jury <name>/);
     const columns = text.split("\n").flatMap((line) => {
       const row = line.match(/^  (\S.*?) {2,}(\S.*)$/);
       return row ? [row[0].length - row[2].length] : [];
