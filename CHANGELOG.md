@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-09-15
+
+### Added
+
+- `jury agents judge <agent>` saves the default main agent across repositories. Run without an agent to show the saved default, or use `--reset` to remove it.
+- Defaults are saved atomically in `~/.jury/config.json`. Explicit `--judge` and repository `role: main` settings take precedence; otherwise the global setting applies before the built-in Codex default.
+- Invalid or disabled agent selections are rejected without changing the saved setting.
+
 ## 0.3.0 — 2026-09-13
 
 ### Added
