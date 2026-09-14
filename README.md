@@ -74,6 +74,16 @@ jury review <pr-url> --jury claude,grok
 jury review <pr-url> --judge claude --reviewer droid --push=false
 ```
 
+Use an installed and authenticated Antigravity CLI as a reviewer:
+
+```sh
+jury review <pr-url> --jury agy --push=false
+```
+
+`jury agents` lists `agy` by default, marked `MISSING` if its executable is not on
+`PATH`. Antigravity runs in noninteractive print mode with automatic tool approval;
+see [configuration and permissions](docs/configuration.md).
+
 Set a judge once for all repositories:
 
 ```bash
@@ -88,7 +98,7 @@ current directory. The judge must be enabled in the target repository; custom
 agent commands still need configuration in each repository that uses them.
 
 `--reviewer` and `--jury` accept repeated flags and comma-separated names. The selected judge
-is excluded from the reviewer pool. Built-in agents are Codex (default judge), Claude, Grok, and Droid.
+is excluded from the reviewer pool. Built-in agents are Codex (default judge), Claude, Grok, Droid, and Antigravity (`agy`).
 Without an explicit selection, enabled agents with the reviewer role are used; disable unavailable ones
 or select installed reviewers explicitly.
 
