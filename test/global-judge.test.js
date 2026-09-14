@@ -23,6 +23,13 @@ test("global judge persists across CLI invocations and directories, with reset a
   assert.notEqual(bad.status, 0);
   assert.match(bad.stderr, /Unknown or disabled judge/);
   assert.equal(await readFile(file, "utf8"), before);
+  await writeFile(path.join(second, "jury.config.json"), JSON.stringify({ agents: [{ name: "grok", enabled: false }] }));
+  for (const args of [["judge", "grok"], ["judge", "claude", "extra"], ["unknown"]]) {
+    const invalid = spawnSync(process.execPath, [cli, "agents", ...args], { cwd: second, env, encoding: "utf8" });
+    assert.notEqual(invalid.status, 0);
+    assert.equal(await readFile(file, "utf8"), before);
+  }
+  assert.match(run(["agents", "judge", "--help"]), /jury agents judge/);
   run(["agents", "judge", "--reset"]);
   assert.match(run(["agents", "judge"]), /not set/);
 });
