@@ -12,7 +12,7 @@ import { prepareGroup, groupContext, groupHead, reviewUrls, groupId, groupReady,
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
-import { loadConfig, reviewers, judgeAgent } from "../lib/config.js";
+import { loadConfig, reviewers, judgeAgent, readGlobalConfig, saveGlobalJudge, globalConfigPath } from "../lib/config.js";
 import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
@@ -61,13 +61,14 @@ Common flags
   --rounds <n>               stop after n rounds                                  (default: 10)
   --reviewer <name>          only these reviewers, repeatable or comma-separated  (default: configured reviewers)
   --jury <name>              same as --reviewer
-  --judge codex              one agent that triages and fixes                     (default: codex)
+  --judge codex              one agent that triages and fixes                     (default: repository/global setting, then codex)
   --push <true|false>        commit and push fixes                                (default: true)
   --web <true|false>         open the browser console                             (default: true)
 
 Other commands
 
   jury agents                which reviewers are installed
+  jury agents judge <agent>  set the global default judge
   jury runs                  every PR under review
   jury version
 
@@ -81,6 +82,7 @@ const USAGE_FULL = `jury — review a pull request with multiple AI reviewers un
   jury reply [flags]         send each reviewer your verdicts on ITS findings, one conversation each
   jury runs                  list every PR under review, with its slug for --run
   jury agents                check which configured agents are installed
+  jury agents judge <agent>  set the global default judge
   jury version
 
 Related PRs: jury review <pr-url-1> <pr-url-2>
@@ -99,7 +101,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --rounds <n>               maximum rounds                                        (default: 10)
   --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured reviewers)
   --jury <name>              same as --reviewer
-  --judge <agent>            one agent that triages and fixes                      (default: codex)
+  --judge <agent>            one agent that triages and fixes                      (default: repository/global setting, then codex)
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
   --web-only                 view saved reviews without running agents
@@ -167,7 +169,7 @@ try {
     case "finding": case "findings": await cmdFinding(rest); break;
     case "reply": await cmdReply(rest); break;
     case "runs": await cmdRuns(rest); break;
-    case "agents": await cmdAgents(); break;
+    case "agents": await cmdAgents(rest); break;
     case "version": case "-v": case "--version": console.log(`jury ${VERSION}`); break;
     case "help": case "-h": case "--help": case undefined:
       if (!rest.length) process.stdout.write(USAGE);
@@ -570,7 +572,7 @@ async function cmdAgent(argv) {
     if (requestedJudge) {
       throw new Error(`judge "${requestedJudge}" is not an enabled configured agent — available: ${available}`);
     }
-    throw new Error('no agent has role "main" — Codex is the default judge; enable it or pass --judge <agent>');
+    throw new Error('no enabled default judge — check jury agents judge and repository roles, or pass --judge <agent>');
   }
   if (!values["dry-run"]) {
     const installed = await probe(judge);
@@ -1152,7 +1154,31 @@ async function cmdRuns(argv) {
   for (const s of skipped) console.log(`SKIPPED ${s.dir}: ${s.reason}`);
 }
 
-async function cmdAgents() {
+async function cmdAgents(args = []) {
+  if (args.length) {
+    if (args[0] !== "judge" || args.length > 2) throw new Error("Usage: jury agents judge [<agent>|--reset]");
+    const name = args[1];
+    if (name === "--help" || name === "-h") {
+      process.stdout.write(commandHelp("agents", USAGE_FULL));
+      return;
+    }
+    if (name === "--reset") {
+      await saveGlobalJudge(null);
+      console.log("Global judge reset; repository settings or the built-in Codex default apply.");
+    } else if (name) {
+      const cfg = await loadConfig();
+      if (!cfg.agents.some(a => a.name === name)) {
+        throw new Error(`Unknown or disabled judge "${name}". Choose: ${cfg.agents.map(a => a.name).join(", ")}`);
+      }
+      await saveGlobalJudge(name);
+      console.log(`Global judge: ${name} (${globalConfigPath()})`);
+      console.log("Repository main roles and --judge override this default.");
+    } else {
+      const settings = await readGlobalConfig();
+      console.log(`Global judge: ${settings.judge ?? "not set (built-in default: codex)"}`);
+    }
+    return;
+  }
   const cfg = await loadConfig();
   const found = await Promise.all(cfg.agents.map(probe));
   const roleOf = new Map(cfg.agents.map((a) => [a.name, a.role ?? "reviewer"]));

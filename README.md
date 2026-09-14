@@ -74,6 +74,19 @@ jury review <pr-url> --jury claude,grok
 jury review <pr-url> --judge claude --reviewer droid --push=false
 ```
 
+Set a judge once for all repositories:
+
+```bash
+jury agents judge claude    # save the global default
+jury agents judge          # show the saved default
+jury agents judge --reset  # remove it
+```
+
+Saved in `~/.jury/config.json`. Precedence: explicit `--judge`, repository `main`
+role, global setting, then Codex. `jury agents` shows effective roles in the
+current directory. The judge must be enabled in the target repository; custom
+agent commands still need configuration in each repository that uses them.
+
 `--reviewer` and `--jury` accept repeated flags and comma-separated names. The selected judge
 is excluded from the reviewer pool. Built-in agents are Codex (default judge), Claude, Grok, and Droid.
 Without an explicit selection, enabled agents with the reviewer role are used; disable unavailable ones
