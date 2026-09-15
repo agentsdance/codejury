@@ -7,12 +7,14 @@
   "cwd": "worktree",
   "argv": [
     "amp",
-    "--execute",
-    "{{promptText}}",
-    "--no-notifications"
+    "--no-notifications",
+    "--no-ide",
+    "--visibility",
+    "private",
+    "--execute={{promptText}}"
   ],
   "sandbox": "none",
-  "sandboxNote": "execute mode offers no read-only flag; only the review prompt keeps it read-only",
+  "sandboxNote": "execute mode auto-approves tools for both reviewer and judge; use only in trusted isolated worktrees",
   "resume": {
     "supported": false,
     "reason": "execute mode prints no thread id to resume by"
