@@ -1,0 +1,22 @@
+{
+  "name": "grok",
+  "product": "xAI Grok",
+  "role": "reviewer",
+  "promptDelivery": "argv",
+  "cwd": "flag",
+  "argv": [
+    "grok", "--cwd", "{{worktree}}", "--always-approve",
+    "--session-id", "{{sessionId}}", "-p", "{{promptText}}"
+  ],
+  "sandbox": "none",
+  "sandboxNote": "--always-approve auto-approves every tool, including writes",
+  "newSession": true,
+  "resume": {
+    "supported": true,
+    "argv": ["grok", "--cwd", "{{worktree}}", "--always-approve", "--resume", "{{sessionId}}", "-p", "{{promptText}}"]
+  },
+  "report": "whole",
+  "expectSeconds": 240,
+  "install": "npm install -g @vibe-kit/grok-cli",
+  "docs": "https://github.com/superagent-ai/grok-cli"
+}

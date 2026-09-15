@@ -1,0 +1,58 @@
+{
+  "name": "copilot",
+  "product": "GitHub Copilot CLI",
+  "role": "reviewer",
+  "enabled": false,
+  "promptDelivery": "argv",
+  "cwd": "worktree",
+  "argv": [
+    "copilot",
+    "-p",
+    "{{promptText}}",
+    "--silent",
+    "--no-ask-user",
+    "--allow-all-tools",
+    "--deny-tool",
+    "write",
+    "--deny-tool",
+    "shell",
+    "--add-dir",
+    "{{worktree}}"
+  ],
+  "judgeArgv": [
+    "copilot",
+    "-p",
+    "{{promptText}}",
+    "--silent",
+    "--no-ask-user",
+    "--allow-all-tools",
+    "--add-dir",
+    "{{worktree}}"
+  ],
+  "sandbox": "tools",
+  "sandboxNote": "reviews deny the write and shell tools; --allow-all-tools is required for any non-interactive run",
+  "resume": {
+    "supported": true,
+    "argv": [
+      "copilot",
+      "-p",
+      "{{promptText}}",
+      "--silent",
+      "--no-ask-user",
+      "--allow-all-tools",
+      "--deny-tool",
+      "write",
+      "--deny-tool",
+      "shell",
+      "--resume",
+      "{{sessionId}}",
+      "--add-dir",
+      "{{worktree}}"
+    ],
+    "idFrom": "session[ _-]?id[:=]?\\s*([0-9a-f-]{8,})"
+  },
+  "report": "whole",
+  "expectSeconds": 400,
+  "install": "npm install -g @github/copilot",
+  "docs": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference"
+}

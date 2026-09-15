@@ -12,7 +12,7 @@ import { prepareGroup, groupContext, groupHead, reviewUrls, groupId, groupReady,
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
-import { loadConfig, reviewers, judgeAgent, readGlobalConfig, saveGlobalJudge, globalConfigPath } from "../lib/config.js";
+import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, globalConfigPath } from "../lib/config.js";
 import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
@@ -203,8 +203,17 @@ function selectReviewers(cfg, requested, judge = null) {
   const names = requested;
   if (!names.length) throw new Error("--reviewer needs at least one reviewer name");
 
-  const byName = new Map(cfg.agents.map((a) => [a.name, a]));
+  // Naming a reviewer explicitly reaches every known agent, including built-ins
+  // that ship opt-in. Requiring a config edit before `--reviewer qwen` could
+  // work would make "supported" and "enabled by default" the same thing, and
+  // enabling every supported CLI by default would demand all of them be
+  // installed before any review could start.
+  const byName = new Map(knownAgents(cfg).map((a) => [a.name, a]));
   const allowed = new Set(eligible.map((a) => a.name));
+  const optIn = knownAgents(cfg)
+    .filter((a) => a.enabled === false && (a.role ?? "reviewer") === "reviewer" && a.name !== judge);
+  for (const agent of optIn) allowed.add(agent.name);
+
   const problems = names.filter((name) => !allowed.has(name)).map((name) => {
     const agent = byName.get(name);
     if (name === judge) return `"${name}" is the selected judge and cannot review its own work`;
@@ -212,12 +221,14 @@ function selectReviewers(cfg, requested, judge = null) {
     return `"${name}" is not configured or is disabled`;
   });
   if (problems.length) {
-    const available = eligible.map((a) => a.name).join(", ") || "none";
+    const available = [...eligible.map((a) => a.name), ...optIn.map((a) => a.name)].join(", ") || "none";
     throw new Error(
-      `requested reviewer ${problems.join("; ")}. Add or enable it with role "reviewer" in ${path.basename(cfg.configFile)}. Available enabled reviewers: ${available}`,
+      `requested reviewer ${problems.join("; ")}. Add or enable it with role "reviewer" in ${path.basename(cfg.configFile)}. Available reviewers: ${available}`,
     );
   }
-  return eligible.filter((a) => names.includes(a.name));
+  // Selected agents come from the known set so an opt-in built-in named here
+  // actually runs, rather than silently reducing the pool to nothing.
+  return names.map((name) => byName.get(name)).filter(Boolean);
 }
 
 async function commandDirectory(value) {
@@ -1167,8 +1178,11 @@ async function cmdAgents(args = []) {
       console.log("Global judge reset; repository settings or the built-in Codex default apply.");
     } else if (name) {
       const cfg = await loadConfig();
-      if (!cfg.agents.some(a => a.name === name)) {
-        throw new Error(`Unknown or disabled judge "${name}". Choose: ${cfg.agents.map(a => a.name).join(", ")}`);
+      // The whole known set, so an opt-in built-in can be saved as the default
+      // judge without first being enabled in whichever repository happens to be
+      // the working directory right now.
+      if (!knownAgents(cfg).some(a => a.name === name)) {
+        throw new Error(`Unknown or disabled judge "${name}". Choose: ${knownAgents(cfg).map(a => a.name).join(", ")}`);
       }
       await saveGlobalJudge(name);
       console.log(`Global judge: ${name} (${globalConfigPath()})`);
@@ -1180,17 +1194,46 @@ async function cmdAgents(args = []) {
     return;
   }
   const cfg = await loadConfig();
-  const found = await Promise.all(cfg.agents.map(probe));
-  const roleOf = new Map(cfg.agents.map((a) => [a.name, a.role ?? "reviewer"]));
+  // Every known agent is listed, not just the default pool: an opt-in built-in
+  // that is never shown is an agent nobody discovers. They are marked so the
+  // listing still says which ones actually run without being asked for.
+  const all = knownAgents(cfg);
+  const found = await Promise.all(all.map(probe));
+  const roleOf = new Map(all.map((a) => [a.name, a.role ?? "reviewer"]));
+  const byName = new Map(all.map((a) => [a.name, a]));
   for (const p of found) {
     const role = roleOf.get(p.name);
     console.log(
-      `${p.ok ? "ok     " : "MISSING"} ${p.name.padEnd(8)} ${role.padEnd(8)} ${p.path ?? p.bin}`,
+      `${p.ok ? "ok     " : "MISSING"} ${p.name.padEnd(9)} ${role.padEnd(8)} ${p.path ?? p.bin}`
+      + (byName.get(p.name)?.enabled === false ? "  (opt-in)" : ""),
     );
   }
-  const missing = found.filter((p) => !p.ok);
+
+  // An agent with no read-only mode still reviews, but only the prompt is
+  // keeping it from editing the worktree. That is a real difference in what a
+  // run guarantees, so it is said out loud rather than left in the flags.
+  const unsandboxed = found
+    .filter((p) => p.ok && roleOf.get(p.name) !== "main" && byName.get(p.name)?.sandbox === "none");
+  if (unsandboxed.length) {
+    console.log("\nReviewers with no read-only mode — the review prompt is the only thing withholding writes:");
+    for (const p of unsandboxed) {
+      console.log(`  ! ${p.name.padEnd(9)} ${byName.get(p.name).sandboxNote}`);
+    }
+  }
+
+  if (found.some((p) => byName.get(p.name)?.enabled === false)) {
+    console.log(`\nOpt-in agents are not used unless named with --reviewer/--jury, or enabled in ${path.basename(cfg.configFile)}.`);
+  }
+  // Only the default pool decides the exit status. An opt-in agent nobody asked
+  // for is not a broken install, and failing on it would make `jury agents`
+  // red on every machine that has not installed every supported CLI.
+  const missing = found.filter((p) => !p.ok && byName.get(p.name)?.enabled !== false);
   if (missing.length) {
     console.log(`\n${missing.length} agent(s) not installed. Install them, or disable in jury.config.json.`);
+    for (const p of missing) {
+      const how = byName.get(p.name)?.install;
+      if (how) console.log(`  ${p.name.padEnd(9)} ${how}`);
+    }
     process.exitCode = 1;
   }
 }

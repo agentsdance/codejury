@@ -1,0 +1,15 @@
+{
+  "name": "droid",
+  "product": "Factory Droid",
+  "role": "reviewer",
+  "promptDelivery": "file",
+  "cwd": "flag",
+  "argv": ["droid", "exec", "--cwd", "{{worktree}}", "--auto", "medium", "-f", "{{promptFile}}"],
+  "sandbox": "plan",
+  "sandboxNote": "--auto medium withholds destructive actions but permits edits",
+  "resume": { "supported": false, "reason": "exec output carries no session id" },
+  "report": "whole",
+  "expectSeconds": 130,
+  "install": "curl -fsSL https://app.factory.ai/cli | sh",
+  "docs": "https://docs.factory.ai/cli/getting-started/quickstart"
+}
