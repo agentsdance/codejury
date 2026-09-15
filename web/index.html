@@ -138,14 +138,15 @@
   /* min-width so a span that is real but very short — or has not finished and
      therefore has no width at all — still paints something hoverable. */
   .seg { position:absolute; top:0; height:26px; border-radius:3px; display:flex; align-items:center;
-         min-width:4px; padding:0 7px; font-family:var(--mono); font-size:10.5px; color:#fff;
-         white-space:nowrap; overflow:hidden; }
+         min-width:4px; padding:0 7px; font-family:var(--mono); font-size:10.5px; color:var(--surface);
+         background-color:var(--ink-2); white-space:nowrap; overflow:hidden; }
   /* Still running: striped rather than solid, and never flush to the right edge. */
   .seg[data-open="1"] { min-width:10px; margin-left:-5px;
     background-image:repeating-linear-gradient(115deg,rgba(255,255,255,.30) 0 4px,transparent 4px 8px); }
-  .seg[data-a="codex"] { background:var(--codex); }
-  .seg[data-a="droid"] { background:var(--droid); }
-  .seg[data-a="main"]  { background:var(--main-hue); }
+  .seg[data-a="codex"] { background-color:var(--codex); }
+  .seg[data-a="droid"] { background-color:var(--droid); }
+  .seg[data-a="main"], .seg[data-a="claude"] { background-color:var(--main-hue); }
+  .seg[data-a="agy"] { background-color:var(--accent); }
   .tl-foot { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
 
   /* rounds */
