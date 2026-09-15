@@ -153,6 +153,38 @@ is excluded from the reviewer pool.
 Without an explicit selection, enabled agents with the reviewer role are used; disable unavailable ones
 or select installed reviewers explicitly.
 
+### Built-in agents
+
+| name | product | install | default |
+|---|---|---|---|
+| `codex` | OpenAI Codex | `npm i -g @openai/codex` | judge |
+| `claude` | Anthropic Claude Code | `npm i -g @anthropic-ai/claude-code` | reviewer |
+| `grok` | xAI Grok | `npm i -g @vibe-kit/grok-cli` | reviewer |
+| `droid` | Factory Droid | `curl -fsSL https://app.factory.ai/cli \| sh` | reviewer |
+| `agy` | Google Antigravity | see Antigravity's docs | reviewer |
+| `qwen` | Qwen Code | `npm i -g @qwen-code/qwen-code` | opt-in |
+| `copilot` | GitHub Copilot CLI | `npm i -g @github/copilot` | opt-in |
+| `opencode` | OpenCode | `npm i -g opencode-ai` | opt-in |
+| `cursor` | Cursor Agent CLI | `curl https://cursor.com/install -fsS \| bash` | opt-in |
+| `amp` | Sourcegraph Amp | `npm i -g @sourcegraph/amp` | opt-in |
+| `kimi` | Moonshot Kimi CLI | `uv tool install --python 3.13 kimi-cli` | opt-in |
+
+**Opt-in** agents are fully supported — usable with `--reviewer`, `--jury`, `--judge` and
+`jury agents judge` — but stay out of the default pool, so a fresh install does not require every
+CLI to be present:
+
+```sh
+jury review <pr-url> --jury qwen,amp        # works with no config change
+jury agents judge qwen                      # or save one as the default judge
+```
+
+Each agent authenticates itself; see its own documentation. `jury agents` lists which are
+installed, how to install the ones that are not, and which reviewers have **no read-only mode** —
+for those, only the review prompt (not the tool) withholds writes.
+
+Adding a built-in agent is a one-file change; see
+[Adding a built-in agent](docs/configuration.md#adding-a-built-in-agent).
+
 Use [`jury.config.example.json`](jury.config.example.json) to configure agents in the target repository.
 See [configuration and permissions](docs/configuration.md) for the actual execution boundary and custom commands.
 

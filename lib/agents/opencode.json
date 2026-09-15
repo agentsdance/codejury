@@ -1,0 +1,18 @@
+{
+  "name": "opencode",
+  "product": "OpenCode",
+  "role": "reviewer",
+  "promptDelivery": "argv",
+  "cwd": "worktree",
+  "argv": ["opencode", "run", "--dir", "{{worktree}}", "--agent", "plan", "--format", "json", "--", "{{promptText}}"],
+  "judgeArgv": ["opencode", "run", "--dir", "{{worktree}}", "--agent", "build", "--format", "json", "--auto", "--", "{{promptText}}"],
+  "env": { "OPENCODE_PERMISSION": "{\"edit\":\"deny\",\"task\":\"deny\",\"external_directory\":\"deny\",\"bash\":{\"*\":\"deny\",\"git diff *\":\"allow\",\"git status*\":\"allow\",\"git show *\":\"allow\",\"git merge-base *\":\"allow\",\"git log *\":\"allow\",\"git rev-parse *\":\"allow\"}}" },
+  "judgeEnv": { "OPENCODE_PERMISSION": "{\"external_directory\":\"deny\"}" },
+  "sandbox": "tools",
+  "sandboxNote": "OPENCODE_PERMISSION denies edit, task and all bash but a read-only git allowlist",
+  "resume": { "supported": false, "reason": "fresh conversation with finding context; never resume the latest session" },
+  "report": "opencode-json",
+  "expectSeconds": 600,
+  "install": "npm install -g opencode-ai",
+  "docs": "https://opencode.ai/docs/cli"
+}

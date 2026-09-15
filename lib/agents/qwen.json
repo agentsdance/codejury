@@ -1,0 +1,49 @@
+{
+  "name": "qwen",
+  "product": "Qwen Code",
+  "role": "reviewer",
+  "enabled": false,
+  "promptDelivery": "argv",
+  "cwd": "flag",
+  "argv": [
+    "qwen",
+    "--approval-mode",
+    "plan",
+    "--include-directories",
+    "{{worktree}}",
+    "--session-id",
+    "{{sessionId}}",
+    "-p",
+    "{{promptText}}"
+  ],
+  "judgeArgv": [
+    "qwen",
+    "--approval-mode",
+    "auto-edit",
+    "--include-directories",
+    "{{worktree}}",
+    "-p",
+    "{{promptText}}"
+  ],
+  "sandbox": "plan",
+  "sandboxNote": "reviews run with --approval-mode plan, which analyzes without modifying files or running commands",
+  "newSession": true,
+  "resume": {
+    "supported": true,
+    "argv": [
+      "qwen",
+      "--approval-mode",
+      "plan",
+      "--include-directories",
+      "{{worktree}}",
+      "--resume",
+      "{{sessionId}}",
+      "-p",
+      "{{promptText}}"
+    ]
+  },
+  "report": "whole",
+  "expectSeconds": 400,
+  "install": "npm install -g @qwen-code/qwen-code",
+  "docs": "https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/"
+}

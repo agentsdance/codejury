@@ -1,0 +1,24 @@
+{
+  "name": "amp",
+  "product": "Sourcegraph Amp",
+  "role": "reviewer",
+  "enabled": false,
+  "promptDelivery": "argv",
+  "cwd": "worktree",
+  "argv": [
+    "amp",
+    "--execute",
+    "{{promptText}}",
+    "--no-notifications"
+  ],
+  "sandbox": "none",
+  "sandboxNote": "execute mode offers no read-only flag; only the review prompt keeps it read-only",
+  "resume": {
+    "supported": false,
+    "reason": "execute mode prints no thread id to resume by"
+  },
+  "report": "whole",
+  "expectSeconds": 400,
+  "install": "npm install -g @sourcegraph/amp",
+  "docs": "https://ampcode.com/manual"
+}

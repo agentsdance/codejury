@@ -23,7 +23,7 @@
     "cr": "bin/jury.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.10"
   },
   "files": [
     "bin",

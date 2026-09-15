@@ -2,7 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- Five more built-in agents: Qwen Code, GitHub Copilot CLI, Cursor Agent CLI, Amp, and Kimi.
+  Each is selectable with `--reviewer`/`--jury`, usable as the judge with `--judge`, and can be
+  saved with `jury agents judge`. They ship opt-in, so a default install still requires no extra
+  CLI; `jury agents` lists them marked `(opt-in)`.
 - Add OpenCode as a built-in reviewer and judge, with JSON report parsing, separate role permissions, fresh conversations, and installed-package checks.
+- Built-in agents are now one JSON file each under `lib/agents/`, validated by
+  `lib/agent-schema.js`, so contributing an agent no longer means editing shared code. See
+  [Adding a built-in agent](docs/configuration.md#adding-a-built-in-agent).
+- Every agent declares a `sandbox` level. `jury agents` warns which installed reviewers have no
+  read-only mode, and prints an install command for missing agents.
 
 ## 0.5.0 — 2026-09-16
 
