@@ -40,7 +40,7 @@ test("an opt-in built-in agent runs when named, without being enabled first", as
     { name: "grok", enabled: false },
     { name: "droid", enabled: false },
     { name: "claude", role: "main", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
-    { name: "qwen", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
+    { name: "qwen", report: "whole", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
   ] }));
 
   const result = await run(process.execPath, [

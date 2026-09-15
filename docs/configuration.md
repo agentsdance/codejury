@@ -85,9 +85,9 @@ review could not start until every supported CLI was installed.
 | Grok | `grok` | ⚠️ `--always-approve` | Same command unless overridden |
 | Droid | `droid` | `--auto medium` | Same command unless overridden |
 | Antigravity (`agy`) | `agy` | ⚠️ `--dangerously-skip-permissions`, print mode | Same command unless overridden |
-| Qwen Code (opt-in) | `qwen` | `--approval-mode plan` | `--approval-mode auto-edit` |
-| Copilot CLI (opt-in) | `copilot` | `write` and `shell` tools denied | Tools allowed |
-| OpenCode (opt-in) | `opencode` | ⚠️ No read-only flag; `--auto` withheld | `--auto` |
+| Qwen Code (opt-in) | `qwen` | Default approval; write tools excluded, Git inspection allowed | `--approval-mode yolo` |
+| Copilot CLI (opt-in) | `copilot` | Write tools denied; read and Git inspection allowed | Tools allowed |
+| OpenCode (opt-in) | `opencode` | Plan agent with explicit edit/task/shell restrictions | Build agent with `--auto` |
 | Cursor Agent (opt-in) | `cursor-agent` | ⚠️ Print mode; all tools including write and bash | `--force` |
 | Amp (opt-in) | `amp` | ⚠️ Execute mode; no read-only flag | Same command unless overridden |
 | Kimi (opt-in) | `kimi` | ⚠️ Print mode auto-approves tool calls | Same command unless overridden |
@@ -108,3 +108,13 @@ push step; it does not prevent an agent from executing Git or other commands.
 
 No provider keys belong in configuration. Each CLI uses its own login/configuration and inherits
 your environment. Run records include prompts and outputs, so redact them before sharing.
+
+### Authentication, versions, and conversations
+
+- Kimi: verified CLI 1.50.0; run `kimi login`. Quiet mode prints the final message and auto-approves tools, even if a conversation initially starts in plan mode. Both roles therefore require a trusted worktree; replies start fresh.
+- Cursor: verified `cursor-agent` 2025.10.28-0a91dc2; run `cursor-agent login`. The generic executable `agent` may belong to another product, so Jury uses `cursor-agent`. Final JSON must explicitly report success. Replies start fresh.
+- Copilot: verified CLI 0.0.392 flags; authenticate with interactive `/login`. A reviewer can inspect files and Git but cannot use write tools; the judge allows tools. Local permission configuration remains trusted. Replies start fresh.
+- Qwen: targets CLI 0.23.4 (`npm install -g @qwen-code/qwen-code`); run `qwen` and complete `/auth` before headless use. It runs in the process worktree, not merely an added access directory. Reviews use assigned UUIDs, and replies resume only that UUID; no implicit latest session. Final JSON must explicitly report success.
+- Amp: verified CLI 0.0.1788739286; run `amp login`. Threads are private and IDE context is disabled. Both roles can execute tools automatically; replies start fresh with their own finding context.
+
+A missing executable, nonzero exit, timeout, or unsuccessful structured result never approves a review. Git command allowlists are CLI tool permissions, not OS sandboxes; use trusted local agent configuration. Model credentials and service availability are prerequisites for live inference.

@@ -52,7 +52,7 @@ test('OpenCode installed CLI discovers, selects, and saves the judge, delivering
   const exe = path.join(bin, 'opencode');
   await writeFile(exe, `#!${process.execPath}\nconst fs=require('node:fs');fs.writeFileSync('call.json',JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2),permission:JSON.parse(process.env.OPENCODE_PERMISSION)}));console.log(${JSON.stringify(event('NO NEW FINDINGS'))});`, { mode: 0o755 });
   const cfg = await loadConfig(worktree, { globalFile: path.join(dir, 'absent') });
-  const agent = cfg.agents.find(a => a.name === 'opencode');
+  const agent = (cfg.available ?? cfg.agents).find(a => a.name === 'opencode');
   const prompt = '--literal "quotes"; $(touch unwanted)\nReview only.';
   const invoke = a => runAgent({ ...a, argv: [exe, ...a.argv.slice(1)] }, { worktree, prompt, stopToken: 'NO NEW FINDINGS', timeoutSeconds: 3 });
   assert.equal((await invoke(agent)).verdict, 'clean');

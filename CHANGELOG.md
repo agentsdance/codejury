@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Validate new agents through fresh installed CLI tests; fix Qwen worktree and Git access, Copilot Git permissions, final structured result handling, and conversation isolation. All six new agents are opt-in.
+
+
 ### Added
 
 - Five more built-in agents: Qwen Code, GitHub Copilot CLI, Cursor Agent CLI, Amp, and Kimi.
