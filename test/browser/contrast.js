@@ -16,7 +16,7 @@ function channels(text) {
 // Opacity multiplies down the tree: a faded ancestor hides a node whose own
 // computed colours stay fully opaque, so contrast alone cannot see the problem.
 // Takes a style lookup so it runs both in the page and against a plain fake tree.
-export function effectiveOpacity(node, styleOf) {
+export function effectiveOpacity(node, styleOf = getComputedStyle) {
   let opacity = 1;
   for (let current = node; current; current = current.parentElement) opacity *= Number(styleOf(current).opacity);
   return opacity;

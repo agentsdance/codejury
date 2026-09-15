@@ -1,5 +1,5 @@
 import { test, expect, agents } from './fixture.js';
-import { contrast } from './contrast.js';
+import { contrast, effectiveOpacity } from './contrast.js';
 
 for (const theme of ['light', 'dark']) {
   for (const width of [1100, 390]) {
@@ -19,14 +19,12 @@ for (const theme of ['light', 'dark']) {
         await expect(complete).toHaveText('5 min');
         const colors = await complete.evaluate(el => {
           const style = getComputedStyle(el);
-          let opacity = 1;
-          for (let node = el; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
-          return { fg: style.color, bg: style.backgroundColor, image: style.backgroundImage, opacity };
+          return { fg: style.color, bg: style.backgroundColor, image: style.backgroundImage };
         });
         expect(colors.bg, `${agent} needs a solid fallback/agent background`).not.toBe('rgba(0, 0, 0, 0)');
         expect(contrast(colors.fg, colors.bg), `${agent} completed label contrast in ${theme}`).toBeGreaterThanOrEqual(4.5);
         expect(colors.image).toBe('none');
-        expect(colors.opacity, `${agent} completed label and ancestors must be opaque`).toBe(1);
+        expect(await complete.evaluate(effectiveOpacity), `${agent} completed label and ancestors must be opaque`).toBe(1);
         for (const i of [2, 3]) {
           expect(await segments.nth(i).evaluate(el => getComputedStyle(el).backgroundImage), `${agent} state stripes`).toContain('repeating-linear-gradient');
         }
@@ -43,14 +41,11 @@ for (const theme of ['light', 'dark']) {
             const parent = el.parentElement.getBoundingClientRect(), box = el.getBoundingClientRect();
             const style = getComputedStyle(el), strongEl = el.querySelector('strong'), strong = getComputedStyle(strongEl);
             const bg = getComputedStyle(el.closest('.tl')).backgroundColor;
-            // Inlined rather than imported: this body is serialised into the page. Mirrors effectiveOpacity().
-            const faded = node => { let o = 1; for (; node; node = node.parentElement) o *= Number(getComputedStyle(node).opacity); return o; };
-            return { fits: box.left >= parent.left - 1 && box.right <= parent.right + 1, fg: style.color, strong: strong.color, bg,
-              opacity: faded(el), strongOpacity: faded(strongEl) };
+            return { fits: box.left >= parent.left - 1 && box.right <= parent.right + 1, fg: style.color, strong: strong.color, bg };
           });
           expect(geometry.fits, `${agent} summary must fit its lane`).toBeTruthy();
-          expect(geometry.opacity, `${agent} summary and ancestors must be opaque`).toBe(1);
-          expect(geometry.strongOpacity, `${agent} summary value and ancestors must be opaque`).toBe(1);
+          expect(await label.evaluate(effectiveOpacity), `${agent} summary and ancestors must be opaque`).toBe(1);
+          expect(await label.locator('strong').evaluate(effectiveOpacity), `${agent} summary value and ancestors must be opaque`).toBe(1);
           expect(contrast(geometry.fg, geometry.bg)).toBeGreaterThanOrEqual(4.5);
           expect(contrast(geometry.strong, geometry.bg)).toBeGreaterThanOrEqual(4.5);
         }
