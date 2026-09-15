@@ -36,7 +36,7 @@ test('OpenCode installed CLI discovers, selects, and saves the judge, delivering
   assert.equal((await invoke(agent)).verdict, 'clean');
   let call = JSON.parse(await readFile(path.join(worktree, 'call.json')));
   assert.equal(call.cwd, await realpath(worktree));
-  assert.deepEqual(call.args, ['run', '--agent', 'plan', '--format', 'json', '--', prompt]);
+  assert.deepEqual(call.args, ['run', '--dir', worktree, '--agent', 'plan', '--format', 'json', '--', prompt]);
   assert.equal(call.permission.edit, 'deny');
   assert.equal(agent.resume.supported, false);
   assert.equal((await invoke(judgeAgent(cfg, 'opencode'))).verdict, 'clean');
