@@ -9,7 +9,7 @@ const cli = process.env.JURY_TEST_CLI ?? fileURLToPath(new URL('../bin/jury.js',
 const root = path.dirname(path.dirname(cli));
 const { DEFAULTS, loadConfig, judgeAgent } = await import(pathToFileURL(path.join(root, 'lib/config.js')));
 const { runAgent } = await import(pathToFileURL(path.join(root, 'lib/agents.js')));
-const cases = [{"name": "copilot", "bin": "copilot", "review": ["-p", "@prompt", "--silent", "--add-dir", "@cwd", "--deny-tool", "write", "--allow-tool", "read", "--allow-tool", "shell(git diff)", "--allow-tool", "shell(git status)", "--allow-tool", "shell(git show)", "--allow-tool", "shell(git merge-base)", "--allow-tool", "shell(git log)", "--allow-tool", "shell(git rev-parse)"], "judge": ["-p", "@prompt", "--silent", "--add-dir", "@cwd", "--allow-all-tools"]}, {name:'cursor',bin:'cursor-agent',review:['-p','--output-format','json','--','@prompt'],judge:['-p','--output-format','json','--force','--','@prompt'],output:JSON.stringify({type:'result',subtype:'success',is_error:false,result:'NO NEW FINDINGS'})}, { name: 'kimi', bin: 'kimi', review: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'], judge: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'] }];
+const cases = [{"name": "qwen", "bin": "qwen", "review": ["--approval-mode", "default", "--output-format", "json", "--exclude-tools", "Edit", "Write", "NotebookEdit", "Task", "--allowed-tools", "Bash(git diff *)", "Bash(git status*)", "Bash(git show *)", "Bash(git merge-base *)", "Bash(git log *)", "Bash(git rev-parse *)", "--session-id", "@session", "--prompt=@prompt"], "judge": ["--approval-mode", "yolo", "--output-format", "json", "--prompt=@prompt"], "resume": true, "output": "[{\"type\": \"result\", \"subtype\": \"success\", \"is_error\": false, \"result\": \"NO NEW FINDINGS\"}]"}, {"name": "copilot", "bin": "copilot", "review": ["-p", "@prompt", "--silent", "--add-dir", "@cwd", "--deny-tool", "write", "--allow-tool", "read", "--allow-tool", "shell(git diff)", "--allow-tool", "shell(git status)", "--allow-tool", "shell(git show)", "--allow-tool", "shell(git merge-base)", "--allow-tool", "shell(git log)", "--allow-tool", "shell(git rev-parse)"], "judge": ["-p", "@prompt", "--silent", "--add-dir", "@cwd", "--allow-all-tools"]}, {name:'cursor',bin:'cursor-agent',review:['-p','--output-format','json','--','@prompt'],judge:['-p','--output-format','json','--force','--','@prompt'],output:JSON.stringify({type:'result',subtype:'success',is_error:false,result:'NO NEW FINDINGS'})}, { name: 'kimi', bin: 'kimi', review: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'], judge: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'] }];
 
 for (const spec of cases) test(`${spec.name}: installed discovery, literal invocation, roles, selection, and failures`, async t => {
   const dir = await mkdtemp(path.join(tmpdir(), `jury-${spec.name}-`));
@@ -25,12 +25,20 @@ for (const spec of cases) test(`${spec.name}: installed discovery, literal invoc
   const prompt = '--literal "quotes"; $(touch unwanted)\nReview only.';
   const invoke = a => runAgent({ ...a, argv: [exe, ...a.argv.slice(1)] }, { worktree, prompt, stopToken: 'NO NEW FINDINGS', timeoutSeconds: 5 });
   for (const [role, a] of [['review', agent], ['judge', judgeAgent(cfg, spec.name)]]) {
-    assert.equal((await invoke(a)).verdict, 'clean');
+    const result = await invoke(a); assert.equal(result.verdict, 'clean');
     const call = JSON.parse(await readFile(path.join(worktree, 'call.json')));
     assert.equal(call.cwd, await realpath(worktree));
-    assert.deepEqual(call.args, spec[role].map(v => v === '@cwd' ? worktree : v === '@prompt' ? prompt : v));
+    assert.deepEqual(call.args, spec[role].map(v => v.replace('@cwd',worktree).replace('@prompt',()=>prompt).replace('@session',result.sessionId)));
   }
-  assert.equal(agent.resume.supported, false);
+  assert.equal(agent.resume.supported, spec.resume ?? false);
+  if (spec.resume) {
+    const {replyArgv}=await import(pathToFileURL(path.join(root,'lib/reply.js')));
+    const first=await invoke(agent); const second=await invoke(agent);
+    assert.match(first.sessionId,/^[0-9a-f-]{36}$/); assert.notEqual(first.sessionId,second.sessionId);
+    const reply=replyArgv(agent,{promptText:prompt,worktree,sessionId:first.sessionId});
+    assert.equal(reply.resumed,true);assert.equal(reply.argv[reply.argv.indexOf('--resume')+1],first.sessionId);
+    assert.equal(replyArgv(agent,{promptText:prompt,worktree}).resumed,false);
+  }
   const env = { ...process.env, HOME: dir, USERPROFILE: dir, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
   const command = args => spawnSync(process.execPath, [cli, ...args], { cwd: worktree, env, encoding: 'utf8', timeout: 15000 });
   assert.match(command(['agents']).stdout, new RegExp(`ok\\s+${spec.name}\\s+reviewer`));
