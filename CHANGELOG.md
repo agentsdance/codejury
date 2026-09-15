@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add Google Antigravity (`agy`) as a built-in reviewer, selectable with `--jury agy` or as the main agent with `--judge agy` / `jury agents judge agy`.
+
 ## 0.4.0 — 2026-09-15
 
 ### Added
