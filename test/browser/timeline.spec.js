@@ -1,12 +1,5 @@
 import { test, expect, agents } from './fixture.js';
-
-function contrast(fg, bg) {
-  const rgb = text => text.match(/[\d.]+/g).slice(0, 3).map(Number);
-  const luminance = text => rgb(text).map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
-    .reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
-  const a = luminance(fg), b = luminance(bg);
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-}
+import { contrast } from './contrast.js';
 
 for (const theme of ['light', 'dark']) {
   for (const width of [1100, 390]) {
@@ -26,11 +19,14 @@ for (const theme of ['light', 'dark']) {
         await expect(complete).toHaveText('5 min');
         const colors = await complete.evaluate(el => {
           const style = getComputedStyle(el);
-          return { fg: style.color, bg: style.backgroundColor, image: style.backgroundImage };
+          let opacity = 1;
+          for (let node = el; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+          return { fg: style.color, bg: style.backgroundColor, image: style.backgroundImage, opacity };
         });
         expect(colors.bg, `${agent} needs a solid fallback/agent background`).not.toBe('rgba(0, 0, 0, 0)');
         expect(contrast(colors.fg, colors.bg), `${agent} completed label contrast in ${theme}`).toBeGreaterThanOrEqual(4.5);
         expect(colors.image).toBe('none');
+        expect(colors.opacity, `${agent} completed label and ancestors must be opaque`).toBe(1);
         for (const i of [2, 3]) {
           expect(await segments.nth(i).evaluate(el => getComputedStyle(el).backgroundImage), `${agent} state stripes`).toContain('repeating-linear-gradient');
         }
