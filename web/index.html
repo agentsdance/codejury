@@ -146,6 +146,10 @@
   .seg[data-a="codex"] { background:var(--codex); }
   .seg[data-a="droid"] { background:var(--droid); }
   .seg[data-a="main"]  { background:var(--main-hue); }
+  .lane-durations { grid-column:2; display:flex; flex-wrap:wrap; gap:6px 16px;
+    font-family:var(--mono); font-size:11px; line-height:1.6; color:var(--muted); }
+  .lane-duration { white-space:nowrap; }
+  .lane-duration strong { color:var(--ink); font-weight:600; }
   .tl-foot { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
 
   /* rounds */
@@ -693,6 +697,16 @@ const esc = s => String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt
 const rich = s => esc(s).replace(/&lt;strong&gt;/g,"<strong>").replace(/&lt;\/strong&gt;/g,"</strong>")
                         .replace(/&lt;b&gt;/g,"<b>").replace(/&lt;\/b&gt;/g,"</b>");
 const pct = m => (m / RUN.totalMin) * 100;
+function timelineDuration(segment) {
+  // Reply markers have zero width; their actual duration is recorded in the title.
+  if (segment.r === "reply") {
+    const reply = /^reply · ([\d.]+)s$/.exec(segment.t ?? "");
+    return reply ? `${reply[1]}s` : "sent";
+  }
+  const seconds = Math.max(0, Math.round((segment.e - segment.s) * 60));
+  return seconds < 60 ? `${seconds}s` : `${+(seconds / 60).toFixed(1)} min`;
+}
+
 
 /**
  * Merge timeline marks too close together to render side by side.
@@ -1114,6 +1128,10 @@ function render(){
                    style="left:${pct(s.s)}%;width:${w}%"${s.abandoned ? ' data-abandoned="1"' : ""}
                    title="${esc(s.t || ("round "+s.r+" · "+mins+" min"))}">${w > 9 ? esc(s.t || mins+" min") : ""}</div>`;
         }).join("")}</div>
+        <div class="lane-durations">${l.segs.map(s=>`
+          <span class="lane-duration">${esc(s.r === "reply" ? "Reply" : "Round " + s.r)}:
+            <strong>${esc(timelineDuration(s))}</strong>${s.open ? " · running" : s.abandoned ? " · interrupted" : ""}</span>
+        `).join("")}</div>
       </div>`).join("");
   $("tlfoot").textContent = RUN.tlfoot;
 
