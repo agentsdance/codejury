@@ -10,49 +10,48 @@
     "-p",
     "{{promptText}}",
     "--silent",
-    "--no-ask-user",
-    "--allow-all-tools",
+    "--add-dir",
+    "{{worktree}}",
     "--deny-tool",
     "write",
-    "--deny-tool",
-    "shell",
-    "--add-dir",
-    "{{worktree}}"
+    "--allow-tool",
+    "read",
+    "--allow-tool",
+    "shell(git diff)",
+    "--allow-tool",
+    "shell(git status)",
+    "--allow-tool",
+    "shell(git show)",
+    "--allow-tool",
+    "shell(git merge-base)",
+    "--allow-tool",
+    "shell(git log)",
+    "--allow-tool",
+    "shell(git rev-parse)"
   ],
   "judgeArgv": [
     "copilot",
     "-p",
     "{{promptText}}",
     "--silent",
-    "--no-ask-user",
-    "--allow-all-tools",
     "--add-dir",
-    "{{worktree}}"
+    "{{worktree}}",
+    "--allow-all-tools"
   ],
   "sandbox": "tools",
-  "sandboxNote": "reviews deny the write and shell tools; --allow-all-tools is required for any non-interactive run",
+  "sandboxNote": "reviewer denies write tools and allows read plus Git inspection; trusted local CLI configuration still applies",
   "resume": {
-    "supported": true,
-    "argv": [
-      "copilot",
-      "-p",
-      "{{promptText}}",
-      "--silent",
-      "--no-ask-user",
-      "--allow-all-tools",
-      "--deny-tool",
-      "write",
-      "--deny-tool",
-      "shell",
-      "--resume",
-      "{{sessionId}}",
-      "--add-dir",
-      "{{worktree}}"
-    ],
-    "idFrom": "session[ _-]?id[:=]?\\s*([0-9a-f-]{8,})"
+    "supported": false,
+    "reason": "fresh conversation with finding context; no session ids inferred from assistant prose"
   },
   "report": "whole",
   "expectSeconds": 400,
   "install": "npm install -g @github/copilot",
-  "docs": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference"
+  "docs": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference",
+  "env": {
+    "COPILOT_ALLOW_ALL": "false"
+  },
+  "judgeEnv": {
+    "COPILOT_ALLOW_ALL": "false"
+  }
 }
