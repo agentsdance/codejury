@@ -536,7 +536,7 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
   ], { cwd: repo });
   assert.match(missing.stderr, /requested reviewer "traecli" is not configured or is disabled/);
   assert.match(missing.stderr, /Add or enable it with role "reviewer" in jury\.config\.json/);
-  assert.match(missing.stderr, /Available enabled reviewers:/);
+  assert.match(missing.stderr, /Available reviewers:/);
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({
     agents: [{ name: "codex", argv: ["jury-missing-judge-test"] }],
   }));
@@ -583,5 +583,44 @@ test("an explicitly requested configured reviewer is actually launched", async (
   const events = await readEvents(path.join(repo, "runs", slug));
   assert.deepEqual(events.filter((e) => e.t === "agent.launch").map((e) => e.agent), ["traecli"]);
   assert.equal(events.find((e) => e.t === "agent.report")?.verdict, "clean");
+  await rm(repo, { recursive: true, force: true });
+});
+
+test("an opt-in built-in agent runs when named, without being enabled first", async () => {
+  // The six agents added for issues #75-#81 ship opt-in so a default install
+  // does not demand every supported CLI. Naming one must still work straight
+  // away — otherwise "supported" would mean nothing more than "documented".
+  const repo = await tmp();
+  const g = async (...a) => run("git", ["-C", repo, ...a]);
+  await g("init", "-q", "-b", "master");
+  await g("config", "user.email", "t@example.com");
+  await g("config", "user.name", "t");
+  await writeFile(path.join(repo, "a.txt"), "one\n");
+  await g("add", "-A");
+  await g("commit", "-qm", "base");
+  await g("checkout", "-q", "-b", "feature");
+  await writeFile(path.join(repo, "a.txt"), "two\n");
+  await g("commit", "-qam", "change");
+  // Only the executable is stubbed; qwen keeps its built-in role and reviewer
+  // status, which is the part under test.
+  await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
+    { name: "codex", enabled: false },
+    { name: "grok", enabled: false },
+    { name: "droid", enabled: false },
+    { name: "claude", role: "main", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
+    { name: "qwen", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
+  ] }));
+
+  const result = await run(process.execPath, [
+    path.resolve("bin/jury.js"), "review", "--rounds", "1", "--web=false", "--push=false",
+    "--judge", "claude", "--dir", repo, "--trunk", "master", "--reviewer", "qwen",
+  ], { cwd: repo });
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /qwen\s+.*clean/);
+
+  const [slug] = await readdir(path.join(repo, "runs"));
+  const events = await readEvents(path.join(repo, "runs", slug));
+  assert.deepEqual(events.filter((e) => e.t === "agent.launch").map((e) => e.agent), ["qwen"],
+    "the named opt-in agent must be the one that ran");
   await rm(repo, { recursive: true, force: true });
 });

@@ -1,0 +1,25 @@
+{
+  "name": "claude",
+  "product": "Anthropic Claude Code",
+  "role": "reviewer",
+  "promptDelivery": "argv",
+  "cwd": "worktree",
+  "argv": [
+    "claude", "-p", "{{promptText}}",
+    "--permission-mode", "plan",
+    "--disallowedTools", "Edit,Write,NotebookEdit",
+    "--add-dir", "{{worktree}}"
+  ],
+  "judgeArgv": [
+    "claude", "-p", "{{promptText}}",
+    "--permission-mode", "acceptEdits",
+    "--add-dir", "{{worktree}}"
+  ],
+  "sandbox": "plan",
+  "sandboxNote": "reviews run in plan mode with Edit, Write and NotebookEdit withheld",
+  "resume": { "supported": false, "reason": "each finding is judged on its own merits" },
+  "report": "whole",
+  "expectSeconds": 900,
+  "install": "npm install -g @anthropic-ai/claude-code",
+  "docs": "https://docs.claude.com/en/docs/claude-code/cli-reference"
+}

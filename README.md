@@ -75,9 +75,31 @@ jury review <pr-url> --judge claude --reviewer droid --push=false
 ```
 
 `--reviewer` and `--jury` accept repeated flags and comma-separated names. The selected judge
-is excluded from the reviewer pool. Built-in agents are Codex (default judge), Claude, Grok, and Droid.
-Without an explicit selection, enabled agents with the reviewer role are used; disable unavailable ones
-or select installed reviewers explicitly.
+is excluded from the reviewer pool. Without an explicit selection, enabled agents with the reviewer
+role are used; disable unavailable ones or select installed reviewers explicitly.
+
+Built-in agents — any of them can review, judge (`--judge`), or be saved as the default judge:
+
+| name | product | install |
+|---|---|---|
+| `codex` | OpenAI Codex (default judge) | `npm i -g @openai/codex` |
+| `claude` | Anthropic Claude Code | `npm i -g @anthropic-ai/claude-code` |
+| `qwen` | Qwen Code | `npm i -g @qwen-code/qwen-code` |
+| `copilot` | GitHub Copilot CLI | `npm i -g @github/copilot` |
+| `droid` | Factory Droid | `curl -fsSL https://app.factory.ai/cli \| sh` |
+| `opencode` | OpenCode | `npm i -g opencode-ai` |
+| `cursor` | Cursor Agent CLI | `curl https://cursor.com/install -fsS \| bash` |
+| `amp` | Sourcegraph Amp | `npm i -g @sourcegraph/amp` |
+| `kimi` | Moonshot Kimi CLI | `uv tool install --python 3.13 kimi-cli` |
+| `grok` | xAI Grok | `npm i -g @vibe-kit/grok-cli` |
+
+Each agent authenticates itself; see its own documentation. `jury agents` lists which are
+installed, how to install the ones that are not, and which reviewers have no read-only mode —
+for those, only the review prompt (not the tool) withholds writes. See
+[configuration and permissions](docs/configuration.md) for the per-agent execution boundary.
+
+Adding a built-in agent is a one-file change; see
+[Adding a built-in agent](docs/configuration.md#adding-a-built-in-agent).
 
 Use [`jury.config.example.json`](jury.config.example.json) to configure agents in the target repository.
 See [configuration and permissions](docs/configuration.md) for the actual execution boundary and custom commands.

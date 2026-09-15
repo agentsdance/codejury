@@ -44,17 +44,55 @@ Supported prompt delivery is `argv` or `file` (`{{promptFile}}`); stdin is close
 The historical YAML example is design documentation; the CLI loads JSON.
 
 A judge may specify separate `judgeArgv`. A custom `argv` overrides the built-in judge invocation
-unless you also specify `judgeArgv`. Optional session configuration is illustrated in `lib/config.js`.
+unless you also specify `judgeArgv`. Optional session configuration is illustrated by the built-in
+definitions in `lib/agents/`.
+
+## Adding a built-in agent
+
+Built-in agents are data, not code: each is one JSON file in `lib/agents/`, listed in
+`lib/agents/registry.js`. Adding one is a new file plus a two-line change to that list, and
+touches nothing else — `jury agents`, `--reviewer`, `--judge` and the saved global judge all
+read from the registry.
+
+1. Copy an existing definition, for example `lib/agents/qwen.json`.
+2. Add it to the import list in `lib/agents/registry.js`.
+3. Run `npm test`.
+
+`lib/agent-schema.js` defines every permitted field, and `test/builtin-agents.test.js` validates
+the whole registry, so these fail in CI rather than mid-review:
+
+- a missing or unknown field, including a missing `sandbox`;
+- an `argv` whose prompt template never reaches the agent;
+- a `cwd: "flag"` entry that forgets to pass `{{worktree}}`;
+- a resume that would reattach to the *latest* session instead of one named by `{{sessionId}}`;
+- `sandbox: "none"` without a `sandboxNote` explaining the boundary.
+
+Verify the flags against the agent's own `--help` before adding it, and record its `install`
+command and `docs` URL so `jury agents` can tell users how to install a missing reviewer.
 
 ## Execution boundary
 
-| Agent | Reviewer invocation | Judge invocation |
-|---|---|---|
-| Codex | Read-only sandbox | Workspace-write sandbox |
-| Claude | Plan mode; edit tools disallowed | `acceptEdits` permission mode |
-| Grok | `--always-approve` | Same command unless overridden |
-| Droid | `--auto medium` | Same command unless overridden |
-| Custom | Your `argv` | Your `judgeArgv`, or `argv` |
+| Agent | Executable | Reviewer invocation | Judge invocation |
+|---|---|---|---|
+| Codex | `codex` | Read-only sandbox | Workspace-write sandbox |
+| Claude | `claude` | Plan mode; edit tools disallowed | `acceptEdits` permission mode |
+| Qwen Code | `qwen` | `--approval-mode plan` | `--approval-mode auto-edit` |
+| Copilot CLI | `copilot` | `write` and `shell` tools denied | Tools allowed |
+| Droid | `droid` | `--auto medium` | Same command unless overridden |
+| OpenCode | `opencode` | ⚠️ No read-only flag; `--auto` withheld | `--auto` |
+| Cursor Agent | `cursor-agent` | ⚠️ Print mode; all tools including write and bash | `--force` |
+| Amp | `amp` | ⚠️ Execute mode; no read-only flag | Same command unless overridden |
+| Kimi | `kimi` | ⚠️ Print mode auto-approves tool calls | Same command unless overridden |
+| Grok | `grok` | ⚠️ `--always-approve` | Same command unless overridden |
+| Custom | Your `argv[0]` | Your `argv` | Your `judgeArgv`, or `argv` |
+
+⚠️ marks agents whose CLI offers **no read-only invocation**. They still review, but only the
+review prompt — not the tool — withholds writes. `jury agents` prints this warning for every such
+reviewer that is installed. Prefer a sandboxed agent where that distinction matters.
+
+Each definition records this as a `sandbox` field (`sandbox`, `plan`, `tools`, or `none`); an
+agent declaring `none` must also carry a `sandboxNote` explaining the boundary, which is what
+`jury agents` prints.
 
 These are Jury's configured arguments, not a guarantee about third-party behavior.
 Prompts ask reviewers not to edit, but permissions vary by agent, and resumed sessions have their
