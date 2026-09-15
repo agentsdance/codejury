@@ -41,11 +41,16 @@ for (const theme of ['light', 'dark']) {
           await expect(label).toBeVisible();
           const geometry = await label.evaluate(el => {
             const parent = el.parentElement.getBoundingClientRect(), box = el.getBoundingClientRect();
-            const style = getComputedStyle(el), strong = getComputedStyle(el.querySelector('strong'));
+            const style = getComputedStyle(el), strongEl = el.querySelector('strong'), strong = getComputedStyle(strongEl);
             const bg = getComputedStyle(el.closest('.tl')).backgroundColor;
-            return { fits: box.left >= parent.left - 1 && box.right <= parent.right + 1, fg: style.color, strong: strong.color, bg };
+            // Inlined rather than imported: this body is serialised into the page. Mirrors effectiveOpacity().
+            const faded = node => { let o = 1; for (; node; node = node.parentElement) o *= Number(getComputedStyle(node).opacity); return o; };
+            return { fits: box.left >= parent.left - 1 && box.right <= parent.right + 1, fg: style.color, strong: strong.color, bg,
+              opacity: faded(el), strongOpacity: faded(strongEl) };
           });
           expect(geometry.fits, `${agent} summary must fit its lane`).toBeTruthy();
+          expect(geometry.opacity, `${agent} summary and ancestors must be opaque`).toBe(1);
+          expect(geometry.strongOpacity, `${agent} summary value and ancestors must be opaque`).toBe(1);
           expect(contrast(geometry.fg, geometry.bg)).toBeGreaterThanOrEqual(4.5);
           expect(contrast(geometry.strong, geometry.bg)).toBeGreaterThanOrEqual(4.5);
         }
