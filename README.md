@@ -66,6 +66,40 @@ jury help review                      # complete review options
 `jury <pr-url>` is shorthand for `jury review <pr-url>`. You can also run without installing:
 `npx @agentsdance/codejury review <pr-url> --reviewer claude --push=false`.
 
+## Screenshots
+
+A review of Code Jury PR #67, with Droid judging and Claude, Codex, and Grok reviewing.
+The dashboard shows elapsed time per agent and findings across rounds.
+
+![Code Jury dashboard showing parallel reviewer timelines and two review rounds](docs/screenshots/review-dashboard.png)
+
+<details>
+<summary>Terminal review output</summary>
+
+The CLI shows the target PR, judge, reviewers, console URL, and first-round results.
+
+![Terminal output from jury review with Droid as judge and Claude, Codex, and Grok as reviewers](docs/screenshots/terminal-review.png)
+
+</details>
+
+<details>
+<summary>Round-by-round findings</summary>
+
+Compare each reviewer's report across successive commits.
+
+![Reviewer reports for round 1 and round 2, grouped by agent and commit](docs/screenshots/review-rounds.png)
+
+</details>
+
+<details>
+<summary>Judge–reviewer conversation</summary>
+
+Follow a finding from the reviewer's report to the judge's reproduction and response.
+
+![Droid and Codex discussing and reproducing a finding about the Antigravity executable test](docs/screenshots/judge-reviewer-conversation.png)
+
+</details>
+
 ## How it works
 
 1. Resolve the PR's base branch and head commit into an isolated checkout.
