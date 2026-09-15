@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-09-16
 
 - Add Google Antigravity (`agy`) as a built-in reviewer, selectable with `--jury agy` or as the main agent with `--judge agy` / `jury agents judge agy`.
+
+- Label review participants as juries in the console.
+- Keep agent durations readable below timeline tracks and align round markers with their tracks.
+- Add real review screenshots to the README.
 
 ## 0.4.0 — 2026-09-15
 
