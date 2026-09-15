@@ -11,7 +11,8 @@ The example configuration keeps Codex as judge and Claude as reviewer:
 {
   "agents": [
     { "name": "grok", "enabled": false },
-    { "name": "droid", "enabled": false }
+    { "name": "droid", "enabled": false },
+    { "name": "agy", "enabled": false }
   ]
 }
 ```
@@ -54,6 +55,7 @@ unless you also specify `judgeArgv`. Optional session configuration is illustrat
 | Claude | Plan mode; edit tools disallowed | `acceptEdits` permission mode |
 | Grok | `--always-approve` | Same command unless overridden |
 | Droid | `--auto medium` | Same command unless overridden |
+| Antigravity (`agy`) | `--dangerously-skip-permissions`, print mode | Same command unless overridden |
 | Custom | Your `argv` | Your `judgeArgv`, or `argv` |
 
 These are Jury's configured arguments, not a guarantee about third-party behavior.

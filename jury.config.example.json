@@ -2,6 +2,7 @@
   "_comment": "Copy to jury.config.json in the reviewed repository. This example uses Codex as judge and Claude as reviewer; install and authenticate both CLIs first. See docs/configuration.md.",
   "agents": [
     { "name": "grok", "enabled": false },
-    { "name": "droid", "enabled": false }
+    { "name": "droid", "enabled": false },
+    { "name": "agy", "enabled": false }
   ]
 }

@@ -14,6 +14,22 @@ It also reviews related PRs across repositories as one coordinated task.
 [Download the interactive console demo](docs/console-demo.html) and open the HTML file in a browser.
 It uses illustrative data and does not start agents.
 
+## Supported code agents
+
+| Code agent | CLI name | Default role |
+|---|---|---|
+| Anthropic Claude Code | `claude` | Reviewer |
+| OpenAI Codex | `codex` | Main agent (judge) |
+| xAI Grok | `grok` | Reviewer |
+| Factory Droid | `droid` | Reviewer |
+| Google Antigravity | `agy` | Reviewer |
+
+Install and authenticate each agent's CLI separately. Run `jury agents` to see
+which enabled agents are installed (`ok`) or missing (`MISSING`). Any enabled
+agent can be selected as a reviewer with `--jury <name>` or as the main agent
+with `--judge <name>`; the same agent cannot fill both roles in one review.
+Additional CLIs can be added through [custom agent configuration](docs/configuration.md#custom-agent).
+
 ## Quick start
 
 You need Node.js 20+, Git, and authenticated coding-agent CLIs. GitHub PRs also need
@@ -74,6 +90,16 @@ jury review <pr-url> --jury claude,grok
 jury review <pr-url> --judge claude --reviewer droid --push=false
 ```
 
+Use an installed and authenticated Antigravity CLI as a reviewer:
+
+```sh
+jury review <pr-url> --jury agy --push=false
+```
+
+`jury agents` lists `agy` by default, marked `MISSING` if its executable is not on
+`PATH`. Antigravity runs in noninteractive print mode with automatic tool approval;
+see [configuration and permissions](docs/configuration.md).
+
 Set a judge once for all repositories:
 
 ```bash
@@ -88,7 +114,7 @@ current directory. The judge must be enabled in the target repository; custom
 agent commands still need configuration in each repository that uses them.
 
 `--reviewer` and `--jury` accept repeated flags and comma-separated names. The selected judge
-is excluded from the reviewer pool. Built-in agents are Codex (default judge), Claude, Grok, and Droid.
+is excluded from the reviewer pool.
 Without an explicit selection, enabled agents with the reviewer role are used; disable unavailable ones
 or select installed reviewers explicitly.
 
