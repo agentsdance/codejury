@@ -512,7 +512,7 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
   ], { cwd: repo });
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /judge\s+codex/);
-  assert.match(result.stdout, /agents\s+droid/);
+  assert.match(result.stdout, /juries\s+droid/);
   assert.match(result.stdout, /REVIEW COMPLETE/);
   assert.match(result.stdout, /Reviewed commit [0-9a-f]+\./);
   assert.doesNotMatch(result.stdout, /\bconverged\b/i);
