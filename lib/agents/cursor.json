@@ -9,33 +9,26 @@
     "cursor-agent",
     "-p",
     "--output-format",
-    "text",
+    "json",
+    "--",
     "{{promptText}}"
   ],
   "judgeArgv": [
     "cursor-agent",
     "-p",
     "--output-format",
-    "text",
+    "json",
     "--force",
+    "--",
     "{{promptText}}"
   ],
   "sandbox": "none",
   "sandboxNote": "print mode has access to all tools including write and bash; only the review prompt keeps it read-only",
   "resume": {
-    "supported": true,
-    "argv": [
-      "cursor-agent",
-      "-p",
-      "--output-format",
-      "text",
-      "--resume",
-      "{{sessionId}}",
-      "{{promptText}}"
-    ],
-    "idFrom": "(?:chat|session)[ _-]?id[:=]?\\s*([0-9a-zA-Z-]{8,})"
+    "supported": false,
+    "reason": "fresh conversation with finding context; never extract session ids from assistant prose"
   },
-  "report": "whole",
+  "report": "result-json",
   "expectSeconds": 400,
   "install": "curl https://cursor.com/install -fsS | bash",
   "docs": "https://cursor.com/cli"

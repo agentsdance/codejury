@@ -9,7 +9,7 @@ const cli = process.env.JURY_TEST_CLI ?? fileURLToPath(new URL('../bin/jury.js',
 const root = path.dirname(path.dirname(cli));
 const { DEFAULTS, loadConfig, judgeAgent } = await import(pathToFileURL(path.join(root, 'lib/config.js')));
 const { runAgent } = await import(pathToFileURL(path.join(root, 'lib/agents.js')));
-const cases = [{ name: 'kimi', bin: 'kimi', review: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'], judge: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'] }];
+const cases = [{name:'cursor',bin:'cursor-agent',review:['-p','--output-format','json','--','@prompt'],judge:['-p','--output-format','json','--force','--','@prompt'],output:JSON.stringify({type:'result',subtype:'success',is_error:false,result:'NO NEW FINDINGS'})}, { name: 'kimi', bin: 'kimi', review: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'], judge: ['--quiet', '--work-dir', '@cwd', '--prompt', '@prompt'] }];
 
 for (const spec of cases) test(`${spec.name}: installed discovery, literal invocation, roles, selection, and failures`, async t => {
   const dir = await mkdtemp(path.join(tmpdir(), `jury-${spec.name}-`));
@@ -17,7 +17,7 @@ for (const spec of cases) test(`${spec.name}: installed discovery, literal invoc
   const worktree = path.join(dir, 'work tree'); const bin = path.join(dir, 'bin');
   await mkdir(worktree); await mkdir(bin);
   const exe = path.join(bin, spec.bin);
-  const clean = `const fs=require('node:fs');fs.writeFileSync('call.json',JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)}));console.log('NO NEW FINDINGS');`;
+  const clean = `const fs=require('node:fs');fs.writeFileSync('call.json',JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)}));console.log(${JSON.stringify(spec.output ?? 'NO NEW FINDINGS')});`;
   const script = body => writeFile(exe, `#!${process.execPath}\n${body}`, { mode: 0o755 });
   await script(clean);
   const cfg = await loadConfig(worktree, { globalFile: path.join(dir, 'absent') });
