@@ -1,3 +1,4 @@
+import { DEFAULTS } from "../lib/config.js";
 // The autonomous loop: what makes it terminate, and what it shows while it runs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -561,11 +562,8 @@ test("an explicitly requested configured reviewer is actually launched", async (
   await writeFile(path.join(repo, "a.txt"), "two\n");
   await g("commit", "-qam", "change");
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
-    { name: "codex", enabled: false },
+    ...DEFAULTS.agents.filter(a => a.name !== "claude").map(({name}) => ({name, enabled: false})),
     { name: "claude", role: "main", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
-    { name: "grok", enabled: false },
-    { name: "droid", enabled: false },
-    { name: "agy", enabled: false }, { name: "opencode", enabled: false },
     {
       name: "traecli", role: "reviewer", promptDelivery: "argv", cwd: "worktree",
       argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"], report: "whole",

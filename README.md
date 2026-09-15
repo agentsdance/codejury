@@ -22,6 +22,7 @@ It uses illustrative data and does not start agents.
 | OpenAI Codex | `codex` | Main agent (judge) |
 | xAI Grok | `grok` | Reviewer |
 | Factory Droid | `droid` | Reviewer |
+| Kimi Code | `kimi` | Reviewer or judge |
 | OpenCode | `opencode` | Reviewer or judge |
 | Google Antigravity | `agy` | Reviewer |
 
@@ -202,3 +203,7 @@ program with ChatGPT Pro (20x) access.
 Install [OpenCode](https://opencode.ai/docs/cli/) (`npm install -g opencode-ai`) and run `opencode auth login` to configure a provider. Verified against CLI 1.18.31. Select it with `--reviewer opencode` / `--jury opencode`, `--judge opencode`, or `jury agents judge opencode`.
 
 Reviews use `opencode run --agent plan --format json`; edits, delegation, and outside-directory access are denied. The plan agent may inspect Git through its permitted shell commands; these CLI tool permissions are not an OS sandbox and local OpenCode configuration must be trusted. Judges use the build agent with `--auto` to edit and run checks; explicit permission denials still apply. Both roles run in the target worktree. Replies start fresh with the relevant finding context; Jury never resumes the latest unrelated conversation. Only assistant text events are parsed; malformed output, error events, empty output, failed exits, and timeouts cannot approve a review.
+
+### Kimi Code
+
+Install [Kimi Code CLI](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) with `uv tool install --python 3.13 kimi-cli`, then run `kimi login`. The integration targets CLI 1.50.0 and its documented `--quiet` / `--plan` flags. Select `kimi` through `--reviewer`, `--jury`, `--judge`, or `jury agents judge kimi`. Reviewer plan mode restricts tools to inspection; judge mode enables automatic approval and may edit files and execute commands. Existing Kimi configuration still applies; these are CLI permissions, not an OS sandbox. Both roles receive an explicit working directory and only return the final assistant message. Replies start fresh with finding context, never the latest unrelated session.

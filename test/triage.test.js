@@ -1,3 +1,4 @@
+import { DEFAULTS } from "../lib/config.js";
 // Triage: the judgement half of the loop. Run with `node --test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -143,8 +144,7 @@ test("the triage path executes end to end without an undefined name", async () =
     // Both are `node -e`, so no real agent is spawned and the test is fast.
     await writeFile(path.join(dir, "jury.config.json"), JSON.stringify({
       agents: [
-        { name: "codex", enabled: false }, { name: "grok", enabled: false },
-        { name: "droid", enabled: false }, { name: "agy", enabled: false }, { name: "opencode", enabled: false },
+        ...DEFAULTS.agents.filter(a => a.name !== "claude").map(({name}) => ({name, enabled: false})),
         {
           name: "claude", role: "main", promptDelivery: "argv", cwd: "worktree",
           argv: ["node", "-e", `console.log('{"reproduced":null,"verdict":"rejected","reason":"not real","test":null}')`],

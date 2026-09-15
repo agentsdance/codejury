@@ -1,3 +1,4 @@
+import { DEFAULTS } from "../../lib/config.js";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -40,7 +41,7 @@ if(role==='judge'){
 }else if(values.every(v=>v==='v3')) console.log('NO NEW FINDINGS');
 else console.log('FINDING: Related API contracts disagree\\nWHERE: '+(process.env.JURY_BAD_LOCATION?'contract.txt:1':'PR1/contract.txt:1')+'\\nPR1 and PR2 must agree on the contract.');
 `);
-  const agents = ["claude", "grok", "droid", "agy", "opencode"].map(name => ({ name, enabled: false }));
+  const agents = DEFAULTS.agents.filter(a => a.name !== "codex").map(({name}) => ({ name, enabled: false }));
   agents.push({ name: "codex", role: "main", cwd: "worktree", argv: [process.execPath, agent, "judge", "{{promptText}}"], report: "whole" });
   for (const name of ["alpha", "beta"]) agents.push({ name, role: "reviewer", cwd: "worktree", argv: [process.execPath, agent, name, "{{promptText}}"], report: "whole" });
   const members = [];

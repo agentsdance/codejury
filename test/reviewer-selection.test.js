@@ -1,3 +1,4 @@
+import { DEFAULTS } from "../lib/config.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readdir, rm } from "node:fs/promises";
@@ -25,7 +26,7 @@ test("review and reply combine reviewer aliases without launching duplicate or u
   await writeFile(path.join(repo, "a.txt"), "after\n");
   await git("commit", "-qam", "change");
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
-    ...["codex", "claude", "grok", "droid", "agy", "opencode"].map(name => ({ name, enabled: false })),
+    ...DEFAULTS.agents.map(({name}) => ({ name, enabled: false })),
     ...["judge", "alpha", "beta", "unselected"].map(name => ({
       name, role: name === "judge" ? "main" : "reviewer", cwd: "worktree", report: "whole",
       argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"],

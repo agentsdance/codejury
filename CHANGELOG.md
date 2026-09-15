@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add Kimi Code as a built-in reviewer and judge, with explicit worktree selection, reviewer plan mode, and installed CLI regression coverage.
+
 - Add OpenCode as a built-in reviewer and judge, with JSON report parsing, separate role permissions, fresh conversations, and installed-package checks.
 
 ## 0.5.0 — 2026-09-16
