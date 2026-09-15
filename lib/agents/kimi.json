@@ -4,7 +4,7 @@
   "role": "reviewer",
   "enabled": false,
   "promptDelivery": "argv",
-  "cwd": "flag",
+  "cwd": "worktree",
   "argv": [
     "kimi",
     "--quiet",
@@ -16,18 +16,8 @@
   "sandbox": "none",
   "sandboxNote": "print mode auto-approves every tool call; only the review prompt keeps it read-only",
   "resume": {
-    "supported": true,
-    "argv": [
-      "kimi",
-      "--quiet",
-      "--work-dir",
-      "{{worktree}}",
-      "--session",
-      "{{sessionId}}",
-      "--prompt",
-      "{{promptText}}"
-    ],
-    "idFrom": "session[ _-]?id[:=]?\\s*([0-9a-zA-Z-]{8,})"
+    "supported": false,
+    "reason": "final text cannot reliably identify a session; replies start fresh with finding context"
   },
   "report": "whole",
   "expectSeconds": 400,
