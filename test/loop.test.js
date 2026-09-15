@@ -565,7 +565,7 @@ test("an explicitly requested configured reviewer is actually launched", async (
     { name: "claude", role: "main", argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"] },
     { name: "grok", enabled: false },
     { name: "droid", enabled: false },
-    { name: "agy", enabled: false },
+    { name: "agy", enabled: false }, { name: "opencode", enabled: false },
     {
       name: "traecli", role: "reviewer", promptDelivery: "argv", cwd: "worktree",
       argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"], report: "whole",

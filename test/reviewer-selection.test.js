@@ -25,7 +25,7 @@ test("review and reply combine reviewer aliases without launching duplicate or u
   await writeFile(path.join(repo, "a.txt"), "after\n");
   await git("commit", "-qam", "change");
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
-    ...["codex", "claude", "grok", "droid", "agy"].map(name => ({ name, enabled: false })),
+    ...["codex", "claude", "grok", "droid", "agy", "opencode"].map(name => ({ name, enabled: false })),
     ...["judge", "alpha", "beta", "unselected"].map(name => ({
       name, role: name === "judge" ? "main" : "reviewer", cwd: "worktree", report: "whole",
       argv: [process.execPath, "-e", "console.log('NO NEW FINDINGS')"],

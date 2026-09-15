@@ -22,6 +22,7 @@ It uses illustrative data and does not start agents.
 | OpenAI Codex | `codex` | Main agent (judge) |
 | xAI Grok | `grok` | Reviewer |
 | Factory Droid | `droid` | Reviewer |
+| OpenCode | `opencode` | Reviewer or judge |
 | Google Antigravity | `agy` | Reviewer |
 
 Install and authenticate each agent's CLI separately. Run `jury agents` to see
@@ -195,3 +196,9 @@ program with ChatGPT Pro (20x) access.
 ## License
 
 [MIT](LICENSE).
+
+### OpenCode
+
+Install [OpenCode](https://opencode.ai/docs/cli/) (`npm install -g opencode-ai`) and run `opencode auth login` to configure a provider. Verified against CLI 1.18.31. Select it with `--reviewer opencode` / `--jury opencode`, `--judge opencode`, or `jury agents judge opencode`.
+
+Reviews use `opencode run --agent plan --format json`; edits, delegation, and outside-directory access are denied. The plan agent may inspect Git through its permitted shell commands; these CLI tool permissions are not an OS sandbox and local OpenCode configuration must be trusted. Judges use the build agent with `--auto` to edit and run checks; explicit permission denials still apply. Both roles run in the target worktree. Replies start fresh with the relevant finding context; Jury never resumes the latest unrelated conversation. Only assistant text events are parsed; malformed output, error events, empty output, failed exits, and timeouts cannot approve a review.

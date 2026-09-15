@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add OpenCode as a built-in reviewer and judge, with JSON report parsing, separate role permissions, fresh conversations, and installed-package checks.
+
 ## 0.5.0 — 2026-09-16
 
 - Add Google Antigravity (`agy`) as a built-in reviewer, selectable with `--jury agy` or as the main agent with `--judge agy` / `jury agents judge agy`.
