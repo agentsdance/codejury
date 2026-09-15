@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-09-16
 
 - Validate new agents through fresh installed CLI tests; fix Qwen worktree and Git access, Copilot Git permissions, final structured result handling, and conversation isolation. All six new agents are opt-in.
 
