@@ -602,7 +602,7 @@ async function cmdAgent(argv) {
   console.log(st.field("trunk", `${trunk}${trunkGiven ? st.muted("  (detected)") : ""}`));
   if (target.title) console.log(st.field("title", target.title.slice(0, 72)));
   console.log(st.field("judge", st.agent(judge.name)));
-  console.log(st.field("juries", pool.map((a) => st.agent(a.name)).join(", ")
+  console.log(st.field("agents", pool.map((a) => st.agent(a.name)).join(", ")
     + (values["dry-run"] ? st.warn("  (dry run)") : "")));
   console.log(st.field("rounds", st.muted(`${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`)));
   console.log(st.field("fixes", st.muted(values.push
