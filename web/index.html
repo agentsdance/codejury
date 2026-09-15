@@ -123,14 +123,16 @@
   .tl { background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow);
         padding:18px 20px 14px; display:flex; flex-direction:column; gap:12px; overflow-x:auto; }
   .tl-inner { min-width:660px; display:flex; flex-direction:column; gap:10px; }
-  .tl-rounds { position:relative; height:20px; }
+  .tl-rounds { position:relative; height:20px; margin-left:86px; }
   /* An abandoned span is drawn hollow: it happened, but it produced nothing,
      and filling it the same as a completed round overstates the run. */
   .seg[data-abandoned="1"] { opacity:.45; background:repeating-linear-gradient(
     45deg, var(--line) 0 4px, transparent 4px 8px); color:var(--muted); }
   .tl-rounds span { position:absolute; top:0; font-family:var(--mono); font-size:10.5px;
                     letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
-                    border-left:1px solid var(--line); padding-left:7px; }
+                    border-left:1px solid var(--line); padding-left:7px; white-space:nowrap; }
+  .tl-rounds span[data-end="1"] { transform:translateX(-100%); border-left:0;
+    border-right:1px solid var(--line); padding-left:0; padding-right:7px; }
   .lane { display:grid; grid-template-columns:74px 1fr; gap:12px; align-items:center; }
   .lane .who { font-family:var(--mono); font-size:12px; display:flex; align-items:center; gap:7px; }
   .lane .who .sw { width:9px; height:9px; border-radius:2px; }
@@ -1116,7 +1118,7 @@ function render(){
     // few seconds apart as "ROUNDROUNDROUND23" — unreadable, and it hid how
     // many rounds there actually were.
     `<div class="tl-rounds">${collapseMarks(RUN.marks).map(m=>
-      `<span style="left:${pct(m.at)}%" title="${esc(m.title ?? m.l)}">${esc(m.l)}</span>`).join("")}</div>` +
+      `<span style="left:${pct(m.at)}%"${pct(m.at) > 92 ? ' data-end="1"' : ""} title="${esc(m.title ?? m.l)}">${esc(m.l)}</span>`).join("")}</div>` +
     RUN.lanes.map(l=>`
       <div class="lane">
         <span class="who"><span class="ic" style="color:${l.who==="main"?"var(--main-hue)":hueFor(l.who)}">${icon(l.label)}</span>${esc(l.label)}</span>
