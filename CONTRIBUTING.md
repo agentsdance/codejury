@@ -38,3 +38,22 @@ Be respectful and specific. Critique code and ideas, avoid personal attacks, and
 Maintainers may remove abusive content or restrict disruptive participation.
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
 There is no guaranteed support response time.
+
+
+### Console regression checks
+
+`npm test` and `npm run test:package` use a temporary home and Git configuration,
+so a personal global judge cannot affect default-agent assertions.
+
+For the browser suite, run `npm ci`, `npx playwright install chromium`, then
+`npm run test:browser`. It packs and installs this checkout, launches that CLI's
+saved-run console, and loads its real HTTP page in Chromium. Fixtures cover all
+built-in agents, the legacy main lane, and an unknown agent in light/dark themes
+at wide and narrow viewport widths. Checks cover completed-bar contrast, state
+patterns, short/reply duration summaries, and multiple rounds. The summaries
+also retain readable contrast for running and interrupted segments.
+
+CI runs this browser suite separately from the Node/OS matrix. Failures retain
+screenshots, a trace, and the HTML report as `console-browser-failure` artifacts.
+Locally, inspect `playwright-report/index.html` or `test-results/` after a failure.
+These tests use saved review data; they do not call live model providers.

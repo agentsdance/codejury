@@ -45,7 +45,11 @@
     "prepublishOnly": "npm test && npm run test:package",
     "start": "node bin/jury.js --web-only",
     "test": "node scripts/test.mjs",
-    "test:package": "node scripts/check-package.mjs"
+    "test:package": "node scripts/check-package.mjs",
+    "test:browser": "node scripts/check-browser.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
 }

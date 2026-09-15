@@ -1,13 +1,15 @@
 // Verify the distribution users actually install, not just source-tree imports.
 import assert from 'node:assert/strict';
+import { testEnvironment } from './test-environment.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 const root = process.cwd();
+const isolated = testEnvironment();
 const temporary = mkdtempSync(path.join(tmpdir(), 'jury-package-'));
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const exec = (command, args, options = {}) => execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options });
+const exec = (command, args, options = {}) => execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: isolated.env, ...options });
 try {
   const [packed] = JSON.parse(exec(npm, ['pack', '--json', '--pack-destination', temporary]));
   const files = packed.files.map(f => f.path);
@@ -24,9 +26,10 @@ try {
   assert.match(exec(process.execPath, [installed, 'help', '--all'], { cwd: temporary }), /jury review <pr-url>/);
   // Full related-PR path: subprocess agents, real local remotes, fixes, resume, failures.
   exec(process.execPath, ['--test', 'test/review-group.test.js', 'test/reviewer-selection.test.js', 'test/agy.test.js'], {
-    cwd: root, env: { ...process.env, JURY_TEST_CLI: installed }, maxBuffer: 8e6,
+    cwd: root, env: { ...isolated.env, JURY_TEST_CLI: installed }, maxBuffer: 8e6,
   });
   console.log(`Verified installed @agentsdance/codejury@${version}: ${files.length} files, command help, related-PR fixes/push/resume/failure tests.`);
 } finally {
+  isolated.dispose();
   rmSync(temporary, { recursive: true, force: true });
 }

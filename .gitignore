@@ -5,3 +5,6 @@ jury.config.json
 cr.config.json
 *.tgz
 .DS_Store
+
+test-results/
+playwright-report/

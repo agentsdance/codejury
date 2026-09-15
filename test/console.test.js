@@ -57,8 +57,8 @@ async function loadRenderer() {
     'const TZ_LABEL = "UTC";',
     'const clockFmt = new Intl.DateTimeFormat("en-GB",' +
       ' { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });',
-    ...["esc", "hash", "bytes", "clamped", "bubble", "stampFor", "turnHTML", "reviewedCommit", "statusLabel"].map(fn),
-    "export { turnHTML, reviewedCommit, statusLabel, CLAMP };",
+    ...["esc", "hash", "bytes", "clamped", "bubble", "stampFor", "turnHTML", "reviewedCommit", "statusLabel", "timelineDuration"].map(fn),
+    "export { turnHTML, reviewedCommit, statusLabel, timelineDuration, CLAMP };",
   ].join("\n");
 
   return import("data:text/javascript;base64," + Buffer.from(mod).toString("base64"));
@@ -119,4 +119,28 @@ test("completed review status is plain language and labels legacy commit ids", a
     "2 reviewers failed to run",
     "human-intervention states keep their actionable explanation",
   );
+});
+
+
+test("timeline durations round consistently across seconds, minutes and short segments", async () => {
+  const { timelineDuration } = await loadRenderer();
+  for (const [s, e, expected] of [
+    [0, 0, "0s"], [6, 6.05, "3s"], [0, 59 / 60, "59s"],
+    [0, 59.6 / 60, "1 min"], [0, 1, "1 min"], [2, 12.7, "10.7 min"],
+    [0, 8.300000000000004, "8.3 min"], [2, 1, "0s"],
+  ]) assert.equal(timelineDuration({ s, e }), expected);
+});
+
+test("running and interrupted timeline segments retain measured elapsed time", async () => {
+  const { timelineDuration } = await loadRenderer();
+  assert.equal(timelineDuration({ r: 2, s: 7, e: 10, open: true }), "3 min");
+  assert.equal(timelineDuration({ r: 3, s: 11, e: 15, abandoned: true }), "4 min");
+});
+
+test("zero-width reply markers use recorded duration or a truthful sent fallback", async () => {
+  const { timelineDuration } = await loadRenderer();
+  assert.equal(timelineDuration({ r: "reply", s: 16, e: 16, t: "reply · 1.2s" }), "1.2s");
+  assert.equal(timelineDuration({ r: "reply", s: 16, e: 16, t: "reply · 0s" }), "0s");
+  assert.equal(timelineDuration({ r: "reply", s: 16, e: 16 }), "sent");
+  assert.equal(timelineDuration({ r: "reply", s: 16, e: 16, t: "reply failed" }), "sent");
 });
