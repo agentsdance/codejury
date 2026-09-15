@@ -1071,7 +1071,8 @@ async function cmdReply(argv) {
 
   await Promise.all(pool.map(async (a) => {
     const thread = threadFor(a.name, findings);
-    const resumable = Boolean(a.resume?.supported && a.resume?.argv?.length);
+    const sessionId = sessionsIn(events).get(a.name);
+    const resumable = replyArgv(a, { sessionId }).resumed;
     const text = buildReply({
       agent: a.name, thread, sha, worktree,
       // Without a session there is nothing carrying its review, so its own
@@ -1088,8 +1089,8 @@ async function cmdReply(argv) {
 
     if (values["dry-run"]) return;
 
-    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, promptFile: file, who: judge });
-    const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree }).argv };
+    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, sessionId, promptFile: file, who: judge });
+    const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree, sessionId }).argv };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);
     const r = await runAgent(spec, {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -184,6 +184,27 @@ for (const spec of cases) test(`${spec.name}: installed discovery, literal invoc
     assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/REVIEW COMPLETE/);
     const self=command(['review','--dir',worktree,'--trunk','master','--web=false','--push=false','--judge',spec.name,flag,spec.name]);
     assert.notEqual(self.status,0);assert.match(self.stderr,/selected judge and cannot review its own work/);
+  }
+  if (spec.resume) {
+    const {appendEvent,readEvents}=await import(pathToFileURL(path.join(root,'lib/store.js')));
+    const [slug]=await readdir(path.join(worktree,'runs'));
+    const runDir=path.join(worktree,'runs',slug);
+    const reports=(await readEvents(runDir)).filter(e=>e.t==='agent.report' && e.agent===spec.name);
+    const sessionId=reports.at(-1).sessionId;
+    await appendEvent(runDir,{t:'finding.raised',id:'reply-check',round:1,agent:spec.name,claim:'fixture claim',body:'original finding context'});
+    await appendEvent(runDir,{t:'finding.resolved',id:'reply-check',verdict:'rejected',reason:'fixture verdict'});
+    let reply=command(['reply','--dir',worktree,'--run',slug,'--jury',spec.name]);
+    assert.equal(reply.status,0,reply.stderr);
+    let call=JSON.parse(await readFile(path.join(worktree,'call.json')));
+    assert.equal(call.args[call.args.indexOf('--resume')+1],sessionId);
+    // A newer review without an ID must clear the old session and quote context.
+    await appendEvent(runDir,{t:'agent.report',agent:spec.name,round:2,sessionId:null});
+    reply=command(['reply','--dir',worktree,'--run',slug,'--jury',spec.name]);
+    assert.equal(reply.status,0,reply.stderr);
+    call=JSON.parse(await readFile(path.join(worktree,'call.json')));
+    assert.ok(!call.args.includes('--resume'));
+    assert.match(call.args[call.args.indexOf('--session-id')+1],/^[0-9a-f-]{36}$/);
+    assert.ok(call.args.some(a=>a.includes('original finding context')));
   }
   await script(clean+'process.exit(2);'); const failed = await invoke(agent); assert.equal(failed.ok,false); assert.equal(failed.verdict,'error'); assert.match(failed.report,/exited 2/);
   await script('setInterval(()=>{},1000);');
