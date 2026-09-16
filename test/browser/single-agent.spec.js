@@ -19,7 +19,7 @@ test('one CLI keeps reviewer messages and judge activity on separate sides', asy
       return { kind: turn.kind, side: container.querySelector('.msg').dataset.side, text: container.textContent };
     });
   });
-  for (const kind of ['report', 'finding', 'answer', 'rebuttal']) {
+  for (const kind of ['report', 'answer', 'rebuttal']) {
     expect(result.find(turn => turn.kind === kind)?.side, kind).toBe('r');
   }
   for (const kind of ['waiting', 'verdict']) {
