@@ -74,3 +74,19 @@ Use `jury review` (or a bare PR URL) for the loop and `jury --web-only` for save
 The old `review-once` and `web` commands were removed. Prefer `--reviewer` or `--jury`;
 `--agents` is a hidden compatibility alias. `jury agents` still checks executables.
 `jury`, `codejury`, and `cr` executable names remain available.
+
+### Automatic judge and jury
+
+On a fresh setup with exactly one installed supported agent CLI, `jury review` uses
+that agent for both judge and jury, keeping its separate reviewer and judge command
+permissions. With exactly two installed CLIs, either can be randomly selected as
+judge; the other reviews. Opt-in built-ins are included in this detection.
+
+The selected roles appear before the run starts and are saved with it. `jury reply`
+and `jury review --resume <slug>` reuse those assignments even if installed CLIs
+change. An unavailable saved agent causes an error rather than a fresh assignment.
+Explicit `--judge`, `--reviewer`/`--jury`, a saved global judge, or repository agent
+role/enabled settings take precedence over automatic selection for new runs.
+Explicit CLI role overrides on resume use the normal selection rules. Outside the
+automatic one-CLI fallback, the judge cannot review its own work. Zero or more than
+two installed CLIs retain the existing configured/default selection behavior.

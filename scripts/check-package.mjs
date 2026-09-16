@@ -25,7 +25,7 @@ try {
   assert.match(help, /--push=false/);
   assert.match(exec(process.execPath, [installed, 'help', '--all'], { cwd: temporary }), /jury review <pr-url>/);
   // Full related-PR path: subprocess agents, real local remotes, fixes, resume, failures.
-  exec(process.execPath, ['--test', 'test/review-group.test.js', 'test/reviewer-selection.test.js', 'test/agy.test.js', 'test/opencode.test.js', 'test/new-agents.test.js'], {
+  exec(process.execPath, ['--test', 'test/review-group.test.js', 'test/reviewer-selection.test.js', 'test/automatic-roles.test.js', 'test/agy.test.js', 'test/opencode.test.js', 'test/new-agents.test.js'], {
     cwd: root, env: { ...isolated.env, JURY_TEST_CLI: installed }, maxBuffer: 8e6,
   });
   console.log(`Verified installed @agentsdance/codejury@${version}: ${files.length} files, command help, related-PR fixes/push/resume/failure tests.`);

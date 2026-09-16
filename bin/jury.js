@@ -12,6 +12,7 @@ import { prepareGroup, groupContext, groupHead, reviewUrls, groupId, groupReady,
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
+import { automaticRoles, automaticReviewers } from "../lib/roles.js";
 import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, globalConfigPath } from "../lib/config.js";
 import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
@@ -61,7 +62,7 @@ Common flags
   --rounds <n>               stop after n rounds                                  (default: 10)
   --reviewer <name>          only these reviewers, repeatable or comma-separated  (default: configured reviewers)
   --jury <name>              same as --reviewer
-  --judge codex              one agent that triages and fixes                     (default: repository/global setting, then codex)
+  --judge codex              one agent that triages and fixes                     (default: configured, auto for 1–2 installed CLIs, then codex)
   --push <true|false>        commit and push fixes                                (default: true)
   --web <true|false>         open the browser console                             (default: true)
 
@@ -101,7 +102,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --rounds <n>               maximum rounds                                        (default: 10)
   --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured reviewers)
   --jury <name>              same as --reviewer
-  --judge <agent>            one agent that triages and fixes                      (default: repository/global setting, then codex)
+  --judge <agent>            one agent that triages and fixes                      (default: configured, auto for 1–2 installed CLIs, then codex)
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
   --web-only                 view saved reviews without running agents
@@ -574,10 +575,14 @@ async function cmdAgent(argv) {
       `no run at ${dir} — pass --dir <root-that-contains-runs>, then check \`jury runs --dir <root>\``,
     );
   }
-  const priorJudge = [...prior].reverse()
-    .find((e) => e.t === "target" && e.target?.judge)?.target.judge;
+  const priorTarget = [...prior].reverse().find(e => e.t === "target")?.target;
+  const priorJudge = priorTarget?.judge;
+  const roles = await automaticRoles(cfg, {
+    judge: values.judge, reviewers: requestedReviewers(values),
+    previous: values.resume ? priorTarget : null,
+  });
   const requestedJudge = values.judge ?? (values.resume ? priorJudge : null);
-  const judge = judgeAgent(cfg, requestedJudge);
+  const judge = judgeAgent(cfg, roles?.judge ?? requestedJudge);
   if (!judge) {
     const available = cfg.agents.map((a) => a.name).join(", ") || "none";
     if (requestedJudge) {
@@ -590,11 +595,12 @@ async function cmdAgent(argv) {
     if (!installed.ok) throw new Error(`judge "${judge.name}" is not installed (${installed.bin}); install it or select --judge <agent>`);
   }
   target.judge = judge.name;
+  if (roles) target.automaticRoles = roles;
 
-  // A judge cannot independently review its own work. Other configured main
-  // agents stay out of the pool rather than being silently demoted to writers
-  // with a read-only prompt.
-  const pool = selectReviewers(cfg, requestedReviewers(values), judge.name);
+  // Only the automatic one-CLI assignment permits self-review. Explicit
+  // selection keeps configured main agents out of the reviewer pool.
+  const pool = roles ? automaticReviewers(cfg, roles)
+    : selectReviewers(cfg, requestedReviewers(values), judge.name);
   if (!pool.length) throw new Error("no reviewers configured after excluding the judge");
   if (!values["dry-run"]) {
     const checks = await Promise.all(pool.map(probe));
@@ -1056,7 +1062,9 @@ async function cmdReply(argv) {
   const findings = await findingsIn(dir);
   const { sha } = await describe(worktree, "master");
 
-  let pool = selectReviewers(cfg, requestedReviewers(values), judge);
+  const roles = [...events].reverse().find(e => e.t === "target")?.target?.automaticRoles;
+  let pool = roles ? automaticReviewers(cfg, roles, requestedReviewers(values))
+    : selectReviewers(cfg, requestedReviewers(values), judge);
   // Only reviewers that actually said something, and only once you have
   // answered them: a reply that says "still open" for every item is noise.
   pool = pool.filter((a) => {

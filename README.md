@@ -44,18 +44,20 @@ Additional CLIs can be added through [custom agent configuration](docs/configura
 
 You need Node.js 20+, Git, and authenticated coding-agent CLIs. GitHub PRs also need
 [GitHub CLI](https://cli.github.com/) (`gh auth login`) and Git credentials that can clone the repository.
-Start with an installed Codex judge and Claude reviewer, or choose your own configured agents.
+With one installed supported CLI, Jury automatically uses it as both judge and jury.
+With two, it randomly assigns one as judge and the other as jury. Explicit role settings take precedence.
 Agent installation, login, subscriptions, and usage charges are separate from Code Jury.
 
 ```sh
 npm install -g @agentsdance/codejury
 jury agents
-jury review https://github.com/OWNER/REPO/pull/123 --reviewer claude --push=false
+jury review https://github.com/OWNER/REPO/pull/123 --push=false
 ```
 
 Replace the example URL with your PR. `jury agents` lists configured executables and roles;
 it checks installation, not authentication or available quota. Authenticate each selected agent
-using its own CLI before the review. With the command above, Codex judges and Claude reviews.
+using its own CLI before the review. The selected judge and juries are printed before agents start,
+and automatic assignments are saved for replies and resume.
 
 **Reviews can edit files and create commits. Pushing is enabled by default.**
 `--push=false` disables Jury's pushes; it is not a read-only mode or an agent sandbox.
