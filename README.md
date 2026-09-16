@@ -18,12 +18,21 @@ It uses illustrative data and does not start agents.
 
 | Code agent | CLI name | Default role |
 |---|---|---|
-| Anthropic Claude Code | `claude` | Reviewer |
 | OpenAI Codex | `codex` | Main agent (judge) |
+| Anthropic Claude Code | `claude` | Reviewer |
 | xAI Grok | `grok` | Reviewer |
 | Factory Droid | `droid` | Reviewer |
-| OpenCode | `opencode` | Reviewer or judge |
 | Google Antigravity | `agy` | Reviewer |
+| OpenCode | `opencode` | Opt-in |
+| Qwen Code | `qwen` | Opt-in |
+| GitHub Copilot CLI | `copilot` | Opt-in |
+| Cursor Agent CLI | `cursor` | Opt-in |
+| Sourcegraph Amp | `amp` | Opt-in |
+| Moonshot Kimi CLI | `kimi` | Opt-in |
+
+**Opt-in** agents are fully supported as reviewers and judges, but stay out of the default pool so
+a fresh install does not require every CLI to be present. Select one by name — no configuration
+needed. See [Built-in agents](#built-in-agents) for install commands.
 
 Install and authenticate each agent's CLI separately. Run `jury agents` to see
 which enabled agents are installed (`ok`) or missing (`MISSING`). Any enabled
