@@ -137,3 +137,33 @@ test("nonzero agent exit with a stop token is an error, never approval", async (
   assert.equal(result.verdict, "error");
   assert.match(result.report, /quota exhausted/);
 });
+
+test("Kimi Code's JSON lines are read as the assistant's words only", () => {
+  // The shape kimi prints with --output-format stream-json (0.39.1). The tool
+  // result quotes the prompt's stop-token instruction, and the meta lines carry
+  // the version and the session hint; none of that is the report.
+  const stream = [
+    { role: "meta", type: "system.version", version: "0.39.1" },
+    { role: "assistant", content: "Reading the diff first.", tool_calls: [{ type: "function", id: "Bash_0", function: { name: "Bash", arguments: JSON.stringify({ command: "grep -n FINDINGS prompt.md" }) } }] },
+    { role: "tool", tool_call_id: "Bash_0", content: '40:say exactly "NO NEW FINDINGS" on its own line\n' },
+    { role: "meta", type: "turn.step.retrying", failed_attempt: 1, next_attempt: 2 },
+    { role: "assistant", content: "FINDING: jitter is deletable\nWHERE: main_test.go:2237\n\nEvery assertion accepts the nominal delay." },
+    { role: "meta", type: "session.resume_hint", session_id: "session_75050fde-14b3-43af-a479-2946f0f11375" },
+  ].map((o) => JSON.stringify(o)).join("\n") + "\n";
+  const report = extractReport(stream, "kimi-json");
+  assert.equal(report, "Reading the diff first.\n\nFINDING: jitter is deletable\nWHERE: main_test.go:2237\n\nEvery assertion accepts the nominal delay.");
+  assert.equal(hasStopToken(report, "NO NEW FINDINGS"), false, "a tool result must not end the loop");
+  const [f] = parseFindings(report);
+  assert.equal(f.claim, "jitter is deletable");
+  assert.equal(f.loc, "main_test.go:2237");
+  assert.doesNotMatch(report, /session_75050fde|system\.version|retrying/);
+
+  // Typed content parts are read too.
+  const parts = JSON.stringify({ role: "assistant", content: [{ type: "text", text: "NO NEW FINDINGS" }] });
+  assert.equal(extractReport(`${parts}\n`, "kimi-json"), "NO NEW FINDINGS");
+
+  // Plain text means the agent was not run in stream-json mode, and a stream
+  // with no answer never reviewed anything. Neither may be read as a report.
+  assert.throws(() => extractReport("• NO NEW FINDINGS\n", "kimi-json"), /Invalid Kimi Code JSON output/);
+  assert.throws(() => extractReport(`${JSON.stringify({ role: "meta", type: "system.version" })}\n`, "kimi-json"), /no assistant text/);
+});

@@ -1,26 +1,43 @@
 {
   "name": "kimi",
-  "product": "Moonshot Kimi CLI",
+  "product": "Moonshot Kimi Code CLI",
   "role": "reviewer",
   "enabled": false,
   "promptDelivery": "argv",
   "cwd": "worktree",
   "argv": [
     "kimi",
-    "--quiet",
-    "--work-dir",
-    "{{worktree}}",
-    "--prompt",
-    "{{promptText}}"
+    "-p",
+    "{{promptText}}",
+    "--output-format",
+    "stream-json",
+    "--agent-file",
+    "{{packageDir}}/lib/agents/kimi-reviewer.md"
   ],
-  "sandbox": "none",
-  "sandboxNote": "print mode auto-approves every tool call; only the review prompt keeps it read-only",
+  "judgeArgv": [
+    "kimi",
+    "-p",
+    "{{promptText}}",
+    "--output-format",
+    "stream-json"
+  ],
+  "sandbox": "tools",
+  "sandboxNote": "prompt mode auto-approves tool calls; the shipped reviewer profile removes the Edit and Write tools and allows only the read-only explore sub-agent, but the shell stays available",
   "resume": {
-    "supported": false,
-    "reason": "final text cannot reliably identify a session; replies start fresh with finding context"
+    "supported": true,
+    "argv": [
+      "kimi",
+      "-p",
+      "{{promptText}}",
+      "--output-format",
+      "stream-json",
+      "--session",
+      "{{sessionId}}"
+    ],
+    "idFrom": "session_id\\W{0,3}((?:session_)?[0-9a-f]{8}-[0-9a-f-]{27})"
   },
-  "report": "whole",
-  "expectSeconds": 400,
-  "install": "uv tool install --python 3.13 kimi-cli",
-  "docs": "https://github.com/MoonshotAI/kimi-cli"
+  "report": "kimi-json",
+  "expectSeconds": 600,
+  "install": "npm install -g @moonshot-ai/kimi-code",
+  "docs": "https://moonshotai.github.io/kimi-code/"
 }

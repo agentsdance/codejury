@@ -18,7 +18,7 @@ they do not validate a provider's current authentication or CLI compatibility.
 | `finding reproduce` | Evidence persisted and visible in subsequent listing; invalid inputs do not mutate events | `cli-commands` |
 | `finding resolve` | All four verdicts; acceptance requires reproduction and test evidence; persisted output | `cli-commands` |
 | `finding settled` | Empty output and regenerated file agree with resolved findings | `cli-commands` |
-| `reply` | Selected reviewers receive their own findings; reply events/output; empty reply refused | `reviewer-selection`, `new-agents`, `cli-commands` |
+| `reply` | Selected reviewers receive their own findings; reply events/output; empty reply refused | `reviewer-selection`, `new-agents`, `kimi`, `cli-commands` |
 | `runs` | Empty listing and saved run slug, title, rounds, finding counts | `cli-commands` |
 | `agents` | Executable availability, missing executable failure, effective judge role | `cli-commands`, agent integration tests |
 | `agents judge <name>` | Every built-in set, queried in a different directory, and shown as main in listing | `cli-commands` |
