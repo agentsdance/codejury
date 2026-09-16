@@ -57,7 +57,7 @@ async function loadRenderer() {
     'const TZ_LABEL = "UTC";',
     'const clockFmt = new Intl.DateTimeFormat("en-GB",' +
       ' { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });',
-    ...["esc", "hash", "bytes", "clamped", "bubble", "stampFor", "turnHTML", "reviewedCommit", "statusLabel", "timelineDuration"].map(fn),
+    ...["esc", "hash", "bytes", "clamped", "bubble", "stampFor", "isJudgeTurn", "turnHTML", "reviewedCommit", "statusLabel", "timelineDuration"].map(fn),
     "export { turnHTML, reviewedCommit, statusLabel, timelineDuration, CLAMP };",
   ].join("\n");
 

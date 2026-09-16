@@ -1268,9 +1268,24 @@ function stampFor(t) {
   return `<time title="${esc(abs)}">${esc(rel)}</time>`;
 }
 
+// Which participant spoke this turn. Name alone cannot say: when one CLI is
+// both judge and reviewer they share a name, and keying off the name put the
+// reviewer's own findings and reports on the judge's side of the thread. The
+// kind of turn is what carries the role — plus `judging` for heartbeats, which
+// either participant can emit.
+function isJudgeTurn(t) {
+  switch (t.kind) {
+    case "finding": case "streaming": case "report": case "answer": return false;
+    case "rebuttal": return t.judging ?? (t.who === judgeName());
+    case "waiting": return !!t.judging;
+    default: return t.who === judgeName();
+  }
+}
+
 function turnHTML(t, agent) {
-  const side = SIDE(t.who);
-  const nm = t.who === judgeName() ? judgeName() : agent;
+  const judge = isJudgeTurn(t);
+  const side = judge ? "l" : "r";
+  const nm = judge ? judgeName() : agent;
   let body = "";
   switch (t.kind) {
     case "finding":
@@ -1295,7 +1310,7 @@ function turnHTML(t, agent) {
       // being re-argued, so it names the claim and leaves the words to the
       // report. Claude's turn in the thread does carry text, and shows it.
       body = `<div class="bub" data-k="rebuttal"
-        ><span class="hd">${t.who === judgeName() ? "still open" : "not convinced"}</span
+        ><span class="hd">${judge ? "still open" : "not convinced"}</span
         >${t.claim ? `<span class="re">${esc(t.claim)}</span>` : ""}${t.text ? `\n${esc(t.text)}` : ""}</div>`;
       break;
     case "commit":
@@ -1572,9 +1587,9 @@ function foldConversation(events) {
         // The judge's own turn is the exception: it is not an excerpt of anything
         // shown elsewhere, so dropping its text would lose it entirely.
         const who = e.who ?? "?";
-        const turn = { who, kind: "rebuttal", id: e.id,
+        const turn = { who, judging: !e.agent && who === judge, kind: "rebuttal", id: e.id,
           claim: claimOf.get(e.id) ?? "", ts: e.ts };
-        if (who === judge) turn.text = e.text ?? "";
+        if (turn.judging) turn.text = e.text ?? "";
         thread(owner.get(e.id) ?? e.agent ?? "?").turns.push(turn);
         break;
       }
@@ -1590,8 +1605,12 @@ function foldConversation(events) {
         // interleave their heartbeats, so "is it the last turn?" failed on
         // every alternation and a nine-minute round grew 81 bubbles instead of
         // one.
+        // Identity is role plus name, not name alone: one CLI can be both judge
+        // and reviewer, and then the two participants share a name.
+        const judging = e.forAgent != null;
         const w = t.turns.find(
-          (x) => x.kind === "waiting" && x.round === e.round && x.who === e.agent,
+          (x) => x.kind === "waiting" && x.round === e.round && x.who === e.agent
+            && !!x.judging === judging,
         );
         if (w) { w.seconds = e.seconds; w.quietSeconds = e.quietSeconds ?? null; break; }
         // Real output already supersedes it; do not regress to a placeholder.
@@ -1599,9 +1618,10 @@ function foldConversation(events) {
         // turn, but the main agent triaging afterwards is a new speaker on the
         // same thread — keying this on the thread dropped every triage
         // heartbeat, which is the longest silence in the round and the reason
-        // the heartbeat exists.
-        if (t.turns.some((x) => (x.kind === "streaming" || x.kind === "report") && x.round === e.round && x.who === e.agent)) break;
-        t.turns.push({ who: e.agent, kind: "waiting", round: e.round, seconds: e.seconds, ts: e.ts });
+        // the heartbeat exists. A judging beat is never superseded by the
+        // reviewer's output, even when they share a name.
+        if (!judging && t.turns.some((x) => (x.kind === "streaming" || x.kind === "report") && x.round === e.round && x.who === e.agent)) break;
+        t.turns.push({ who: e.agent, judging, kind: "waiting", round: e.round, seconds: e.seconds, ts: e.ts });
         break;
       }
       case "agent.chunk": {
@@ -1609,7 +1629,8 @@ function foldConversation(events) {
         const last = t.turns[t.turns.length - 1];
         if (last?.kind === "streaming" && last.round === e.round) last.text += e.text ?? "";
         else {
-          const w = t.turns.findIndex((x) => x.kind === "waiting" && x.round === e.round);
+          // Only the reviewer's own placeholder, never the judge's triage beat.
+          const w = t.turns.findIndex((x) => x.kind === "waiting" && x.round === e.round && !x.judging);
           const turn = { who: e.agent, kind: "streaming", round: e.round, text: e.text ?? "", ts: e.ts };
           if (w >= 0) t.turns.splice(w, 1, turn); else t.turns.push(turn);
         }
@@ -1618,7 +1639,7 @@ function foldConversation(events) {
       case "agent.report": {
         const t = thread(e.agent);
         const i = t.turns.findIndex(
-          (x) => (x.kind === "streaming" || x.kind === "waiting") && x.round === e.round,
+          (x) => (x.kind === "streaming" || (x.kind === "waiting" && !x.judging)) && x.round === e.round,
         );
         const turn = { who: e.agent, kind: "report", round: e.round,
           verdict: e.verdict, text: e.report ?? "", seconds: e.seconds, ts: e.ts };

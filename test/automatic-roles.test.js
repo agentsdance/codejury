@@ -88,7 +88,12 @@ else console.log('NO NEW FINDINGS');
     ? `Found 1 code agent: ${expectedJudge}.\n${expectedJudge} will work as both judge and jury.`
     : `Found 2 code agents: ${installed.join(', ')}.\n${expectedJudge} will work as judge, and ${expectedReviewer} will work as jury.`;
   assert.ok(review.stdout.includes(announcement), review.stdout);
-  assert.ok(review.stdout.indexOf(announcement) < review.stdout.indexOf('REVIEW COMPLETE'));
+  // Anchored on the first round header, which prints before any agent launches:
+  // ordering against REVIEW COMPLETE alone also passes if the roles are
+  // announced after the agents have already run, which is too late to be useful.
+  const firstRound = review.stdout.search(/round 1\b/);
+  assert.ok(firstRound > 0, review.stdout);
+  assert.ok(review.stdout.indexOf(announcement) < firstRound, review.stdout);
 
   assert.match(review.stdout, new RegExp(`judge\\s+${expectedJudge}`));
   assert.match(review.stdout, new RegExp(`juries\\s+${expectedReviewer}`));
@@ -108,7 +113,14 @@ else console.log('NO NEW FINDINGS');
   // Change both the random draw and installed CLIs. Neither may reassign a run.
   await writeFile(preload, `Math.random = () => ${random === 0 ? 0.999 : 0};`);
   await writeFile(path.join(bin, 'qwen'), script, { mode: 0o755 });
+  // Count events first: asserting over the whole history would be satisfied by
+  // the initial review's reply, so a standalone `reply` that answered nobody
+  // would still pass.
+  const beforeReply = events.length;
   await invoke(['reply', '--dir', repo, '--run', slug]);
+  const replied = (await readEvents(runDir)).slice(beforeReply);
+  assert.ok(replied.some(e => e.t === 'reply.answered' && e.agent === expectedReviewer),
+    JSON.stringify(replied));
   await invoke([...args, '--resume', slug]);
   events = await readEvents(runDir);
   assert.ok(events.filter(e => e.t === 'target').every(e => JSON.stringify(e.target.automaticRoles) === JSON.stringify(roles)));

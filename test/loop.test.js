@@ -428,6 +428,45 @@ test("a reviewer's own heartbeat still opens its own thread", async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+test("the judge's triage heartbeat survives when one CLI is both judge and reviewer", async () => {
+  const dir = await tmp();
+  // Automatic roles can assign the same CLI both roles when only one is
+  // installed, so judge and reviewer share a name. The console keyed speaker
+  // identity on the name alone, so the reviewer's own report suppressed every
+  // judge heartbeat and triage — the longest step in the round — showed
+  // nothing at all.
+  await appendEvent(dir, { t: "agent.chunk", agent: "codex", round: 1, text: "reading" });
+  await appendEvent(dir, { t: "agent.report", agent: "codex", round: 1, verdict: "found", report: "FINDING: x" });
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", forAgent: "codex", round: 1, seconds: 5 });
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", forAgent: "codex", round: 1, seconds: 10 });
+
+  const threads = conversation(await readEvents(dir));
+  assert.deepEqual(threads.map((t) => t.agent), ["codex"], "one thread, not one per role");
+  const waiting = threads[0].turns.filter((t) => t.kind === "waiting");
+  assert.equal(waiting.length, 1, "the judge's heartbeat must survive the reviewer's report");
+  assert.equal(waiting[0].seconds, 10, "and collapse into one turn kept up to date");
+  assert.ok(waiting[0].judging, "marked as the judge speaking, not the reviewer");
+  assert.ok(threads[0].turns.some((t) => t.kind === "report"), "report survives too");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("a shared-name reviewer's own beat and the judge's beat stay separate turns", async () => {
+  const dir = await tmp();
+  // Both participants are "codex" in the same round: the reviewer waiting on
+  // its own run, and the judge triaging its finding. Collapsing them into one
+  // turn would attribute one participant's elapsed time to the other.
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: "codex", claim: "c" });
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", round: 1, seconds: 7 });
+  await appendEvent(dir, { t: "agent.alive", agent: "codex", forAgent: "codex", round: 1, seconds: 3 });
+
+  const threads = conversation(await readEvents(dir));
+  const waiting = threads[0].turns.filter((t) => t.kind === "waiting");
+  assert.equal(waiting.length, 2, "two participants, two turns");
+  assert.deepEqual(waiting.map((t) => [!!t.judging, t.seconds]), [[false, 7], [true, 3]]);
+  await rm(dir, { recursive: true, force: true });
+});
+
 // A clean round is not convergence while a finding from an earlier round is
 // still open. `runRound` returning clean used to exit the loop immediately,
 // ahead of the still-open check at the end of the round body — so a finding
