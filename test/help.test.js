@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-const cli = new URL("../bin/jury.js", import.meta.url).pathname;
+const cli = process.env.JURY_TEST_CLI ?? new URL("../bin/jury.js", import.meta.url).pathname;
 const help = (...args) => execFileSync(process.execPath, [cli, ...args], { encoding: "utf8" });
 test("command help works without executing a command and is scoped to its topic", () => {
   for (const topic of ["review", "finding", "reply", "runs", "agents", "version"]) {

@@ -34,7 +34,7 @@ test("default web opens a URL selecting the current run, even on a fallback port
   occupied.listen(0, "127.0.0.1"); await once(occupied, "listening");
   t.after(() => new Promise(resolve => occupied.close(resolve)));
   const port = occupied.address().port;
-  const child = spawn(process.execPath, [path.resolve("bin/jury.js"), "review", "--dir", repo,
+  const child = spawn(process.execPath, [process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "review", "--dir", repo,
     "--trunk", "main", "--rounds", "1", "--dry-run", "--agents", "claude", "--port", String(port)],
     { cwd: repo, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";

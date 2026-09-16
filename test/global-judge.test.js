@@ -6,7 +6,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadConfig, judgeAgent, reviewers, saveGlobalJudge } from "../lib/config.js";
-const cli = fileURLToPath(new URL("../bin/jury.js", import.meta.url));
+const cli = process.env.JURY_TEST_CLI ?? fileURLToPath(new URL("../bin/jury.js", import.meta.url));
 
 test("global judge persists across CLI invocations and directories, with reset and validation", async t => {
   const home = await mkdtemp(path.join(tmpdir(), "jury-global-"));

@@ -199,3 +199,16 @@ test("a failed reply stops the loop and keeps already-created fixes", async t =>
   assert.ok(events.some(e => e.t === "commit.pushed" && !e.pushed));
   assert.equal((await readFile(path.join(run.target.workspace, "PR1", "contract.txt"), "utf8")).trim(), "v3");
 });
+
+
+test("bare PR URLs run the installed review loop and push verified fixes", async t => {
+  const f = await groupFixture(t);
+  const result = await f.review([], {}, []);
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /REVIEW COMPLETE/);
+  const { run } = await f.saved();
+  assert.equal(run.target.state, "converged");
+  for (const m of f.members) {
+    assert.equal(await f.git(m.remote, "show", `${m.branch}:contract.txt`), "v3");
+  }
+});

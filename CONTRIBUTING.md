@@ -17,6 +17,9 @@ Use Node.js 20+ and Git. Tests use temporary repositories and local fake agent e
 they do not require provider accounts. CI covers Linux and macOS. The optional Go console
 prototype can be checked with `go test ./...` using the version declared in `go.mod`.
 
+See the [CLI command coverage map](docs/cli-test-coverage.md) for the behavioral checks
+run against the installed package and their limits.
+
 The supported CLI entrypoint is `bin/jury.js`; orchestration and persistence live in `lib/`,
 the console in `web/index.html`, and tests in `test/`. Run `node bin/jury.js help --all`
 for current commands. `npm start` opens saved reviews.
