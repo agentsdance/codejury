@@ -16,19 +16,19 @@ It uses illustrative data and does not start agents.
 
 ## Supported code agents
 
-| Code agent | CLI name | Default role |
-|---|---|---|
-| OpenAI Codex | `codex` | Main agent (judge) |
-| Anthropic Claude Code | `claude` | Reviewer |
-| xAI Grok | `grok` | Reviewer |
-| Factory Droid | `droid` | Reviewer |
-| Google Antigravity | `agy` | Reviewer |
-| OpenCode | `opencode` | Opt-in |
-| Qwen Code | `qwen` | Opt-in |
-| GitHub Copilot CLI | `copilot` | Opt-in |
-| Cursor Agent CLI | `cursor` | Opt-in |
-| Sourcegraph Amp | `amp` | Opt-in |
-| Moonshot Kimi CLI | `kimi` | Opt-in |
+|  | Code agent | CLI name | Default role |
+|:--:|---|---|---|
+| <img src="https://www.google.com/s2/favicons?domain=openai.com&sz=64" width="20" height="20" alt=""> | OpenAI Codex | `codex` | Main agent (judge) |
+| <img src="https://www.google.com/s2/favicons?domain=anthropic.com&sz=64" width="20" height="20" alt=""> | Anthropic Claude Code | `claude` | Reviewer |
+| <img src="https://www.google.com/s2/favicons?domain=x.ai&sz=64" width="20" height="20" alt=""> | xAI Grok | `grok` | Reviewer |
+| <img src="https://www.google.com/s2/favicons?domain=factory.ai&sz=64" width="20" height="20" alt=""> | Factory Droid | `droid` | Reviewer |
+| <img src="https://www.google.com/s2/favicons?domain=antigravity.google&sz=64" width="20" height="20" alt=""> | Google Antigravity | `agy` | Reviewer |
+| <img src="https://www.google.com/s2/favicons?domain=opencode.ai&sz=64" width="20" height="20" alt=""> | OpenCode | `opencode` | Opt-in |
+| <img src="https://www.google.com/s2/favicons?domain=qwen.ai&sz=64" width="20" height="20" alt=""> | Qwen Code | `qwen` | Opt-in |
+| <img src="https://www.google.com/s2/favicons?domain=github.com&sz=64" width="20" height="20" alt=""> | GitHub Copilot CLI | `copilot` | Opt-in |
+| <img src="https://www.google.com/s2/favicons?domain=cursor.com&sz=64" width="20" height="20" alt=""> | Cursor Agent CLI | `cursor` | Opt-in |
+| <img src="https://www.google.com/s2/favicons?domain=ampcode.com&sz=64" width="20" height="20" alt=""> | Sourcegraph Amp | `amp` | Opt-in |
+| <img src="https://www.google.com/s2/favicons?domain=kimi.com&sz=64" width="20" height="20" alt=""> | Moonshot Kimi CLI | `kimi` | Opt-in |
 
 **Opt-in** agents are fully supported as reviewers and judges, but stay out of the default pool so
 a fresh install does not require every CLI to be present. Select one by name — no configuration
