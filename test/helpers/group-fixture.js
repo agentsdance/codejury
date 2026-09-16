@@ -78,9 +78,9 @@ if(a[0]==='pr'&&a[1]==='view'){
 `, { mode: 0o755 });
   const state = path.join(root, "state"); await mkdir(state);
   const cli = process.env.JURY_TEST_CLI ?? new URL("../../bin/jury.js", import.meta.url).pathname;
-  const review = async (args = [], extraEnv = {}) => {
+  const review = async (args = [], extraEnv = {}, prefix = ["review"]) => {
     try {
-      const result = await exec(process.execPath, [cli, "review", ...members.map(m => m.url),
+      const result = await exec(process.execPath, [cli, ...prefix, ...members.map(m => m.url),
         "--dir", state, "--web=false", "--rounds", "3", ...args], { cwd: root, env: { ...env, ...extraEnv }, maxBuffer: 4e6 });
       return { ...result, code: 0 };
     } catch (error) { return { stdout: error.stdout ?? "", stderr: error.stderr ?? "", code: error.code }; }

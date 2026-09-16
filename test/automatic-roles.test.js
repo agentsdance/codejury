@@ -84,6 +84,12 @@ else console.log('NO NEW FINDINGS');
   const args = ['review', '--dir', repo, '--trunk', 'master', '--rounds', '2', '--web=false', '--push=false'];
   const review = await invoke(args);
   assert.match(review.stdout, /REVIEW COMPLETE/);
+  const announcement = installed.length === 1
+    ? `Found 1 code agent: ${expectedJudge}.\n${expectedJudge} will work as both judge and jury.`
+    : `Found 2 code agents: ${installed.join(', ')}.\n${expectedJudge} will work as judge, and ${expectedReviewer} will work as jury.`;
+  assert.ok(review.stdout.includes(announcement), review.stdout);
+  assert.ok(review.stdout.indexOf(announcement) < review.stdout.indexOf('REVIEW COMPLETE'));
+
   assert.match(review.stdout, new RegExp(`judge\\s+${expectedJudge}`));
   assert.match(review.stdout, new RegExp(`juries\\s+${expectedReviewer}`));
   const [slug] = await readdir(path.join(repo, 'runs'));

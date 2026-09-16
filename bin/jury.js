@@ -613,6 +613,13 @@ async function cmdAgent(argv) {
   }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
 
+  if (roles && !values.resume) {
+    const names = knownAgents(cfg).filter(a => a.name === roles.judge || roles.reviewers.includes(a.name)).map(a => a.name);
+    console.log(`Found ${names.length} code agent${names.length === 1 ? "" : "s"}: ${names.join(", ")}.`);
+    console.log(names.length === 1
+      ? `${judge.name} will work as both judge and jury.`
+      : `${judge.name} will work as judge, and ${pool[0].name} will work as jury.`);
+  }
   console.log(st.field("target", `${target.repo} ${st.bold(target.id)}`));
   console.log(st.field("worktree", st.muted(group ? worktree : `${worktree} @ ${git.sha} (${resolved?.branch ?? git.branch})`)));
   if (group) for (const t of group.targets) console.log(st.field(t.key, `${t.url} @ ${t.sha} (${t.branch} → ${t.trunk})`));
