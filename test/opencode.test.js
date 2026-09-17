@@ -60,7 +60,12 @@ test('OpenCode installed CLI discovers, selects, and saves the judge, delivering
   assert.equal(call.cwd, await realpath(worktree));
   assert.deepEqual(call.args, ['run', '--dir', worktree, '--agent', 'plan', '--format', 'json', '--', prompt]);
   assert.equal(call.permission.edit, 'deny');
-  assert.equal(agent.resume.supported, false);
+  // OpenCode resumes its own review when replying, and names the session
+  // explicitly: --session with the id scraped from its own event stream, never
+  // "the latest session", which could be an unrelated conversation.
+  assert.equal(agent.resume.supported, true);
+  assert.ok(agent.resume.argv.includes('{{sessionId}}'));
+  assert.ok(!agent.resume.argv.includes('--continue'));
   assert.equal((await invoke(judgeAgent(cfg, 'opencode'))).verdict, 'clean');
   call = JSON.parse(await readFile(path.join(worktree, 'call.json')));
   assert.ok(call.args.includes('build')); assert.ok(call.args.includes('--auto'));

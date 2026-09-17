@@ -38,8 +38,22 @@
   "sandbox": "tools",
   "sandboxNote": "OPENCODE_PERMISSION denies edit, task and all bash but a read-only git allowlist",
   "resume": {
-    "supported": false,
-    "reason": "fresh conversation with finding context; never resume the latest session"
+    "supported": true,
+    "argv": [
+      "opencode",
+      "run",
+      "--dir",
+      "{{worktree}}",
+      "--agent",
+      "plan",
+      "--format",
+      "json",
+      "--session",
+      "{{sessionId}}",
+      "--",
+      "{{promptText}}"
+    ],
+    "idFrom": "\"sessionID\"\\s*:\\s*\"([^\"]+)\""
   },
   "report": "opencode-json",
   "expectSeconds": 600,

@@ -17,7 +17,9 @@ test('Antigravity is discoverable without configuration and receives literal pro
   const bin = path.join(dir, 'bin');
   await mkdir(worktree); await mkdir(bin);
   const executable = path.join(bin, 'agy');
-  await writeFile(executable, `#!${process.execPath}\nimport('node:fs').then(fs => { fs.writeFileSync('invocation.json', JSON.stringify({cwd:process.cwd(), args:process.argv.slice(2)})); console.log('NO NEW FINDINGS'); });\n`, { mode: 0o755 });
+  // Antigravity is read through --output-format json, so the stub answers in
+  // that shape: a bare line of prose would no longer be a valid report.
+  await writeFile(executable, `#!${process.execPath}\nimport('node:fs').then(fs => { fs.writeFileSync('invocation.json', JSON.stringify({cwd:process.cwd(), args:process.argv.slice(2)})); console.log(JSON.stringify({conversation_id:'af730fe4-e36e-4146-a5c5-ba4fea33a325', status:'SUCCESS', response:'NO NEW FINDINGS'})); });\n`, { mode: 0o755 });
   const cfg = await loadConfig(worktree, { globalFile: path.join(dir, 'missing.json') });
   const agent = reviewers(cfg).find(a => a.name === 'agy');
   assert.ok(agent);
@@ -29,7 +31,10 @@ test('Antigravity is discoverable without configuration and receives literal pro
   assert.equal(result.verdict, 'clean');
   const call = JSON.parse(await readFile(path.join(worktree, 'invocation.json')));
   assert.equal(call.cwd, await realpath(worktree));
-  assert.deepEqual(call.args, ['--dangerously-skip-permissions', '--add-dir', worktree, '--print-timeout', '20m', '--print', prompt]);
+  assert.deepEqual(call.args, ['--dangerously-skip-permissions', '--add-dir', worktree, '--print-timeout', '20m', '--output-format', 'json', '--print', prompt]);
+  // The conversation id is captured so the reply resumes this exact review
+  // rather than whatever conversation happens to be most recent.
+  assert.equal(result.sessionId, 'af730fe4-e36e-4146-a5c5-ba4fea33a325');
   const env = { ...process.env, HOME: dir, USERPROFILE: dir, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
   const listing = spawnSync(process.execPath, [cli, 'agents'], { cwd: worktree, env, encoding: 'utf8' }).stdout;
   assert.match(listing, /ok\s+agy\s+reviewer/);

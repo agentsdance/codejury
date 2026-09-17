@@ -157,14 +157,43 @@ test("an agent taking a generated session id declares newSession", () => {
   }
 });
 
-test("an idFrom pattern is a valid regular expression with one capture group", () => {
+// A sample of each agent's real output, captured from the actual CLI. An
+// idFrom pattern is only useful if it matches what the agent genuinely prints,
+// so the fixture is the observed shape rather than an invented one.
+const ID_SAMPLES = {
+  codex: ["session_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
+  copilot: ["session_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
+  cursor: ["chat_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
+  kimi: ["session_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
+  droid: ['{"type":"result","result":"ok","session_id":"94c4334d-5e19-49e6-aea6-b45394e74370"}',
+    "94c4334d-5e19-49e6-aea6-b45394e74370"],
+  agy: ['{"conversation_id":"af730fe4-e36e-4146-a5c5-ba4fea33a325","status":"SUCCESS"}',
+    "af730fe4-e36e-4146-a5c5-ba4fea33a325"],
+  opencode: ['{"type":"text","part":{"sessionID":"ses_f5300fe7cffeZ4w7bSGLxUxGWS","text":"hi"}}',
+    "ses_f5300fe7cffeZ4w7bSGLxUxGWS"],
+};
+
+test("an idFrom pattern captures the session id from that agent's real output", () => {
   for (const agent of BUILTIN_AGENTS) {
     const src = agent.resume?.idFrom;
     if (!src) continue;
-    const re = new RegExp(src, "i");
-    assert.equal(re.exec("session_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233")?.[1],
-      "4f9a2c1b-33de-4a10-9f0e-7788aa112233",
+    const sample = ID_SAMPLES[agent.name];
+    assert.ok(sample, `${agent.name}: add a real output sample to ID_SAMPLES`);
+    const [stdout, expected] = sample;
+    assert.equal(new RegExp(src, "i").exec(stdout)?.[1], expected,
       `${agent.name}: idFrom must capture the session id in group 1`);
+  }
+});
+
+test("every resuming agent can name the session it resumes", () => {
+  // Either the id is generated here and passed in (newSession), or it is
+  // scraped back out of the agent's own output (idFrom). Without one of the
+  // two, {{sessionId}} resolves to empty and the reply silently starts a new
+  // conversation — or worse, resumes whatever ran last.
+  for (const agent of BUILTIN_AGENTS) {
+    if (!agent.resume?.supported) continue;
+    assert.ok(agent.newSession || agent.resume.idFrom,
+      `${agent.name}: resume needs newSession or resume.idFrom to know which session to resume`);
   }
 });
 

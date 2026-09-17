@@ -8,7 +8,7 @@
 // that session without the profile flag Kimi refuses next to --session.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, access } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, access, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -131,7 +131,12 @@ test("a review is parsed from the JSON stream, its session captured, and its liv
   assert.deepEqual(made.args.slice(2, 4), ["--output-format", "stream-json"]);
   assert.ok(path.isAbsolute(made.profile.path), "the profile must be an absolute path: the process starts in the worktree");
   assert.equal(made.profile.exists, true, "{{packageDir}} must point at the installed package");
-  assert.equal(path.relative(root, made.profile.path).split(path.sep).join("/"), "lib/agents/kimi-reviewer.md");
+  // Compare real paths on both sides. On macOS the temp root is /var/... while
+  // {{packageDir}} resolves through /private/var/..., so the same file reached
+  // two ways compares unequal and path.relative answers with a ../../.. chain.
+  assert.equal(
+    path.relative(await realpath(root), await realpath(made.profile.path)).split(path.sep).join("/"),
+    "lib/agents/kimi-reviewer.md");
 
   // What the console saw while it ran: words and tool calls, no JSON envelope.
   const live = chunks.join("");
