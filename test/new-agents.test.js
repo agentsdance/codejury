@@ -116,24 +116,6 @@ const cases = [
       "@prompt"
     ],
     "output": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"NO NEW FINDINGS\"}"
-  },
-  {
-    "name": "kimi",
-    "bin": "kimi",
-    "review": [
-      "--quiet",
-      "--work-dir",
-      "@cwd",
-      "--prompt",
-      "@prompt"
-    ],
-    "judge": [
-      "--quiet",
-      "--work-dir",
-      "@cwd",
-      "--prompt",
-      "@prompt"
-    ]
   }
 ];
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The built-in `kimi` agent now drives Kimi Code CLI (`@moonshot-ai/kimi-code`), the successor to
+  the legacy Python `kimi-cli` that 0.6.0 targeted. Both install a `kimi` executable, but Kimi Code
+  rejects `--quiet` and `--work-dir`. Reviews run in prompt mode with a shipped read-only profile
+  (`lib/agents/kimi-reviewer.md`: no Edit or Write tools, read-only sub-agents only), the report is
+  read from `--output-format stream-json`, and replies resume the exact session id Kimi prints.
+  The entry stays opt-in. Users of the legacy CLI can keep the old command with a `jury.config.json`
+  override; see [docs/configuration.md](docs/configuration.md#authentication-versions-and-conversations).
+
+### Added
+
+- `report: "kimi-json"` reads the assistant text out of Kimi Code's JSON lines, ignoring tool
+  results and metadata, and rejects non-JSON or empty output; the console shows the decoded words
+  while the agent runs. `{{packageDir}}` in a command names the installed package directory, for
+  files that ship with it.
+
 ## 0.6.0 — 2026-09-16
 
 - Validate new agents through fresh installed CLI tests; fix Qwen worktree and Git access, Copilot Git permissions, final structured result handling, and conversation isolation. All six new agents are opt-in.

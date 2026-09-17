@@ -40,8 +40,12 @@ and remain visible in the saved reports.
 `my-reviewer` is a placeholder executable, not an included product. Use arguments supported by your CLI.
 Supported prompt delivery is `argv` or `file` (`{{promptFile}}`); stdin is closed.
 `cwd: "worktree"` starts in the checkout; with `cwd: "flag"`, pass `{{worktree}}` in the command.
-`report: "tail"` extracts a final response from a verbose transcript; otherwise the whole output is read.
+`report: "tail"` extracts a final response from a verbose transcript; `report: "kimi-json"` reads the
+assistant messages out of Kimi Code's `--output-format stream-json` lines; otherwise the whole output is read.
 `expectSeconds` informs the timeout (at least 600 seconds, normally three times that estimate).
+Command placeholders are `{{promptText}}`, `{{promptFile}}`, `{{worktree}}`, `{{sessionId}}` (for
+resumable agents), and `{{packageDir}}`, the directory Code Jury is installed in, for files that ship
+with it such as `lib/agents/kimi-reviewer.md`.
 The historical YAML example is design documentation; the CLI loads JSON.
 
 A judge may specify separate `judgeArgv`. A custom `argv` overrides the built-in judge invocation
@@ -90,7 +94,7 @@ review could not start until every supported CLI was installed.
 | OpenCode (opt-in) | `opencode` | Plan agent with explicit edit/task/shell restrictions | Build agent with `--auto` |
 | Cursor Agent (opt-in) | `cursor-agent` | ⚠️ Print mode; all tools including write and bash | `--force` |
 | Amp (opt-in) | `amp` | ⚠️ Execute mode; no read-only flag | Same command unless overridden |
-| Kimi (opt-in) | `kimi` | ⚠️ Print mode auto-approves tool calls | Same command unless overridden |
+| Kimi Code (opt-in) | `kimi` | Prompt mode with the shipped `lib/agents/kimi-reviewer.md` profile: Edit and Write tools removed, only the read-only `explore` sub-agent; shell available | Prompt mode with all tools |
 | Custom | Your `argv[0]` | Your `argv` | Your `judgeArgv`, or `argv` |
 
 ⚠️ marks agents whose CLI offers **no read-only invocation**. They still review, but only the
@@ -111,7 +115,11 @@ your environment. Run records include prompts and outputs, so redact them before
 
 ### Authentication, versions, and conversations
 
-- Kimi: verified CLI 1.50.0; run `kimi login`. Quiet mode prints the final message and auto-approves tools, even if a conversation initially starts in plan mode. Both roles therefore require a trusted worktree; replies start fresh.
+- Kimi Code: verified CLI 0.39.1 and 0.42.0 (`npm install -g @moonshot-ai/kimi-code`); run `kimi login`, or put an API key in `~/.kimi-code/config.toml`, whose `default_model` is the model used. Prompt mode (`kimi -p`) rejects `--plan`, `--yolo` and `--auto` and approves every tool call itself, so the reviewer boundary is the shipped agent profile: it wraps Kimi's default prompt, removes the Edit and Write tools, and allows only the read-only `explore` sub-agent (the default `coder` sub-agent can write). The shell stays available, so the profile is not a sandbox. The report is read from `--output-format stream-json`, and replies resume the exact session id Kimi prints at the end of the stream; the profile flag is omitted on resume because Kimi refuses it next to `--session`, and the session keeps the agent it was created with. Kimi keeps its own session history per working directory under `~/.kimi-code`. The legacy Python `kimi-cli` installs an executable of the same name but takes different flags (`kimi --version` prints 1.x for it and 0.x for Kimi Code); to keep using it, override the entry in `jury.config.json`:
+
+  ```json
+  { "agents": [{ "name": "kimi", "argv": ["kimi", "--quiet", "--work-dir", "{{worktree}}", "--prompt", "{{promptText}}"], "report": "whole", "resume": { "supported": false, "reason": "quiet mode prints no session id" } }] }
+  ```
 - Cursor: verified `cursor-agent` 2025.10.28-0a91dc2; run `cursor-agent login`. The generic executable `agent` may belong to another product, so Jury uses `cursor-agent`. Final JSON must explicitly report success. Replies start fresh.
 - Copilot: verified CLI 0.0.392 flags; authenticate with interactive `/login`. A reviewer can inspect files and Git but cannot use write tools; the judge allows tools. Local permission configuration remains trusted. Replies start fresh.
 - Qwen: targets CLI 0.23.4 (`npm install -g @qwen-code/qwen-code`); run `qwen` and complete `/auth` before headless use. It runs in the process worktree, not merely an added access directory. Reviews use assigned UUIDs, and replies resume only that UUID; no implicit latest session. Final JSON must explicitly report success.
