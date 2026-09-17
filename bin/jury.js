@@ -20,7 +20,7 @@ import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, openFindings, currentJudge } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, judgeSessionIn, openFindings, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
@@ -612,6 +612,9 @@ async function cmdAgent(argv) {
     }
   }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
+  // Keep one judge conversation for every finding and every round. The event
+  // makes a resumed process pick up the same provider session after a crash.
+  let judgeSessionId = judgeSessionIn(prior, judge.name);
 
   if (roles && !values.resume) {
     const names = knownAgents(cfg).filter(a => a.name === roles.judge || roles.reviewers.includes(a.name)).map(a => a.name);
@@ -752,10 +755,16 @@ async function cmdAgent(argv) {
       try {
         v = await triageOne(judge, f, {
           worktree, trunk, context: group ? groupContext(group.targets) : "", stopToken: cfg.stopToken, dryRun: values["dry-run"],
+          sessionId: judgeSessionId,
           onLog: (m) => console.log(`          ${st.muted(m)}`),
         });
       } finally {
         clearInterval(heart);
+      }
+
+      if (v.sessionId && v.sessionId !== judgeSessionId) {
+        judgeSessionId = v.sessionId;
+        await appendEvent(dir, { t: "judge.session", agent: judge.name, sessionId: judgeSessionId, round });
       }
 
       if (!v.verdict) {
