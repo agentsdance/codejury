@@ -4,11 +4,39 @@
   "role": "reviewer",
   "promptDelivery": "file",
   "cwd": "flag",
-  "argv": ["droid", "exec", "--cwd", "{{worktree}}", "--auto", "medium", "-f", "{{promptFile}}"],
+  "argv": [
+    "droid",
+    "exec",
+    "--cwd",
+    "{{worktree}}",
+    "--auto",
+    "medium",
+    "-o",
+    "json",
+    "-f",
+    "{{promptFile}}"
+  ],
   "sandbox": "plan",
   "sandboxNote": "--auto medium withholds destructive actions but permits edits",
-  "resume": { "supported": false, "reason": "exec output carries no session id" },
-  "report": "whole",
+  "resume": {
+    "supported": true,
+    "argv": [
+      "droid",
+      "exec",
+      "--cwd",
+      "{{worktree}}",
+      "--auto",
+      "medium",
+      "-o",
+      "json",
+      "-s",
+      "{{sessionId}}",
+      "-f",
+      "{{promptFile}}"
+    ],
+    "idFrom": "\"session_id\"\\s*:\\s*\"([^\"]+)\""
+  },
+  "report": "result-json",
   "expectSeconds": 130,
   "install": "curl -fsSL https://app.factory.ai/cli | sh",
   "docs": "https://docs.factory.ai/cli/getting-started/quickstart"

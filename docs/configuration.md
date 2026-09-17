@@ -115,6 +115,34 @@ your environment. Run records include prompts and outputs, so redact them before
 
 ### Authentication, versions, and conversations
 
+A reviewer's reply is a turn in the conversation that raised the findings, so
+the agent can see what it said. Every resume names an explicit session id —
+never "the latest session", which would answer whatever ran most recently in
+that worktree rather than this review.
+
+An id reaches Jury one of two ways. Some CLIs accept one we generate
+(`--session-id`), so the conversation is identified before it exists. The rest
+print one in structured output, which is read back with `resume.idFrom`. An id
+is never inferred from assistant prose: a model that happens to mention a UUID
+is not reporting its session, and resuming on that would deliver a verdict into
+an unrelated conversation.
+
+| Agent | Session id | Resumes |
+|---|---|---|
+| Claude | assigned `--session-id` | yes |
+| Grok | assigned `--session-id` | yes |
+| Qwen | assigned `--session-id` | yes |
+| Codex | printed by `exec` | yes |
+| Droid | `session_id` in `-o json` | yes |
+| Antigravity | `conversation_id` in `--output-format json` | yes |
+| OpenCode | `sessionID` in the JSON event stream | yes |
+| Kimi Code | printed at the end of the `stream-json` output | yes |
+| Amp, Cursor, Copilot | — | no; replies start fresh with the finding context |
+
+Agents that do not resume lose nothing in substance: `buildReply` quotes their
+own prior findings back to them. The judge never resumes at all — each finding
+is triaged in its own session so one verdict cannot anchor the next.
+
 - Kimi Code: verified CLI 0.39.1 and 0.42.0 (`npm install -g @moonshot-ai/kimi-code`); run `kimi login`, or put an API key in `~/.kimi-code/config.toml`, whose `default_model` is the model used. Prompt mode (`kimi -p`) rejects `--plan`, `--yolo` and `--auto` and approves every tool call itself, so the reviewer boundary is the shipped agent profile: it wraps Kimi's default prompt, removes the Edit and Write tools, and allows only the read-only `explore` sub-agent (the default `coder` sub-agent can write). The shell stays available, so the profile is not a sandbox. The report is read from `--output-format stream-json`, and replies resume the exact session id Kimi prints at the end of the stream; the profile flag is omitted on resume because Kimi refuses it next to `--session`, and the session keeps the agent it was created with. Kimi keeps its own session history per working directory under `~/.kimi-code`. The legacy Python `kimi-cli` installs an executable of the same name but takes different flags (`kimi --version` prints 1.x for it and 0.x for Kimi Code); to keep using it, override the entry in `jury.config.json`:
 
   ```json
@@ -123,6 +151,6 @@ your environment. Run records include prompts and outputs, so redact them before
 - Cursor: verified `cursor-agent` 2025.10.28-0a91dc2; run `cursor-agent login`. The generic executable `agent` may belong to another product, so Jury uses `cursor-agent`. Final JSON must explicitly report success. Replies start fresh.
 - Copilot: verified CLI 0.0.392 flags; authenticate with interactive `/login`. A reviewer can inspect files and Git but cannot use write tools; the judge allows tools. Local permission configuration remains trusted. Replies start fresh.
 - Qwen: targets CLI 0.23.4 (`npm install -g @qwen-code/qwen-code`); run `qwen` and complete `/auth` before headless use. It runs in the process worktree, not merely an added access directory. Reviews use assigned UUIDs, and replies resume only that UUID; no implicit latest session. Final JSON must explicitly report success.
-- Amp: verified CLI 0.0.1788739286; run `amp login`. Threads are private and IDE context is disabled. Both roles can execute tools automatically; replies start fresh with their own finding context.
+- Amp: verified CLI 0.0.1788739286; run `amp login`. Threads are private and IDE context is disabled. Both roles can execute tools automatically; replies start fresh with their own finding context. (`--stream-json` does expose a thread id, so resume is possible once that output mode is parsed.)
 
 A missing executable, nonzero exit, timeout, or unsuccessful structured result never approves a review. Git command allowlists are CLI tool permissions, not OS sandboxes; use trusted local agent configuration. Model credentials and service availability are prerequisites for live inference.

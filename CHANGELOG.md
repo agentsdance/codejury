@@ -18,6 +18,14 @@
   results and metadata, and rejects non-JSON or empty output; the console shows the decoded words
   while the agent runs. `{{packageDir}}` in a command names the installed package directory, for
   files that ship with it.
+- Claude, Droid, Antigravity and OpenCode now resume their own review conversation
+  when replying to verdicts, instead of starting fresh with their findings quoted
+  back. Eight of eleven agents now resume. Each names an explicit session id —
+  Claude via an assigned `--session-id`, the others read from structured output —
+  so a reply can never land in an unrelated conversation.
+- Droid and Antigravity are read through their JSON output modes, which is where
+  each reports its session id. Antigravity's reported status is now checked, so a
+  run that ends early cannot be read as a sign-off.
 
 ## 0.6.0 — 2026-09-16
 
