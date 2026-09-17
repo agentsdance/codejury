@@ -12,10 +12,11 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, access } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const cli = process.env.JURY_TEST_CLI ?? fileURLToPath(new URL("../bin/jury.js", import.meta.url));
-const root = path.dirname(path.dirname(cli));
+const root = realpathSync(path.dirname(path.dirname(cli)));
 const { DEFAULTS, loadConfig, judgeAgent, knownAgents } = await import(pathToFileURL(path.join(root, "lib/config.js")));
 const { runAgent, hasStopToken } = await import(pathToFileURL(path.join(root, "lib/agents.js")));
 const { replyArgv } = await import(pathToFileURL(path.join(root, "lib/reply.js")));
