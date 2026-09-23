@@ -1,6 +1,6 @@
 {
   "name": "@agentsdance/codejury",
-  "version": "0.7.0",
+  "version": "0.8.0-rc.0",
   "description": "Independent AI code reviewers, one judge, and a local console for pull request review and fixes.",
   "keywords": [
     "code-review",
