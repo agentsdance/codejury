@@ -116,6 +116,26 @@ const cases = [
       "@prompt"
     ],
     "output": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"NO NEW FINDINGS\"}"
+  },
+  {
+    "name": "trae",
+    "bin": "traecli",
+    "review": [
+      "exec",
+      "--sandbox",
+      "read-only",
+      "--skip-git-repo-check",
+      "--",
+      "@prompt"
+    ],
+    "judge": [
+      "exec",
+      "--sandbox",
+      "workspace-write",
+      "--skip-git-repo-check",
+      "--",
+      "@prompt"
+    ]
   }
 ];
 

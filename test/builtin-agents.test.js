@@ -85,7 +85,7 @@ test("each agent states a sandbox level, and an unsandboxed one explains itself"
 });
 
 // All newly added CLIs require explicit selection, not installation by every user.
-const NEW = ["opencode", "qwen", "copilot", "cursor", "amp", "kimi"];
+const NEW = ["opencode", "qwen", "copilot", "cursor", "amp", "kimi", "trae"];
 
 test("the new agents are selectable as reviewer and as judge", async () => {
   // They ship opt-in, so they are absent from the default pool — but naming one

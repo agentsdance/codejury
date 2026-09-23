@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add TRAE CLI (`traecli`) as an opt-in built-in agent named `trae`, usable as a reviewer (`--jury trae`) or the main agent (`--judge trae`). Reviews run in its read-only sandbox (#96).
+
 ## 0.7.0 — 2026-09-18
 
 ### Changed
