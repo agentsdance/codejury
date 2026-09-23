@@ -95,6 +95,7 @@ review could not start until every supported CLI was installed.
 | Cursor Agent (opt-in) | `cursor-agent` | ⚠️ Print mode; all tools including write and bash | `--force` |
 | Amp (opt-in) | `amp` | ⚠️ Execute mode; no read-only flag | Same command unless overridden |
 | Kimi Code (opt-in) | `kimi` | Prompt mode with the shipped `lib/agents/kimi-reviewer.md` profile: Edit and Write tools removed, only the read-only `explore` sub-agent; shell available | Prompt mode with all tools |
+| TRAE CLI (opt-in, `trae`) | `traecli` | `exec` in read-only sandbox | `exec` in workspace-write sandbox |
 | Custom | Your `argv[0]` | Your `argv` | Your `judgeArgv`, or `argv` |
 
 ⚠️ marks agents whose CLI offers **no read-only invocation**. They still review, but only the
@@ -137,7 +138,7 @@ an unrelated conversation.
 | Antigravity | `conversation_id` in `--output-format json` | yes |
 | OpenCode | `sessionID` in the JSON event stream | yes |
 | Kimi Code | printed at the end of the `stream-json` output | yes |
-| Amp, Cursor, Copilot | — | no; replies start fresh with the finding context |
+| Amp, Cursor, Copilot, TRAE CLI | — | no; replies start fresh with the finding context |
 
 Agents that do not resume lose nothing in substance: `buildReply` quotes their
 own prior findings back to them. The judge never resumes at all — each finding
@@ -148,6 +149,7 @@ is triaged in its own session so one verdict cannot anchor the next.
   ```json
   { "agents": [{ "name": "kimi", "argv": ["kimi", "--quiet", "--work-dir", "{{worktree}}", "--prompt", "{{promptText}}"], "report": "whole", "resume": { "supported": false, "reason": "quiet mode prints no session id" } }] }
   ```
+- TRAE CLI: verified `traecli` 0.206.1 (TraeCode CLI 2.0) flags; install with `sh -c "$(curl -fsSL https://trae.cn/trae-cli/install_v2.sh)"` (the script is served only inside mainland China; outside it, download your platform's binary from the official release manifest `https://lf-cdn.trae.com.cn/obj/trae-com-cn/trae-cli/v2/latest.json`, check its `sha256`, gunzip it and link it as `~/.local/bin/traecli`), then run `traecli` once to log in, or use `traecli login --with-trae-pat` for headless machines. TraeCode CLI requires a TRAE Enterprise flagship plan. Reviews run `traecli exec --sandbox read-only`, and the judge uses `--sandbox workspace-write`. The prompt follows `--`, so a prompt starting with `-` is never read as a flag. Replies start fresh with finding context.
 - Cursor: verified `cursor-agent` 2025.10.28-0a91dc2; run `cursor-agent login`. The generic executable `agent` may belong to another product, so Jury uses `cursor-agent`. Final JSON must explicitly report success. Replies start fresh.
 - Copilot: verified CLI 0.0.392 flags; authenticate with interactive `/login`. A reviewer can inspect files and Git but cannot use write tools; the judge allows tools. Local permission configuration remains trusted. Replies start fresh.
 - Qwen: targets CLI 0.23.4 (`npm install -g @qwen-code/qwen-code`); run `qwen` and complete `/auth` before headless use. It runs in the process worktree, not merely an added access directory. Reviews use assigned UUIDs, and replies resume only that UUID; no implicit latest session. Final JSON must explicitly report success.

@@ -29,6 +29,7 @@ It uses illustrative data and does not start agents.
 | <img src="https://www.google.com/s2/favicons?domain=cursor.com&sz=64" width="20" height="20" alt=""> | Cursor Agent CLI | `cursor` | Opt-in |
 | <img src="https://www.google.com/s2/favicons?domain=ampcode.com&sz=64" width="20" height="20" alt=""> | Sourcegraph Amp | `amp` | Opt-in |
 | <img src="https://www.google.com/s2/favicons?domain=kimi.com&sz=64" width="20" height="20" alt=""> | Moonshot Kimi Code CLI | `kimi` | Opt-in |
+| <img src="https://www.google.com/s2/favicons?domain=trae.ai&sz=64" width="20" height="20" alt=""> | TRAE CLI | `trae` | Opt-in |
 
 **Opt-in** agents are fully supported as reviewers and judges, but stay out of the default pool so
 a fresh install does not require every CLI to be present. Select one by name — no configuration
@@ -179,6 +180,7 @@ or select installed reviewers explicitly.
 | `cursor` | Cursor Agent CLI | `curl https://cursor.com/install -fsS \| bash` | opt-in |
 | `amp` | Sourcegraph Amp | `npm i -g @sourcegraph/amp` | opt-in |
 | `kimi` | Moonshot Kimi Code CLI | `npm i -g @moonshot-ai/kimi-code` | opt-in |
+| `trae` | TRAE CLI (`traecli`) | `sh -c "$(curl -fsSL https://trae.cn/trae-cli/install_v2.sh)"` | opt-in |
 
 **Opt-in** agents are fully supported — usable with `--reviewer`, `--jury`, `--judge` and
 `jury agents judge` — but stay out of the default pool, so a fresh install does not require every

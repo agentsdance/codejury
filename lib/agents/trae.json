@@ -1,0 +1,36 @@
+{
+  "name": "trae",
+  "product": "TRAE CLI",
+  "role": "reviewer",
+  "enabled": false,
+  "promptDelivery": "argv",
+  "cwd": "worktree",
+  "argv": [
+    "traecli",
+    "exec",
+    "--sandbox",
+    "read-only",
+    "--skip-git-repo-check",
+    "--",
+    "{{promptText}}"
+  ],
+  "judgeArgv": [
+    "traecli",
+    "exec",
+    "--sandbox",
+    "workspace-write",
+    "--skip-git-repo-check",
+    "--",
+    "{{promptText}}"
+  ],
+  "sandbox": "sandbox",
+  "sandboxNote": "reviews run under --sandbox read-only; judging uses workspace-write",
+  "resume": {
+    "supported": false,
+    "reason": "exec session ids are not documented in its output; replies start fresh with finding context"
+  },
+  "report": "whole",
+  "expectSeconds": 900,
+  "install": "sh -c \"$(curl -fsSL https://trae.cn/trae-cli/install_v2.sh)\"",
+  "docs": "https://docs.trae.cn/cli_get-started-with-trae-code-cli-2"
+}
