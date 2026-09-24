@@ -19,6 +19,7 @@
     "supported": false,
     "reason": "execute mode prints no thread id to resume by"
   },
+  "modelNote": "Amp has no per-run model flag: --mode (low, medium, high, ultra) selects the model, system prompt and tools together",
   "report": "whole",
   "expectSeconds": 400,
   "install": "npm install -g @sourcegraph/amp",

@@ -180,6 +180,15 @@ off automatic role assignment, as `--jury` does. The judge is left out of its ow
 reviewer is later uninstalled or disabled in a repository, the run stops with an error naming the
 saved setting rather than reviewing with fewer agents.
 
+Pick the model an agent runs with, without touching its own configuration:
+
+```bash
+jury agents model claude opus                 # saved default
+jury review <pr-url> --model codex=gpt-5.5    # this run only
+```
+
+See [models](docs/configuration.md#models) for each agent's flag and the precedence rules.
+
 ### Built-in agents
 
 | name | product | install | default |

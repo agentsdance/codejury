@@ -7,6 +7,7 @@
   "cwd": "worktree",
   "argv": [
     "copilot",
+    "{{modelArgs}}",
     "-p",
     "{{promptText}}",
     "--silent",
@@ -31,6 +32,7 @@
   ],
   "judgeArgv": [
     "copilot",
+    "{{modelArgs}}",
     "-p",
     "{{promptText}}",
     "--silent",
@@ -44,6 +46,10 @@
     "supported": false,
     "reason": "fresh conversation with finding context; no session ids inferred from assistant prose"
   },
+  "modelArgs": [
+    "--model",
+    "{{model}}"
+  ],
   "report": "whole",
   "expectSeconds": 400,
   "install": "npm install -g @github/copilot",

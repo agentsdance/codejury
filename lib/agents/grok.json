@@ -15,6 +15,7 @@
     "supported": true,
     "argv": ["grok", "--cwd", "{{worktree}}", "--always-approve", "--resume", "{{sessionId}}", "-p", "{{promptText}}"]
   },
+  "modelEnv": { "GROK_MODEL": "{{model}}" },
   "report": "whole",
   "expectSeconds": 240,
   "install": "npm install -g @vibe-kit/grok-cli",

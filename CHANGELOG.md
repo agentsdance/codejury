@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Configure the model each agent runs with: `jury agents model <agent> <model>` saves a default in
+  `~/.jury/config.json`, a `model` field per agent in `jury.config.json` sets one per repository,
+  and `--model <agent>=<model>` sets one for a run, each overriding the one before. The model is
+  passed as a flag or environment variable only when Jury runs the agent, on first runs, resumed
+  rounds, replies and judging alike; the agent's own configuration is never changed. Supported for
+  codex, claude, grok, opencode, qwen, copilot and kimi; a configured model for any other agent
+  stops the run with an error. Runs record the models used, and `jury agents` shows them (#99).
 - Add `jury agents jury` to save default reviewers globally in `~/.jury/config.json`, beside the
   global judge: `jury agents jury claude,droid`, `--reset`, and a checkbox picker when run with no
   arguments in a terminal. Runs without `--jury` use them; repository `reviewer` roles and

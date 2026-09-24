@@ -7,6 +7,7 @@
   "cwd": "worktree",
   "argv": [
     "kimi",
+    "{{modelArgs}}",
     "-p",
     "{{promptText}}",
     "--output-format",
@@ -16,6 +17,7 @@
   ],
   "judgeArgv": [
     "kimi",
+    "{{modelArgs}}",
     "-p",
     "{{promptText}}",
     "--output-format",
@@ -27,6 +29,7 @@
     "supported": true,
     "argv": [
       "kimi",
+      "{{modelArgs}}",
       "-p",
       "{{promptText}}",
       "--output-format",
@@ -36,6 +39,10 @@
     ],
     "idFrom": "session_id\\W{0,3}((?:session_)?[0-9a-f]{8}-[0-9a-f-]{27})"
   },
+  "modelArgs": [
+    "--model",
+    "{{model}}"
+  ],
   "report": "kimi-json",
   "expectSeconds": 600,
   "install": "npm install -g @moonshot-ai/kimi-code",
