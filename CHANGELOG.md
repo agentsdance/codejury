@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add `jury agents jury` to save default reviewers globally in `~/.jury/config.json`, beside the
+  global judge: `jury agents jury claude,droid`, `--reset`, and a checkbox picker when run with no
+  arguments in a terminal. Runs without `--jury` use them; repository `reviewer` roles and
+  `--reviewer`/`--jury` still take precedence. `jury agents` marks the saved defaults (#98).
 - Add TRAE CLI (`traecli`) as an opt-in built-in agent named `trae`, usable as a reviewer (`--jury trae`) or the main agent (`--judge trae`). Reviews run in its read-only sandbox (#96).
 
 ## 0.7.0 — 2026-09-18

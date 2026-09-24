@@ -165,6 +165,21 @@ is excluded from the reviewer pool.
 Without an explicit selection, enabled agents with the reviewer role are used; disable unavailable ones
 or select installed reviewers explicitly.
 
+Or save default reviewers once for all repositories:
+
+```bash
+jury agents jury claude             # only claude reviews by default
+jury agents jury claude,droid,amp   # several; opt-in agents allowed
+jury agents jury                    # show them, or pick with a checkbox list in a terminal
+jury agents jury --reset            # back to the built-in reviewer pool
+```
+
+Saved in `~/.jury/config.json`, next to the global judge. Precedence: `--reviewer`/`--jury`,
+repository `reviewer` roles, saved default reviewers, then the built-in pool. A saved list turns
+off automatic role assignment, as `--jury` does. The judge is left out of its own review. If a saved
+reviewer is later uninstalled or disabled in a repository, the run stops with an error naming the
+saved setting rather than reviewing with fewer agents.
+
 ### Built-in agents
 
 | name | product | install | default |
