@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { appendEvent, slugFor, listRuns, foldEvents, readEvents } from "../lib/store.js";
+import { appendEvent, slugFor, listRuns, foldEvents, readEvents, writeRun } from "../lib/store.js";
 import { findingsIn, settledList } from "../lib/findings.js";
 import { buildPrompt } from "../lib/prompt.js";
 
@@ -146,4 +146,25 @@ test("listRuns still ranks by state before recency", async () => {
   } finally {
     await cleanup();
   }
+});
+
+test("a run being republished never drops out of the listing", async (t) => {
+  // The console lists runs while the loop rewrites run.json; a reader landing
+  // between truncate and write used to see an empty file and skip the live run.
+  const base = await mkdtemp(path.join(tmpdir(), "jury-republish-"));
+  t.after(() => rm(base, { recursive: true, force: true }));
+  const dir = path.join(base, "live");
+  const run = { target: { state: "review", id: "#1" },
+    rounds: Array.from({ length: 200 }, (_, n) => ({ n, text: "x".repeat(200) })) };
+  await writeRun(dir, run);
+  let writing = true;
+  const writer = (async () => { while (writing) await writeRun(dir, run); })();
+  let misses = 0;
+  for (const end = Date.now() + 1000; Date.now() < end;) {
+    const { runs, skipped } = await listRuns(base);
+    if (!runs.some((r) => r.slug === "live") || skipped.length) misses++;
+  }
+  writing = false;
+  await writer;
+  assert.equal(misses, 0);
 });

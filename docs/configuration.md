@@ -17,6 +17,11 @@ The example configuration keeps Codex as judge and Claude as reviewer:
 }
 ```
 
+Reviewers used when a run names none resolve in this order: `--reviewer`/`--jury`, any enabled
+agent this file gives `"role": "reviewer"`, the default reviewers saved with `jury agents jury`
+(`"reviewers"` in `~/.jury/config.json`), then every enabled built-in reviewer. A saved name that
+this file disables, or that is no longer an agent, stops the run with an error naming the setting.
+
 The CLI checks executable availability before starting selected reviewers. It cannot preflight
 provider login, credits, or quota without invoking the provider. Runtime failures stop the loop
 and remain visible in the saved reports.

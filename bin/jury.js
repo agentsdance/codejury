@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
 import { automaticRoles, automaticReviewers } from "../lib/roles.js";
-import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, globalConfigPath } from "../lib/config.js";
+import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, saveGlobalReviewers, defaultReviewers, savedReviewersNote, globalConfigPath } from "../lib/config.js";
 import { runAgent, probe } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
@@ -26,6 +26,7 @@ import { assertPrCheckout, repositoryFromPrUrl, resolvePrCheckout } from "../lib
 import { resolveJuryDirectory } from "../lib/directories.js";
 import * as st from "../lib/style.js";
 import { parseReviewArgs, reviewerOptions, requestedReviewers } from "../lib/cli-options.js";
+import { pick } from "../lib/picker.js";
 import { startReviewConsole } from "../lib/review-console.js";
 
 const run = promisify(execFile);
@@ -60,7 +61,7 @@ Common flags
 
   --dir <path>               working/state root                                   (default: Git cwd or ~/.jury)
   --rounds <n>               stop after n rounds                                  (default: 10)
-  --reviewer <name>          only these reviewers, repeatable or comma-separated  (default: configured reviewers)
+  --reviewer <name>          only these reviewers, repeatable or comma-separated  (default: configured or saved reviewers)
   --jury <name>              same as --reviewer
   --judge codex              one agent that triages and fixes                     (default: configured, auto for 1–2 installed CLIs, then codex)
   --push <true|false>        commit and push fixes                                (default: true)
@@ -70,6 +71,7 @@ Other commands
 
   jury agents                which reviewers are installed
   jury agents judge <agent>  set the global default judge
+  jury agents jury <agents>  set the default reviewers
   jury runs                  every PR under review
   jury version
 
@@ -84,6 +86,7 @@ const USAGE_FULL = `jury — review a pull request with multiple AI reviewers un
   jury runs                  list every PR under review, with its slug for --run
   jury agents                check which configured agents are installed
   jury agents judge <agent>  set the global default judge
+  jury agents jury <agents>  set the default reviewers (picker in a terminal)
   jury version
 
 Related PRs: jury review <pr-url-1> <pr-url-2>
@@ -100,7 +103,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --title <text>             what the change does                                  (default: read from the PR)
   --summary <text>           intent, passed to reviewers                           (default: the PR description)
   --rounds <n>               maximum rounds                                        (default: 10)
-  --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured reviewers)
+  --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured or saved reviewers)
   --jury <name>              same as --reviewer
   --judge <agent>            one agent that triages and fixes                      (default: configured, auto for 1–2 installed CLIs, then codex)
   --resume <slug>            continue an existing run instead of starting a new one
@@ -198,8 +201,8 @@ try {
 
 /** Resolve an explicit reviewer list or explain each ineligible name. */
 function selectReviewers(cfg, requested, judge = null) {
+  if (!requested) return defaultReviewers(cfg, judge);
   const eligible = reviewers(cfg).filter((a) => a.name !== judge);
-  if (!requested) return eligible;
 
   const names = requested;
   if (!names.length) throw new Error("--reviewer needs at least one reviewer name");
@@ -608,7 +611,10 @@ async function cmdAgent(argv) {
     if (missing.length) {
       const reason = `reviewers not installed: ${missing.map(a => `${a.name} (${a.bin})`).join(", ")}`;
       await publishRun(dir, { ...target, state: "human", stateNote: reason });
-      throw new Error(`${reason}. Install them, disable them in jury.config.json, or select installed reviewers with --reviewer <name>. No agents were started.`);
+      const fromSaved = !roles && !requestedReviewers(values) && cfg.savedReviewers;
+      throw new Error(fromSaved
+        ? `${reason}, from the ${savedReviewersNote}. Install them, save installed reviewers, or select reviewers with --reviewer <name>. No agents were started.`
+        : `${reason}. Install them, disable them in jury.config.json, or select installed reviewers with --reviewer <name>. No agents were started.`);
     }
   }
   const first = Math.max(0, ...prior.filter((e) => e.t === "round.start").map((e) => e.n)) + 1;
@@ -1191,8 +1197,9 @@ async function cmdRuns(argv) {
 }
 
 async function cmdAgents(args = []) {
+  if (["jury", "reviewer", "reviewers"].includes(args[0])) return cmdDefaultReviewers(args.slice(1));
   if (args.length) {
-    if (args[0] !== "judge" || args.length > 2) throw new Error("Usage: jury agents judge [<agent>|--reset]");
+    if (args[0] !== "judge" || args.length > 2) throw new Error("Usage: jury agents judge [<agent>|--reset] | jury agents jury [<agent>,...|--reset]");
     const name = args[1];
     if (name === "--help" || name === "-h") {
       process.stdout.write(commandHelp("agents", USAGE_FULL));
@@ -1219,6 +1226,7 @@ async function cmdAgents(args = []) {
     return;
   }
   const cfg = await loadConfig();
+  const saved = new Set(cfg.savedReviewers ?? []);
   // Every known agent is listed, not just the default pool: an opt-in built-in
   // that is never shown is an agent nobody discovers. They are marked so the
   // listing still says which ones actually run without being asked for.
@@ -1230,8 +1238,14 @@ async function cmdAgents(args = []) {
     const role = roleOf.get(p.name);
     console.log(
       `${p.ok ? "ok     " : "MISSING"} ${p.name.padEnd(9)} ${role.padEnd(8)} ${p.path ?? p.bin}`
-      + (byName.get(p.name)?.enabled === false ? "  (opt-in)" : ""),
+      + (byName.get(p.name)?.enabled === false ? "  (opt-in)" : "")
+      + (saved.has(p.name) ? "  (default reviewer)" : ""),
     );
+  }
+  if (cfg.savedReviewers) {
+    console.log(`\nDefault reviewers: ${cfg.savedReviewers.join(", ")} (saved in ${globalConfigPath()}; change with jury agents jury)`);
+  } else if (cfg.globalReviewers) {
+    console.log(`\nSaved default reviewers (${cfg.globalReviewers.join(", ")}) are overridden by reviewer roles in ${path.basename(cfg.configFile)}.`);
   }
 
   // An agent with no read-only mode still reviews, but only the prompt is
@@ -1252,7 +1266,11 @@ async function cmdAgents(args = []) {
   // Only the default pool decides the exit status. An opt-in agent nobody asked
   // for is not a broken install, and failing on it would make `jury agents`
   // red on every machine that has not installed every supported CLI.
-  const missing = found.filter((p) => !p.ok && byName.get(p.name)?.enabled !== false);
+  // With saved default reviewers, those are the pool; the judge still counts.
+  const inPool = (p) => cfg.savedReviewers
+    ? saved.has(p.name) || roleOf.get(p.name) === "main"
+    : byName.get(p.name)?.enabled !== false;
+  const missing = found.filter((p) => !p.ok && inPool(p));
   if (missing.length) {
     console.log(`\n${missing.length} agent(s) not installed. Install them, or disable in jury.config.json.`);
     for (const p of missing) {
@@ -1261,6 +1279,73 @@ async function cmdAgents(args = []) {
     }
     process.exitCode = 1;
   }
+}
+
+/**
+ * `jury agents jury`: the saved default reviewers, used when a run names none.
+ *
+ * Mirrors `jury agents judge`. With no arguments on a TTY it opens a checkbox
+ * picker; anywhere else it prints the current setting, so a script piping
+ * `jury agents jury` never blocks waiting for keys.
+ */
+async function cmdDefaultReviewers(args) {
+  const usage = "Usage: jury agents jury [<agent>[,<agent>...]|--reset]";
+  if (args.includes("--help") || args.includes("-h")) {
+    process.stdout.write(commandHelp("agents", USAGE_FULL));
+    return;
+  }
+  if (args.includes("--reset")) {
+    if (args.length > 1) throw new Error(usage);
+    await saveGlobalReviewers(null);
+    console.log("Default reviewers reset; repository roles or the built-in reviewer pool apply.");
+    return;
+  }
+  if (args.some(a => a.startsWith("-"))) throw new Error(usage);
+  const cfg = await loadConfig();
+  const known = knownAgents(cfg);
+  const names = [...new Set(args.flatMap(a => a.split(",")).map(n => n.trim()).filter(Boolean))];
+  if (args.length && !names.length) throw new Error(usage);
+
+  if (!names.length && !(process.stdin.isTTY && process.stdout.isTTY)) {
+    const settings = await readGlobalConfig();
+    console.log(`Default reviewers: ${settings.reviewers?.join(", ") ?? "not set (built-in reviewer pool)"}`);
+    if (settings.reviewers && !cfg.savedReviewers) {
+      console.log(`Overridden here by reviewer roles in ${path.basename(cfg.configFile)}.`);
+    }
+    return;
+  }
+
+  let chosen = names;
+  if (!chosen.length) {
+    const judge = judgeAgent(cfg)?.name;
+    const found = await Promise.all(known.map(probe));
+    const items = known.map((a, i) => ({
+      name: a.name,
+      status: found[i].ok ? "ok" : "MISSING",
+      notes: [
+        ...(a.enabled === false ? ["opt-in"] : []),
+        ...(a.name === judge ? ["judge — excluded"] : []),
+      ],
+    }));
+    const current = cfg.globalReviewers ?? defaultReviewers(cfg, judge).map(a => a.name);
+    chosen = await pick(items, current, { title: "Default reviewers" });
+    if (!chosen) {
+      console.log("Cancelled; default reviewers unchanged.");
+      return;
+    }
+  }
+
+  // The whole known set, so an opt-in built-in can be a default reviewer
+  // without first being enabled in whichever repository is the cwd right now.
+  const unknown = chosen.filter(n => !known.some(a => a.name === n));
+  if (unknown.length) {
+    throw new Error(`Unknown or disabled reviewer ${unknown.map(n => `"${n}"`).join(", ")}. Choose: ${known.map(a => a.name).join(", ")}`);
+  }
+  await saveGlobalReviewers(chosen);
+  console.log(`Default reviewers: ${chosen.join(", ")} (${globalConfigPath()})`);
+  const judge = judgeAgent(cfg)?.name;
+  if (chosen.includes(judge)) console.log(`${judge} is the current judge and is left out of runs it judges.`);
+  console.log("Repository reviewer roles and --reviewer/--jury override this default.");
 }
 
 /**
