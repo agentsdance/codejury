@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0-rc.1 — 2026-09-25
+
 - Configure the model each agent runs with: `jury agents model <agent> <model>` saves a default in
   `~/.jury/config.json`, a `model` field per agent in `jury.config.json` sets one per repository,
   and `--model <agent>=<model>` sets one for a run, each overriding the one before. The model is
