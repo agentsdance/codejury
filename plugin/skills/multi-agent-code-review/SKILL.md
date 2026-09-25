@@ -8,7 +8,7 @@ description: Review a pull request with several independent AI reviewers (codex,
 You are the **main agent**. You write code, answer findings, and own the commit. Reviewers only read
 and report — never let one edit files.
 
-The CLI owns the mechanics; you own the judgement. See `DESIGN.md` for the split.
+The CLI owns the mechanics; you own the judgement. See [DESIGN.md](https://github.com/agentsdance/codejury/blob/master/DESIGN.md) for the split.
 
 ## The loop
 
@@ -32,7 +32,7 @@ git worktree add "$WT" origin/<branch> --detach
 ```
 
 Launch concurrently and in the background — the slowest sets the round's wall clock. Agent
-invocations are configuration (`config.example.yaml`); only three things vary:
+invocations are configuration ([config.example.yaml](https://github.com/agentsdance/codejury/blob/master/config.example.yaml)); only three things vary:
 
 - **prompt delivery** — argv (`codex`) vs a file flag (`droid -f`)
 - **cwd** — process cwd (`codex`) vs an explicit `--cwd` flag (`droid`)
@@ -41,7 +41,7 @@ invocations are configuration (`config.example.yaml`); only three things vary:
 
 ## The prompt
 
-Four sections, in order. Template in `prompts/review-round.md`.
+Four sections, in order. Template in [prompts/review-round.md](https://github.com/agentsdance/codejury/blob/master/prompts/review-round.md).
 
 1. **What the change does** — a few bullets, so the reviewer does not infer intent.
 2. **ALREADY SETTLED — do NOT re-report** — grows every round. Without it, each fresh reviewer
@@ -90,7 +90,7 @@ without reproducing anything, which is the whole point of the loop.
 
 Reply to every finding — silence is not a resolution. Per finding:
 **ACCEPTED** / **AGREE-BUT-DEFERRED** / **REJECTED**, each with reasoning, each ending in a direct
-question. Template in `prompts/feedback.md`.
+question. Template in [prompts/feedback.md](https://github.com/agentsdance/codejury/blob/master/prompts/feedback.md).
 
 ```bash
 jury reply --dir "$WT"           # one conversation per reviewer, concurrently

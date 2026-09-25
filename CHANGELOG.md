@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Code Jury is now a Claude Code plugin: `claude plugin marketplace add agentsdance/codejury`, then
+  `claude plugin install codejury@codejury`. `/codejury:review <pr-url>` runs a review from a Claude
+  Code session without pushing unless asked, and the review-loop skill moved from `skill/SKILL.md`
+  to `plugin/skills/multi-agent-code-review/SKILL.md` (#115).
 - The `agy` install hint now points at the official `https://antigravity.google/cli/install.sh`;
   the npm package it named does not exist.
 - Configure the model each agent runs with: `jury agents model <agent> <model>` saves a default in
