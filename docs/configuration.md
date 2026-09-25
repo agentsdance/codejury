@@ -57,6 +57,47 @@ A judge may specify separate `judgeArgv`. A custom `argv` overrides the built-in
 unless you also specify `judgeArgv`. Optional session configuration is illustrated by the built-in
 definitions in `lib/agents/`.
 
+## Models
+
+Jury can start an agent with a chosen model. The model is passed only on the command line or in
+the environment of the process Jury starts; Jury never edits an agent's own configuration, so
+running `claude`, `codex` and the others outside Jury keeps their normal default.
+
+```bash
+jury agents model                   # the model each agent starts with
+jury agents model claude opus       # save a default in ~/.jury/config.json
+jury agents model claude --reset    # back to the CLI's own default
+jury review <pr-url> --model claude=sonnet --model codex=gpt-5.5   # this run only
+```
+
+A repository can set one per agent in `jury.config.json`:
+
+```json
+{ "agents": [{ "name": "claude", "model": "opus" }] }
+```
+
+Precedence: `--model <agent>=<model>`, then `model` in `jury.config.json`, then the saved model,
+then the CLI's own default. The same model is used on the first run, on resumed rounds and
+replies, and when the agent judges. The run records the models it used (`models` in `run.json`),
+and `jury agents` shows each agent's model. An agent with a configured model but no way to take
+one stops the run before any agent starts rather than silently using its default.
+
+| Agent | How the model is passed | Verified against |
+| --- | --- | --- |
+| `codex` | `--model` after `exec` (and `exec resume`) | codex-cli 0.156.1 |
+| `claude` | `--model` | Claude Code 2.1.281 |
+| `grok` | `GROK_MODEL` environment variable | grok-cli README |
+| `opencode` | `--model provider/model` after `run` | opencode 1.18.32 |
+| `qwen` | `--model` | qwen 0.24.4 |
+| `copilot` | `--model` | Copilot CLI 1.0.88 |
+| `kimi` | `--model`, an alias defined in `~/.kimi-code/config.toml` | Kimi Code 2.1.1 |
+| `amp` | not supported: `--mode` selects model, prompt and tools together | — |
+| `droid`, `agy`, `cursor`, `trae` | not yet verified; set the model in the CLI's own configuration | — |
+
+A built-in definition supports models by marking the flag's position with a `"{{modelArgs}}"`
+element in every command it runs and giving `modelArgs` (for example `["--model", "{{model}}"]`),
+or by giving `modelEnv`. A custom agent can use `{{model}}` directly in its `argv`.
+
 ## Adding a built-in agent
 
 Built-in agents are data, not code: each is one JSON file in `lib/agents/`, listed in

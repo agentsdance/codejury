@@ -7,6 +7,7 @@
   "argv": [
     "opencode",
     "run",
+    "{{modelArgs}}",
     "--dir",
     "{{worktree}}",
     "--agent",
@@ -19,6 +20,7 @@
   "judgeArgv": [
     "opencode",
     "run",
+    "{{modelArgs}}",
     "--dir",
     "{{worktree}}",
     "--agent",
@@ -42,6 +44,7 @@
     "argv": [
       "opencode",
       "run",
+      "{{modelArgs}}",
       "--dir",
       "{{worktree}}",
       "--agent",
@@ -55,6 +58,10 @@
     ],
     "idFrom": "\"sessionID\"\\s*:\\s*\"([^\"]+)\""
   },
+  "modelArgs": [
+    "--model",
+    "{{model}}"
+  ],
   "report": "opencode-json",
   "expectSeconds": 600,
   "install": "npm install -g opencode-ai",

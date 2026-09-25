@@ -6,6 +6,7 @@
   "cwd": "worktree",
   "argv": [
     "claude",
+    "{{modelArgs}}",
     "-p",
     "{{promptText}}",
     "--session-id",
@@ -19,6 +20,7 @@
   ],
   "judgeArgv": [
     "claude",
+    "{{modelArgs}}",
     "-p",
     "{{promptText}}",
     "--permission-mode",
@@ -32,6 +34,7 @@
     "supported": true,
     "argv": [
       "claude",
+      "{{modelArgs}}",
       "-p",
       "{{promptText}}",
       "--resume",
@@ -44,6 +47,10 @@
       "{{worktree}}"
     ]
   },
+  "modelArgs": [
+    "--model",
+    "{{model}}"
+  ],
   "report": "whole",
   "expectSeconds": 900,
   "install": "npm install -g @anthropic-ai/claude-code",

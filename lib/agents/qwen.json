@@ -7,6 +7,7 @@
   "cwd": "worktree",
   "argv": [
     "qwen",
+    "{{modelArgs}}",
     "--approval-mode",
     "default",
     "--output-format",
@@ -29,6 +30,7 @@
   ],
   "judgeArgv": [
     "qwen",
+    "{{modelArgs}}",
     "--approval-mode",
     "yolo",
     "--output-format",
@@ -42,6 +44,7 @@
     "supported": true,
     "argv": [
       "qwen",
+      "{{modelArgs}}",
       "--approval-mode",
       "default",
       "--output-format",
@@ -63,6 +66,10 @@
       "--prompt={{promptText}}"
     ]
   },
+  "modelArgs": [
+    "--model",
+    "{{model}}"
+  ],
   "report": "result-json",
   "expectSeconds": 400,
   "install": "npm install -g @qwen-code/qwen-code",

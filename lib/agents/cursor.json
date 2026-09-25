@@ -28,6 +28,7 @@
     "supported": false,
     "reason": "fresh conversation with finding context; never extract session ids from assistant prose"
   },
+  "modelNote": "no per-run model flag verified for this CLI yet; set its model in the CLI's own configuration",
   "report": "result-json",
   "expectSeconds": 400,
   "install": "curl https://cursor.com/install -fsS | bash",

@@ -36,6 +36,7 @@
     ],
     "idFrom": "\"session_id\"\\s*:\\s*\"([^\"]+)\""
   },
+  "modelNote": "no per-run model flag verified for this CLI yet; set its model in the CLI's own configuration",
   "report": "result-json",
   "expectSeconds": 130,
   "install": "curl -fsSL https://app.factory.ai/cli | sh",

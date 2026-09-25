@@ -13,8 +13,8 @@ import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
 import { automaticRoles, automaticReviewers } from "../lib/roles.js";
-import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, saveGlobalReviewers, defaultReviewers, savedReviewersNote, globalConfigPath } from "../lib/config.js";
-import { runAgent, probe } from "../lib/agents.js";
+import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, saveGlobalReviewers, defaultReviewers, savedReviewersNote, globalConfigPath, applyModelFlags, assertModelsSupported, modelsUsed, saveGlobalModel, modelProblem } from "../lib/config.js";
+import { runAgent, probe, supportsModel } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { serve } from "../lib/server.js";
@@ -64,6 +64,7 @@ Common flags
   --reviewer <name>          only these reviewers, repeatable or comma-separated  (default: configured or saved reviewers)
   --jury <name>              same as --reviewer
   --judge codex              one agent that triages and fixes                     (default: configured, auto for 1–2 installed CLIs, then codex)
+  --model <agent>=<model>    this run's model for an agent, repeatable            (default: jury.config.json, then jury agents model)
   --push <true|false>        commit and push fixes                                (default: true)
   --web <true|false>         open the browser console                             (default: true)
 
@@ -87,6 +88,7 @@ const USAGE_FULL = `jury — review a pull request with multiple AI reviewers un
   jury agents                check which configured agents are installed
   jury agents judge <agent>  set the global default judge
   jury agents jury <agents>  set the default reviewers (picker in a terminal)
+  jury agents model <agent>  set the model jury starts an agent with
   jury version
 
 Related PRs: jury review <pr-url-1> <pr-url-2>
@@ -106,6 +108,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --reviewer <name>          only these reviewers, repeatable or comma-separated   (default: configured or saved reviewers)
   --jury <name>              same as --reviewer
   --judge <agent>            one agent that triages and fixes                      (default: configured, auto for 1–2 installed CLIs, then codex)
+  --model <agent>=<model>    this run's model for an agent, repeatable             (default: jury.config.json, then jury agents model)
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
   --web-only                 view saved reviews without running agents
@@ -470,6 +473,7 @@ async function cmdAgent(argv) {
     rounds: { type: "string", default: "10" },
     ...reviewerOptions,
     judge: { type: "string" },
+    model: { type: "string", multiple: true },
     push: { type: "boolean", default: true },
     resume: { type: "string" },
     "dry-run": { type: "boolean", default: false },
@@ -519,6 +523,7 @@ async function cmdAgent(argv) {
   // A local ignored config belongs to the requested checkout. An automatic
   // clone intentionally starts from the repository's committed/default config.
   const cfg = await loadConfig(group ? group.targets[0].worktree : resolved ? worktree : requestedWorktree);
+  applyModelFlags(cfg, values.model);
   const git = await describe(group ? group.targets[0].worktree : worktree);
 
   // Both asked for rather than assumed: the trunk from the remote's own HEAD,
@@ -605,6 +610,8 @@ async function cmdAgent(argv) {
   const pool = roles ? automaticReviewers(cfg, roles)
     : selectReviewers(cfg, requestedReviewers(values), judge.name);
   if (!pool.length) throw new Error("no reviewers configured after excluding the judge");
+  assertModelsSupported([judge, ...pool]);
+  target.models = modelsUsed([judge, ...pool]);
   if (!values["dry-run"]) {
     const checks = await Promise.all(pool.map(probe));
     const missing = checks.filter(a => !a.ok);
@@ -637,6 +644,9 @@ async function cmdAgent(argv) {
   console.log(st.field("judge", st.agent(judge.name)));
   console.log(st.field("juries", pool.map((a) => st.agent(a.name)).join(", ")
     + (values["dry-run"] ? st.warn("  (dry run)") : "")));
+  if (target.models) {
+    console.log(st.field("models", Object.entries(target.models).map(([n, m]) => `${st.agent(n)} ${m}`).join(", ")));
+  }
   console.log(st.field("rounds", st.muted(`${first}..${first + maxRounds - 1}, ${MAX_TURNS} turns per finding`)));
   console.log(st.field("fixes", st.muted(values.push
     ? `committed and pushed to ${group ? group.targets.map(t => t.branch).join(", ") : pushTarget.branch}` : "committed to the worktree only")));
@@ -1072,12 +1082,14 @@ async function cmdReply(argv) {
       run: { type: "string" },
       dir: { type: "string" },
       ...reviewerOptions,
+      model: { type: "string", multiple: true },
       "dry-run": { type: "boolean", default: false },
     },
   });
 
   const worktree = await commandDirectory(values.dir);
   const cfg = await loadConfig(worktree);
+  applyModelFlags(cfg, values.model);
   const dir = await resolveRun(values.run, worktree);
   const events = await readEvents(dir);
   const judge = currentJudge(events);
@@ -1094,6 +1106,7 @@ async function cmdReply(argv) {
     return t.length && t.some((f) => f.status !== "open");
   });
   if (!pool.length) throw new Error("nothing to reply about — resolve some findings first");
+  assertModelsSupported(pool);
 
   console.log(`judge    ${judge}`);
   console.log(`replying ${pool.map((a) => a.name).join(", ")}  (separate conversations)`);
@@ -1198,6 +1211,7 @@ async function cmdRuns(argv) {
 
 async function cmdAgents(args = []) {
   if (["jury", "reviewer", "reviewers"].includes(args[0])) return cmdDefaultReviewers(args.slice(1));
+  if (["model", "models"].includes(args[0])) return cmdAgentModels(args.slice(1));
   if (args.length) {
     if (args[0] !== "judge" || args.length > 2) throw new Error("Usage: jury agents judge [<agent>|--reset] | jury agents jury [<agent>,...|--reset]");
     const name = args[1];
@@ -1239,7 +1253,8 @@ async function cmdAgents(args = []) {
     console.log(
       `${p.ok ? "ok     " : "MISSING"} ${p.name.padEnd(9)} ${role.padEnd(8)} ${p.path ?? p.bin}`
       + (byName.get(p.name)?.enabled === false ? "  (opt-in)" : "")
-      + (saved.has(p.name) ? "  (default reviewer)" : ""),
+      + (saved.has(p.name) ? "  (default reviewer)" : "")
+      + (byName.get(p.name)?.model ? `  (model ${byName.get(p.name).model})` : ""),
     );
   }
   if (cfg.savedReviewers) {
@@ -1279,6 +1294,50 @@ async function cmdAgents(args = []) {
     }
     process.exitCode = 1;
   }
+}
+
+/**
+ * `jury agents model`: the model each agent is started with when jury runs it.
+ *
+ * Saved in ~/.jury/config.json and passed to the agent as a flag or variable
+ * on each run; the agent's own configuration is never touched, so running the
+ * CLI outside jury keeps its normal default.
+ */
+async function cmdAgentModels(args) {
+  const usage = "Usage: jury agents model [<agent> <model>|<agent> --reset]";
+  if (args.includes("--help") || args.includes("-h")) {
+    process.stdout.write(commandHelp("agents", USAGE_FULL));
+    return;
+  }
+  const cfg = await loadConfig();
+  const known = knownAgents(cfg);
+  if (!args.length) {
+    for (const a of known) {
+      const setting = a.model ? `${a.model}  (${a.modelSource})` : supportsModel(a) ? "CLI default" : "CLI default  (no per-run model)";
+      console.log(`${a.name.padEnd(9)} ${setting}`);
+    }
+    return;
+  }
+  if (args.length !== 2) throw new Error(usage);
+  const [name, model] = args;
+  const agent = known.find(a => a.name === name);
+  if (!agent) throw new Error(`Unknown or disabled agent "${name}". Choose: ${known.map(a => a.name).join(", ")}`);
+  if (model === "--reset") {
+    await saveGlobalModel(name, null);
+    console.log(`${name}: saved model removed; the repository setting or the CLI's own default applies.`);
+    return;
+  }
+  const problem = modelProblem(model);
+  if (problem) throw new Error(problem);
+  if (!supportsModel(agent)) {
+    throw new Error(`${name} cannot select a model per run: ${agent.modelNote ?? "its command has no {{modelArgs}} slot"}`);
+  }
+  await saveGlobalModel(name, model);
+  console.log(`${name}: model ${model} (${globalConfigPath()})`);
+  if (agent.modelSource && agent.modelSource !== "~/.jury/config.json") {
+    console.log(`${agent.modelSource} sets ${agent.model} for ${name} here and takes precedence.`);
+  }
+  console.log("Used only when jury runs this agent; its own configuration is unchanged. --model <agent>=<model> overrides it per run.");
 }
 
 /**
