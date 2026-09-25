@@ -197,7 +197,7 @@ See [models](docs/configuration.md#models) for each agent's flag and the precede
 | `claude` | Anthropic Claude Code | `npm i -g @anthropic-ai/claude-code` | reviewer |
 | `grok` | xAI Grok | `npm i -g @vibe-kit/grok-cli` | reviewer |
 | `droid` | Factory Droid | `curl -fsSL https://app.factory.ai/cli \| sh` | reviewer |
-| `agy` | Google Antigravity | see Antigravity's docs | reviewer |
+| `agy` | Google Antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | reviewer |
 | `qwen` | Qwen Code | `npm i -g @qwen-code/qwen-code` | opt-in |
 | `copilot` | GitHub Copilot CLI | `npm i -g @github/copilot` | opt-in |
 | `opencode` | OpenCode | `npm i -g opencode-ai` | opt-in |

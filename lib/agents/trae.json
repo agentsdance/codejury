@@ -8,6 +8,7 @@
   "argv": [
     "traecli",
     "exec",
+    "{{modelArgs}}",
     "--sandbox",
     "read-only",
     "--skip-git-repo-check",
@@ -17,6 +18,7 @@
   "judgeArgv": [
     "traecli",
     "exec",
+    "{{modelArgs}}",
     "--sandbox",
     "workspace-write",
     "--skip-git-repo-check",
@@ -29,7 +31,10 @@
     "supported": false,
     "reason": "exec session ids are not documented in its output; replies start fresh with finding context"
   },
-  "modelNote": "no per-run model flag verified for this CLI yet; set its model in the CLI's own configuration",
+  "modelArgs": [
+    "--model",
+    "{{model}}"
+  ],
   "report": "whole",
   "expectSeconds": 900,
   "install": "sh -c \"$(curl -fsSL https://trae.cn/trae-cli/install_v2.sh)\"",
