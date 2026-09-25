@@ -79,6 +79,22 @@ jury help review                      # complete review options
 `jury <pr-url>` is shorthand for `jury review <pr-url>`. You can also run without installing:
 `npx @agentsdance/codejury review <pr-url> --reviewer claude --push=false`.
 
+### Claude Code plugin
+
+Code Jury is also a [Claude Code plugin](https://code.claude.com/docs/en/plugins). Add this
+repository as a plugin marketplace and install it:
+
+```sh
+claude plugin marketplace add agentsdance/codejury
+claude plugin install codejury@codejury
+```
+
+In a session, `/codejury:review <pr-url>` runs `jury review` (or `npx @agentsdance/codejury`
+when `jury` is not installed) with `--web=false` and, unless you pass `--push`, `--push=false`, then
+summarizes the findings and verdicts. With no URL it reviews the current branch. The plugin also
+ships the `multi-agent-code-review` skill for running the review loop by hand. Agent CLIs are
+still installed and authenticated separately.
+
 ## Screenshots
 
 A review of Code Jury PR #67, with Droid judging and Claude, Codex, and Grok reviewing.

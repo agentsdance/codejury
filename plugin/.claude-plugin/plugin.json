@@ -1,0 +1,13 @@
+{
+  "name": "codejury",
+  "displayName": "Code Jury",
+  "description": "Review a pull request with independent AI reviewers and one judge, using the Code Jury CLI.",
+  "author": {
+    "name": "agentsdance",
+    "url": "https://github.com/agentsdance"
+  },
+  "homepage": "https://github.com/agentsdance/codejury#readme",
+  "repository": "https://github.com/agentsdance/codejury",
+  "license": "MIT",
+  "keywords": ["code-review", "pull-request", "agents", "codex", "claude"]
+}
