@@ -6,6 +6,7 @@
   "cwd": "worktree",
   "argv": [
     "agy",
+    "{{modelArgs}}",
     "--dangerously-skip-permissions",
     "--add-dir",
     "{{worktree}}",
@@ -22,6 +23,7 @@
     "supported": true,
     "argv": [
       "agy",
+      "{{modelArgs}}",
       "--dangerously-skip-permissions",
       "--add-dir",
       "{{worktree}}",
@@ -36,9 +38,12 @@
     ],
     "idFrom": "\"conversation_id\"\\s*:\\s*\"([^\"]+)\""
   },
-  "modelNote": "no per-run model flag verified for this CLI yet; set its model in the CLI's own configuration",
+  "modelArgs": [
+    "--model",
+    "{{model}}"
+  ],
   "report": "agy-json",
   "expectSeconds": 420,
-  "install": "npm install -g @google/antigravity-cli",
+  "install": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
   "docs": "https://antigravity.google/docs/cli"
 }

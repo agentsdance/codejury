@@ -23,7 +23,9 @@ async function scratch(t, prefix) {
 // Where each CLI's model flag lands, verified against its own --help:
 // codex-cli 0.156.1 (exec and exec resume: -m, --model), Claude Code 2.1.281
 // (--model), opencode 1.18.32 (run: -m, --model), qwen 0.24.4 (-m, --model),
-// Copilot CLI 1.0.88 (--model), Kimi Code 2.1.1 (-m, --model).
+// Copilot CLI 1.0.88 (--model), Kimi Code 2.1.1 (-m, --model), droid 0.226.2
+// (exec: -m, --model), agy 1.2.10 (--model), cursor-agent 2026.09.23 (--model),
+// traecli 0.207.1 (exec: -m, --model).
 const FLAG_AT = {
   codex: { argv: 2, judgeArgv: 2, resume: 3 },
   claude: { argv: 1, judgeArgv: 1, resume: 1 },
@@ -31,6 +33,10 @@ const FLAG_AT = {
   qwen: { argv: 1, judgeArgv: 1, resume: 1 },
   copilot: { argv: 1, judgeArgv: 1 },
   kimi: { argv: 1, judgeArgv: 1, resume: 1 },
+  droid: { argv: 2, resume: 2 },
+  agy: { argv: 1, resume: 1 },
+  cursor: { argv: 1, judgeArgv: 1 },
+  trae: { argv: 2, judgeArgv: 2 },
 };
 const byName = new Map(DEFAULTS.agents.map(a => [a.name, a]));
 
@@ -54,8 +60,8 @@ test("each supported agent gets its model flag in every command, and nothing wit
   assert.deepEqual(withModel(grok.argv, { ...grok, model: "grok-4.3" }), grok.argv);
 });
 
-test("agents without a verified per-run model say so and refuse a configured model", () => {
-  for (const name of ["amp", "droid", "agy", "cursor", "trae"]) {
+test("agents without a per-run model say so and refuse a configured model", () => {
+  for (const name of ["amp"]) {
     const agent = byName.get(name);
     assert.equal(supportsModel(agent), false, name);
     assert.ok(agent.modelNote, `${name} explains why`);

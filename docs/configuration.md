@@ -91,8 +91,11 @@ one stops the run before any agent starts rather than silently using its default
 | `qwen` | `--model` | qwen 0.24.4 |
 | `copilot` | `--model` | Copilot CLI 1.0.88 |
 | `kimi` | `--model`, an alias defined in `~/.kimi-code/config.toml` | Kimi Code 2.1.1 |
+| `droid` | `--model` after `exec` (`droid exec --help` lists the IDs) | droid 0.226.2 |
+| `agy` | `--model` (`agy models` lists them) | agy 1.2.10 |
+| `cursor` | `--model` (`cursor-agent --list-models` lists them) | cursor-agent 2026.09.23 |
+| `trae` | `--model` after `exec` | traecli 0.207.1 |
 | `amp` | not supported: `--mode` selects model, prompt and tools together | — |
-| `droid`, `agy`, `cursor`, `trae` | not yet verified; set the model in the CLI's own configuration | — |
 
 A built-in definition supports models by marking the flag's position with a `"{{modelArgs}}"`
 element in every command it runs and giving `modelArgs` (for example `["--model", "{{model}}"]`),
