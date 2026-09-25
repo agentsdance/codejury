@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0-rc.2 — 2026-09-25
+
 - The `agy` install hint now points at the official `https://antigravity.google/cli/install.sh`;
   the npm package it named does not exist.
 - Configure the model each agent runs with: `jury agents model <agent> <model>` saves a default in
