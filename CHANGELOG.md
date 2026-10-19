@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the matching icon beside both the judge and jury agent names in exchange headers, in the console and standalone demo.
+
 ## 0.8.0 — 2026-10-19
 
 - The `agy` install hint now points at the official `https://antigravity.google/cli/install.sh`;

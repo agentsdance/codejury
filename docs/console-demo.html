@@ -803,7 +803,7 @@ function draw(){
         return `
           <div class="xgroup">
             <div class="rule" data-who="${esc(agent)}">
-              <span class="lbl">${icon(agent)}${esc(judgeName())} ⇄ ${esc(agent)}</span><i></i>
+              <span class="lbl">${icon(judgeName())}${esc(judgeName())} ⇄ ${icon(agent)}${esc(agent)}</span><i></i>
               <span class="rt">${mine.length} of ${shown} finding(s)</span>
             </div>
             ${cards(mine)}
