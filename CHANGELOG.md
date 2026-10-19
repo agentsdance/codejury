@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.1 — 2026-10-19
+
 - Show the matching icon beside both the judge and jury agent names in exchange headers, in the console and standalone demo.
 
 ## 0.8.0 — 2026-10-19
