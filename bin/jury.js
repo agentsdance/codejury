@@ -337,6 +337,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
         r = await runAgent(a, {
           worktree, prompt, stopToken: cfg.stopToken,
           dryRun: values["dry-run"],
+          onTimeout: () => clearInterval(heart),
           onLog: (m) => console.log(`  ${st.agent(a.name)} ${st.muted(m)}`),
           onChunk: (text) => {
             lastSpoke = Date.now();
@@ -364,6 +365,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
       await appendEvent(dir, {
         t: "agent.report", agent: a.name, round,
         verdict: r.verdict, seconds: r.seconds, summary: firstLine(r.report), report: r.report,
+        ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
         // The session this review happened in, so the reply resumes THIS
         // conversation rather than whichever ran most recently.
         sessionId: r.sessionId ?? null,
@@ -413,7 +415,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
   console.log(`\n${st.rule(`round ${round} · ${took}s`)}\n`);
   for (const r of results) {
     const paint = r.verdict === "clean" ? st.ok : r.verdict === "error" ? st.bad : st.warn;
-    const mark = r.verdict === "clean" ? "clean" : r.verdict === "error" ? "failed" : "findings";
+    const mark = r.timedOut ? "timed out" : r.verdict === "clean" ? "clean" : r.verdict === "error" ? "failed" : "findings";
     const n = r.findings?.length ? st.muted(`  ${st.count(r.findings.length, "finding")}`) : "";
     console.log(`  ${st.agent(r.agent.padEnd(8))} ${st.muted(String(r.seconds).padStart(5) + "s")}  ${paint(mark)}${n}`);
   }
@@ -1144,6 +1146,7 @@ async function cmdReply(argv) {
     await writeArtifact(dir, replyRaw, r.raw ?? "");
     await appendEvent(dir, {
       t: "reply.answered", agent: a.name, verdict: r.verdict, seconds: r.seconds, report: r.report,
+      ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
     });
     console.log(`\n${"─".repeat(64)}\n${a.name} answered (${r.seconds}s)\n${"─".repeat(64)}\n${r.report}`);
   }));

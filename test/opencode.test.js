@@ -88,7 +88,8 @@ test('OpenCode installed CLI discovers, selects, and saves the judge, delivering
   assert.match((await invoke(agent)).report, /Invalid OpenCode JSON/);
   await writeFile(exe, `#!${process.execPath}\nsetInterval(()=>{},1000);`, { mode: 0o755 });
   const timed = await runAgent({ ...agent, argv: [exe] }, { worktree, prompt, stopToken: 'NO NEW FINDINGS', timeoutSeconds: 0.3 });
-  assert.equal(timed.verdict, 'error'); assert.match(timed.report, /timed out/);
+  assert.equal(timed.verdict, 'error'); assert.match(timed.report, /Timed out/);
+  assert.equal(timed.timedOut, true);
   await rm(exe);
   assert.equal((await invoke(agent)).verdict, 'error');
 });

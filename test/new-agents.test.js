@@ -211,6 +211,7 @@ for (const spec of cases) test(`${spec.name}: installed discovery, literal invoc
   await script(clean+'process.exit(2);'); const failed = await invoke(agent); assert.equal(failed.ok,false); assert.equal(failed.verdict,'error'); assert.match(failed.report,/exited 2/);
   await script('setInterval(()=>{},1000);');
   const timed=await runAgent({...agent,argv:[exe]},{worktree,prompt,stopToken:'NO NEW FINDINGS',timeoutSeconds:0.3});
-  assert.equal(timed.verdict,'error');assert.match(timed.report,/timed out/);
+  assert.equal(timed.verdict,'error');assert.match(timed.report,/Timed out/);
+  assert.equal(timed.timedOut, true);
   await rm(exe); assert.equal((await invoke(agent)).verdict,'error');
 });
