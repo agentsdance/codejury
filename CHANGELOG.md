@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.2-rc.1 — 2026-10-20
+
 - Stop reviewers after a fixed ten-minute deadline, even while they emit output.
   Terminate their process group with a bounded grace period, retain partial output,
   and record an explicit timeout in saved runs and the CLI/console (#121).
