@@ -5,6 +5,8 @@
 - Stop reviewers after a fixed ten-minute deadline, even while they emit output.
   Terminate their process group with a bounded grace period, retain partial output,
   and record an explicit timeout in saved runs and the CLI/console (#121).
+- Preserve event timestamp precision in the console timeline, so short reviews
+  retain their measured duration instead of rounding to six-second increments.
 
 ## 0.8.1 — 2026-10-19
 
