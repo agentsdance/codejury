@@ -11,6 +11,8 @@
   standalone demo, including conversation and exchange participants (#125).
 - Keep a reviewer's rebuttal eligible for triage when the same agent CLI serves
   as both judge and reviewer; the judge's own explanations stay resolved.
+- Release live-console stream resources when the browser disconnects during
+  the initial event-log read.
 
 ## 0.8.1 — 2026-10-19
 
