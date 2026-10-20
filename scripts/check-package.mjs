@@ -35,6 +35,12 @@ try {
     cwd: root, env: { ...isolated.env, JURY_TEST_CLI: installed }, maxBuffer: 8e6,
   });
   console.log(`Verified installed @agentsdance/codejury@${version}: ${files.length} files, CLI commands/subcommands, executable links, saved console, and related-PR fixes/push/resume/failure tests.`);
+} catch (error) {
+  // Node truncates captured stdout when formatting an uncaught execFileSync
+  // error. Print the complete test output so CI retains the failing assertion.
+  if (error.stdout) process.stderr.write(error.stdout);
+  if (error.stderr) process.stderr.write(error.stderr);
+  throw error;
 } finally {
   isolated.dispose();
   rmSync(temporary, { recursive: true, force: true });

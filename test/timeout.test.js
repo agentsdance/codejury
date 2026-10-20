@@ -26,11 +26,11 @@ function shortTimers(t, ready = () => true) {
     if (ms >= 600_000) deadlines.push(ms);
     if (ms >= 600_000) {
       const started = Date.now();
-      const fire = () => {
-        if (!ready() && Date.now() - started < 5000) return original(fire, 10);
+      const timer = original(() => {
+        if (!ready() && Date.now() - started < 5000) { timer.refresh(); return; }
         fn(...args);
-      };
-      return original(fire, 400);
+      }, 400);
+      return timer;
     }
     return original(fn, ms === 5000 ? 100 : ms, ...args);
   });
@@ -188,22 +188,38 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   await git("checkout", "-qb", "feature");
   await writeFile(path.join(repo, "a.txt"), "after\n");
   await git("commit", "-qam", "change");
+  const readyFile = path.join(repo, "reviewer-ready");
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
-    { ...fake(`process.on("SIGTERM", () => console.log("partial review")); setInterval(() => {}, 1000)`),
-      enabled: true, role: "reviewer" },
+    { ...fake(`setTimeout(() => {
+        process.on("SIGTERM", () => console.log("partial review"));
+        require("node:fs").writeFileSync(process.env.JURY_TEST_READY, "");
+        setInterval(() => {}, 1000);
+      }, 1200)`),
+      env: { JURY_TEST_READY: readyFile }, enabled: true, role: "reviewer" },
     { ...fake("console.log('NO NEW FINDINGS')"), name: "peer", role: "reviewer" },
     { ...fake("console.log('NO NEW FINDINGS')"), name: "fake-judge", role: "main" },
   ] }));
   const clock = path.join(repo, "short-clock.mjs");
   const deadlineFile = path.join(repo, "deadline.txt");
+  // Simulate a loaded CI machine: the fake reviewer deliberately starts later
+  // than our shortened clock. Advance the deadline only after its handler is
+  // installed, so this tests shutdown output rather than OS scheduling speed.
   await writeFile(clock, `
-    import { writeFileSync } from "node:fs";
+    import { existsSync, writeFileSync } from "node:fs";
     const later = globalThis.setTimeout;
     const every = globalThis.setInterval;
-    globalThis.setTimeout = (fn, ms, ...args) => later(() => {
-      if (ms >= 600000) writeFileSync(${JSON.stringify(deadlineFile)}, String(Date.now()));
-      fn(...args);
-    }, ms >= 600000 ? 1000 : ms === 5000 ? 200 : ms);
+    globalThis.setTimeout = (fn, ms, ...args) => {
+      const started = Date.now();
+      const timer = later(() => {
+        if (ms >= 600000 && !existsSync(${JSON.stringify(readyFile)}) && Date.now() - started < 5000) {
+          timer.refresh();
+          return;
+        }
+        if (ms >= 600000) writeFileSync(${JSON.stringify(deadlineFile)}, String(Date.now()));
+        fn(...args);
+      }, ms >= 600000 ? 1000 : ms === 5000 ? 200 : ms);
+      return timer;
+    };
     globalThis.setInterval = (fn, ms, ...args) => every(fn, ms === 5000 ? 50 : ms, ...args);
   `);
   const cli = process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js");
