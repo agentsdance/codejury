@@ -47,7 +47,12 @@ Supported prompt delivery is `argv` or `file` (`{{promptFile}}`); stdin is close
 `cwd: "worktree"` starts in the checkout; with `cwd: "flag"`, pass `{{worktree}}` in the command.
 `report: "tail"` extracts a final response from a verbose transcript; `report: "kimi-json"` reads the
 assistant messages out of Kimi Code's `--output-format stream-json` lines; otherwise the whole output is read.
-`expectSeconds` informs the timeout (at least 600 seconds, normally three times that estimate).
+Reviewers have a hard 600-second (ten-minute) deadline per invocation, including replies.
+Output does not reset it, and `expectSeconds` does not extend it. A timeout remains a failed,
+incomplete review with the message **Timed out after 10 minutes**, partial output, and measured
+elapsed time saved in the run. On Linux/macOS, Jury sends SIGTERM to the reviewer's process
+group and SIGKILL after at most five seconds; Windows uses `taskkill /T /F`.
+The judge's explicit, separate timeout budget is unchanged.
 Command placeholders are `{{promptText}}`, `{{promptFile}}`, `{{worktree}}`, `{{sessionId}}` (for
 resumable agents), and `{{packageDir}}`, the directory Code Jury is installed in, for files that ship
 with it such as `lib/agents/kimi-reviewer.md`.
