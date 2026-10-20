@@ -334,7 +334,9 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   const readyFile = path.join(repo, "reviewer-ready");
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
     { ...fake(`setTimeout(() => {
-        process.on("SIGTERM", () => console.log("partial review"));
+        // stderr preserves a diagnostic without making the stdout heartbeat
+        // quiet-period filter hide a missing onTimeout clearInterval.
+        process.on("SIGTERM", () => console.error("partial review"));
         require("node:fs").writeFileSync(process.env.JURY_TEST_READY, "");
         setInterval(() => {}, 1000);
       }, 1200)`),
@@ -344,13 +346,35 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   ] }));
   const clock = path.join(repo, "short-clock.mjs");
   const deadlineFile = path.join(repo, "deadline.txt");
+  const heartbeatFile = path.join(repo, "heartbeat-callbacks.ndjson");
   // Simulate a loaded CI machine: the fake reviewer deliberately starts later
   // than our shortened clock. Advance the deadline only after its handler is
   // installed, so this tests shutdown output rather than OS scheduling speed.
   await writeFile(clock, `
-    import { existsSync, writeFileSync } from "node:fs";
+    import { existsSync, writeFileSync, appendFileSync, promises as fs } from "node:fs";
+    import { AsyncLocalStorage } from "node:async_hooks";
+    import { syncBuiltinESMExports } from "node:module";
     const later = globalThis.setTimeout;
     const every = globalThis.setInterval;
+    const heartbeat = new AsyncLocalStorage();
+    const mkdir = fs.mkdir;
+    const append = fs.appendFile;
+    // A heartbeat that starts before the deadline can finish its asynchronous
+    // mkdir afterward. Preserve callback timing independently of write timing.
+    fs.mkdir = async (...args) => {
+      await new Promise(resolve => later(resolve, 75));
+      return mkdir(...args);
+    };
+    fs.appendFile = (file, data, ...args) => {
+      if (String(file).endsWith("events.ndjson")) {
+        const event = JSON.parse(data);
+        if (event.t === "agent.alive" && event.agent === "trae") {
+          appendFileSync(${JSON.stringify(heartbeatFile)}, JSON.stringify(heartbeat.getStore() ?? null) + "\\n");
+        }
+      }
+      return append(file, data, ...args);
+    };
+    syncBuiltinESMExports();
     globalThis.setTimeout = (fn, ms, ...args) => {
       const started = Date.now();
       const timer = later(() => {
@@ -363,7 +387,11 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
       }, ms >= 600000 ? 1000 : ms === 5000 ? 200 : ms);
       return timer;
     };
-    globalThis.setInterval = (fn, ms, ...args) => every(fn, ms === 5000 ? 50 : ms, ...args);
+    globalThis.setInterval = (fn, ms, ...args) => ms === 5000
+      ? every(() => heartbeat.run({
+          afterDeadline: existsSync(${JSON.stringify(deadlineFile)}),
+        }, fn, ...args), 50)
+      : every(fn, ms, ...args);
   `);
   const cli = process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js");
   const result = await exec(process.execPath, ["--import", clock, cli, "review",
@@ -389,12 +417,15 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   assert.equal(timeout.timedOut, true);
   assert.equal(timeout.timeoutSeconds, 600);
   assert.match(timeout.report, /^Timed out after 10 minutes/);
-  assert.match(await readFile(path.join(dir, timeout.rawFile), "utf8"), /partial review/);
+  assert.match(timeout.report, /partial review/);
+  assert.equal(await readFile(path.join(dir, timeout.rawFile), "utf8"), "");
   assert.equal(reports.find(e => e.agent === "peer").verdict, "clean");
-  const deadline = Number(await readFile(deadlineFile, "utf8"));
   const beats = events.filter(e => e.t === "agent.alive" && e.agent === "trae");
   assert.ok(beats.length, "a silent reviewer must have heartbeats before the deadline");
-  assert.ok(beats.every(e => Date.parse(e.ts) <= deadline), "no heartbeats during timeout shutdown");
+  const callbacks = (await readFile(heartbeatFile, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(callbacks.length, beats.length, "every saved heartbeat must have callback evidence");
+  assert.ok(callbacks.every(sample => sample?.afterDeadline === false),
+    "no heartbeat callbacks during timeout shutdown, regardless of delayed event writes");
   const run = await readRun(dir);
   assert.equal(run.target.state, "human");
   const saved = run.rounds[0].verdicts.find(v => v.a === "trae");
