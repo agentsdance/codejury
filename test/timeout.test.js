@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
+import { existsSync, writeFileSync } from "node:fs";
 import { mkdtemp, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
@@ -49,78 +50,209 @@ test("silent TRAE defaults to a hard ten-minute deadline and records the timeout
   assert.ok(result.seconds >= 0.3);
 });
 
-test("output and even a stop token cannot extend the deadline or approve a timed-out review", async t => {
-  shortTimers(t);
+// Delayed variants simulate startup taking longer than the shortened deadline.
+for (const startupDelay of [0, 600]) {
+  test(`output and even a stop token cannot extend the deadline or approve a timed-out review (${startupDelay} ms startup)`, async t => {
+    const chunks = [];
+    shortTimers(t, () => chunks.join("").includes("still working\n"));
+    const result = await runAgent(fake(`
+      setTimeout(() => {
+        console.log("NO NEW FINDINGS");
+        console.error("partial diagnostic");
+        setInterval(() => console.log("still working"), 20);
+      }, ${startupDelay});
+    `), { ...options, timeoutSeconds: 1200, onChunk: chunk => chunks.push(chunk) });
+    assert.equal(result.ok, false);
+    assert.equal(result.timedOut, true);
+    assert.equal(result.timeoutSeconds, 1200, "an explicit override is preserved");
+    assert.equal(result.verdict, "error");
+    assert.deepEqual(result.findings, []);
+    assert.match(result.raw, /NO NEW FINDINGS/);
+    assert.match(result.raw, /still working/);
+    assert.match(result.report, /partial diagnostic/);
+    assert.equal(chunks.join(""), result.raw);
+    const count = chunks.length;
+    await delay(150);
+    assert.equal(chunks.length, count, "no output callbacks after the result has settled");
+  });
+}
+
+for (const verboseStream of ["stdout", "stderr"]) {
+  test(`timed-out reports keep the message and a bounded tail of verbose ${verboseStream}`, async t => {
+    let streamed = "";
+    const ready = "output-ready\n";
+    shortTimers(t, () => streamed.endsWith(ready));
+    const stdoutSize = verboseStream === "stdout" ? 1024 * 1024 : 32;
+    const stderrSize = verboseStream === "stderr" ? 1024 * 1024 : 32;
+    const stdout = `stdout-start\n${"o".repeat(stdoutSize)}\nstdout-tail\n${ready}`;
+    const stderr = `stderr-start\n${"e".repeat(stderrSize)}\nstderr-tail\n`;
+    const result = await runAgent(fake(`
+      process.stderr.write("stderr-start\\n" + "e".repeat(${stderrSize}) + "\\nstderr-tail\\n", () => {
+        process.stdout.write("stdout-start\\n" + "o".repeat(${stdoutSize}) + "\\nstdout-tail\\n${ready.trim()}\\n");
+      });
+      setInterval(() => {}, 1000);
+    `, { report: "tail" }), { ...options, onChunk: chunk => { streamed += chunk; } });
+    const prefix = "Timed out after 10 minutes\n\n";
+    assert.equal(result.timedOut, true);
+    assert.equal(result.raw, stdout, "the raw stdout transcript must remain complete");
+    assert.ok(result.report.length <= prefix.length + 4000,
+      `timeout report must be bounded, got ${result.report.length} characters`);
+    assert.equal(result.report, prefix + `${stdout.trim()}\n\n${stderr.trim()}`.slice(-4000));
+  });
+}
+
+test("SIGKILL drains stdout and stderr written just before the kill", {
+  skip: process.platform === "win32",
+}, async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), "jury-kill-output-"));
+  const trigger = path.join(dir, "write");
+  const written = path.join(dir, "written");
   const chunks = [];
+  let pid;
+  const kill = process.kill.bind(process);
+  t.after(async () => {
+    if (pid) { try { kill(-pid, "SIGKILL"); } catch {} }
+    await rm(dir, { recursive: true, force: true });
+  });
+  shortTimers(t, () => Boolean(pid));
+  let killed = false;
+  t.mock.method(process, "kill", (target, signal) => {
+    if (target === -pid && signal === "SIGKILL" && !killed) {
+      killed = true;
+      // Hold the parent's event loop until both real pipe writes complete.
+      // These bytes cannot reach the data callbacks before the kill returns.
+      writeFileSync(trigger, "");
+      const started = Date.now();
+      const sleeper = new Int32Array(new SharedArrayBuffer(4));
+      while (!existsSync(written) && Date.now() - started < 5000) {
+        Atomics.wait(sleeper, 0, 0, 10);
+      }
+    }
+    return kill(target, signal);
+  });
   const result = await runAgent(fake(`
-    console.log("NO NEW FINDINGS");
-    console.error("partial diagnostic");
-    setInterval(() => console.log("still working"), 20);
-  `), { ...options, timeoutSeconds: 0.3, onChunk: chunk => chunks.push(chunk) });
-  assert.equal(result.ok, false);
+    const { existsSync, writeFileSync, writeSync } = require("node:fs");
+    process.on("SIGTERM", () => {});
+    console.log("pid=" + process.pid);
+    const poll = setInterval(() => {
+      if (!existsSync(${JSON.stringify(trigger)})) return;
+      clearInterval(poll);
+      writeSync(1, "last stdout diagnostic\\n");
+      writeSync(2, "last stderr diagnostic\\n");
+      writeFileSync(${JSON.stringify(written)}, "");
+    }, 5);
+    setInterval(() => {}, 1000);
+  `), { ...options, onChunk: chunk => {
+    chunks.push(chunk);
+    pid = Number(chunks.join("").match(/pid=(\d+)\n/)?.[1]) || undefined;
+  } });
+  assert.ok(killed, "the reviewer must reach SIGKILL");
+  assert.ok(existsSync(written), "both pipe writes must complete before SIGKILL");
   assert.equal(result.timedOut, true);
-  assert.equal(result.timeoutSeconds, 0.3, "an explicit override is preserved");
-  assert.equal(result.verdict, "error");
-  assert.deepEqual(result.findings, []);
-  assert.match(result.raw, /NO NEW FINDINGS/);
-  assert.match(result.raw, /still working/);
-  assert.match(result.report, /partial diagnostic/);
+  assert.equal(result.ok, false);
+  assert.match(result.raw, /last stdout diagnostic\n/);
+  assert.match(result.report, /last stderr diagnostic/);
   assert.equal(chunks.join(""), result.raw);
   const count = chunks.length;
   await delay(150);
-  assert.equal(chunks.length, count, "no output callbacks after the result has settled");
+  assert.equal(chunks.length, count, "no output callbacks after settlement");
+});
+
+test("SIGKILL drain wait is bounded when a detached descendant holds the pipes", {
+  skip: process.platform === "win32", timeout: 10000,
+}, async t => {
+  let output = "";
+  let pid;
+  let escaped;
+  let timedOutAt;
+  t.after(() => {
+    for (const target of [pid, escaped]) {
+      if (target) { try { process.kill(-target, "SIGKILL"); } catch {} }
+    }
+  });
+  shortTimers(t, () => Boolean(pid && escaped));
+  const result = await runAgent(fake(`
+    process.on("SIGTERM", () => {});
+    console.log("pid=" + process.pid);
+    require("node:child_process").spawn(process.execPath, ["-e", \`
+      console.log("escaped=" + process.pid);
+      setInterval(() => {}, 1000);
+    \`], { detached: true, stdio: ["ignore", "inherit", "inherit"] });
+    setInterval(() => {}, 1000);
+  `), { ...options, onTimeout: () => { timedOutAt = performance.now(); }, onChunk: chunk => {
+    output += chunk;
+    pid = Number(output.match(/pid=(\d+)\n/)?.[1]) || undefined;
+    escaped = Number(output.match(/escaped=(\d+)\n/)?.[1]) || undefined;
+  } });
+  assert.ok(pid && escaped, "both fixture processes must start");
+  assert.doesNotThrow(() => process.kill(escaped, 0), "the detached descendant still holds the pipes");
+  assert.equal(result.timedOut, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.raw, output);
+  assert.ok(performance.now() - timedOutAt < 2000, "open pipes must not block timeout settlement");
 });
 
 for (const parentIgnores of [false, true]) {
-  test(`timeout kills descendants that ignore SIGTERM (${parentIgnores ? "stubborn" : "exiting"} parent)`,
-    { skip: process.platform === "win32" }, async t => {
-      shortTimers(t);
-      const pids = [];
-      t.after(() => {
-        for (const pid of pids) {
-          try { process.kill(pid, "SIGKILL"); } catch {}
-        }
-      });
-      const result = await runAgent(fake(`
-        const { spawn } = require("node:child_process");
-        ${parentIgnores ? 'process.on("SIGTERM", () => console.log("ignored TERM"));' : ""}
-        console.log("pid=" + process.pid);
-        const child = spawn(process.execPath, ["-e", \`
-          process.on("SIGTERM", () => {});
+  for (const startupDelay of [0, 600]) {
+    test(`timeout kills descendants that ignore SIGTERM (${parentIgnores ? "stubborn" : "exiting"} parent, ${startupDelay} ms tool startup)`,
+      { skip: process.platform === "win32" }, async t => {
+        let pids = [];
+        let output = "";
+        let timedOutAt;
+        shortTimers(t, () => pids.length === 2);
+        t.after(() => {
+          for (const pid of pids) {
+            try { process.kill(pid, "SIGKILL"); } catch {}
+          }
+        });
+        const result = await runAgent(fake(`
+          const { spawn } = require("node:child_process");
+          ${parentIgnores ? 'process.on("SIGTERM", () => console.log("ignored TERM"));' : ""}
           console.log("pid=" + process.pid);
+          const child = spawn(process.execPath, ["-e", \`
+            setTimeout(() => {
+              process.on("SIGTERM", () => {});
+              console.log("pid=" + process.pid);
+              setInterval(() => {}, 1000);
+            }, ${startupDelay});
+          \`], { stdio: ["ignore", "pipe", "ignore"] });
+          child.stdout.on("data", chunk => process.stdout.write(chunk));
           setInterval(() => {}, 1000);
-        \`], { stdio: ["ignore", "pipe", "ignore"] });
-        child.stdout.on("data", chunk => process.stdout.write(chunk));
-        setInterval(() => {}, 1000);
-      `), { ...options, timeoutSeconds: 0.4, onChunk: chunk => {
-        for (const match of chunk.matchAll(/pid=(\d+)/g)) pids.push(Number(match[1]));
-      } });
-      assert.equal(pids.length, 2, "both local fixture processes must start");
-      // SIGKILL delivery and OS process reaping can lag the result slightly.
-      for (let attempt = 0; attempt < 100; attempt++) {
-        if (pids.every(pid => {
-          try { process.kill(pid, 0); return false; } catch { return true; }
-        })) break;
-        await delay(10);
-      }
-      for (const pid of pids) {
-        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} survived timeout`);
-      }
-      assert.equal(result.timedOut, true);
-      assert.equal(result.ok, false);
-      assert.ok(result.seconds < 2, "termination must have a bounded grace period");
-    });
+        `), { ...options, onTimeout: () => { timedOutAt = performance.now(); }, onChunk: chunk => {
+          output += chunk;
+          pids = [...output.matchAll(/pid=(\d+)\n/g)].map(match => Number(match[1]));
+        } });
+        const shutdownMs = performance.now() - timedOutAt;
+        assert.equal(pids.length, 2, "both local fixture processes must start");
+        // SIGKILL delivery and OS process reaping can lag the result slightly.
+        for (let attempt = 0; attempt < 100; attempt++) {
+          if (pids.every(pid => {
+            try { process.kill(pid, 0); return false; } catch { return true; }
+          })) break;
+          await delay(10);
+        }
+        for (const pid of pids) {
+          assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} survived timeout`);
+        }
+        assert.equal(result.timedOut, true);
+        assert.equal(result.ok, false);
+        assert.ok(shutdownMs < 2000, "termination must have a bounded grace period");
+      });
+  }
 }
 
 test("normal completion and spawn errors clear the deadline without a timeout status", async t => {
   shortTimers(t);
-  const good = await runAgent(fake("console.log('NO NEW FINDINGS')"), options);
-  const bad = await runAgent({ ...fake(""), argv: ["/jury-test-missing-agent"] }, options);
+  const onTimeout = t.mock.fn();
+  const runOptions = { ...options, onTimeout };
+  const good = await runAgent(fake("console.log('NO NEW FINDINGS')"), runOptions);
+  const bad = await runAgent({ ...fake(""), argv: ["/jury-test-missing-agent"] }, runOptions);
   assert.equal(good.verdict, "clean");
   assert.equal(good.timedOut, undefined);
   assert.equal(bad.verdict, "error");
   assert.equal(bad.timedOut, undefined);
   await delay(500);
+  assert.equal(onTimeout.mock.callCount(), 0, "neither settled review may fire its deadline callback");
 });
 
 test("explicit longer limits still apply and a graceful zero exit cannot erase a timeout", async t => {
@@ -142,37 +274,48 @@ test("explicit longer limits still apply and a graceful zero exit cannot erase a
   assert.match(result.raw, /NO NEW FINDINGS/);
 });
 
-test("interrupting Jury also terminates its isolated reviewer groups",
-  { skip: process.platform === "win32" }, async t => {
-    const source = new URL("../lib/agents.js", import.meta.url).href;
-    const reviewer = fake("console.log('pid=' + process.pid); setInterval(() => {}, 1000)");
-    const child = spawn(process.execPath, ["--input-type=module", "-e", `
-      import { runAgent } from ${JSON.stringify(source)};
-      await runAgent(${JSON.stringify(reviewer)}, {
-        ...${JSON.stringify(options)}, onChunk: chunk => process.stdout.write(chunk),
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"]) {
+  test(`interrupting Jury with ${signal} also terminates its isolated reviewer groups`,
+    { skip: process.platform === "win32" }, async t => {
+      const source = new URL("../lib/agents.js", import.meta.url).href;
+      const reviewer = fake(`
+        console.log("pid=" + process.pid);
+        require("node:child_process").spawn(process.execPath, ["-e",
+          "console.log('pid=' + process.pid); setInterval(() => {}, 1000)"
+        ], { stdio: "inherit" });
+        setInterval(() => {}, 1000);
+      `);
+      const child = spawn(process.execPath, ["--input-type=module", "-e", `
+        import { runAgent } from ${JSON.stringify(source)};
+        await runAgent(${JSON.stringify(reviewer)}, {
+          ...${JSON.stringify(options)}, onChunk: chunk => process.stdout.write(chunk),
+        });
+      `], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+      const exited = once(child, "exit");
+      let pids = [];
+      let output = "";
+      child.stdout.on("data", chunk => {
+        output += chunk;
+        pids = [...output.matchAll(/pid=(\d+)/g)].map(match => Number(match[1]));
       });
-    `], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
-    const exited = once(child, "exit");
-    let pid;
-    let output = "";
-    child.stdout.on("data", chunk => {
-      output += chunk;
-      pid = Number(output.match(/pid=(\d+)/)?.[1]) || undefined;
+      t.after(() => {
+        try { process.kill(-child.pid, "SIGKILL"); } catch {}
+        for (const pid of pids) {
+          try { process.kill(-pid, "SIGKILL"); } catch {}
+          try { process.kill(pid, "SIGKILL"); } catch {}
+        }
+      });
+      for (let i = 0; pids.length < 2 && i < 500; i++) await delay(10);
+      assert.equal(pids.length, 2, "fixture reviewer and its tool must start");
+      process.kill(-child.pid, signal);
+      assert.deepEqual(await exited, [null, signal], "preserve Jury's signal exit");
+      const alive = pid => {
+        try { process.kill(pid, 0); return true; } catch { return false; }
+      };
+      for (let i = 0; pids.some(alive) && i < 100; i++) await delay(10);
+      assert.deepEqual(pids.filter(alive), [], `reviewer and tool must not survive ${signal}`);
     });
-    t.after(() => {
-      try { process.kill(-child.pid, "SIGKILL"); } catch {}
-      if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
-    });
-    for (let i = 0; !pid && i < 500; i++) await delay(10);
-    assert.ok(pid, "fixture reviewer must start");
-    process.kill(-child.pid, "SIGTERM");
-    assert.deepEqual(await exited, [null, "SIGTERM"], "preserve Jury's signal exit");
-    for (let i = 0; i < 100; i++) {
-      try { process.kill(pid, 0); } catch { break; }
-      await delay(10);
-    }
-    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
-  });
+}
 
 test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's result", async t => {
   const repo = await mkdtemp(path.join(tmpdir(), "jury-timeout-"));
