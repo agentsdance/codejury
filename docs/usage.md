@@ -18,6 +18,8 @@ jury finding list --dir "" --run <slug>
 ```
 
 Run artifacts include event logs, generated prompts, reviewer output, and folded console data.
+Timeline durations use recorded event timestamps; rounding is applied only to display labels,
+so short reviews retain their elapsed seconds in the saved console data.
 They are retained locally; remove old records manually when you no longer need them.
 Related-PR task checkouts retain local commits for resume. Single-PR URL checkouts are removed when the CLI finishes, including local-only commits.
 For durable single-PR local-only fixes, review your own source-branch checkout with
