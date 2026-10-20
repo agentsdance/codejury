@@ -26,6 +26,11 @@ For durable single-PR local-only fixes, review your own source-branch checkout w
 `jury --dir /path/to/checkout --trunk <base> --push=false` (no URL), or export commits
 from the temporary checkout while the run is active.
 
+The console and standalone demo show TRAE's own mark beside its participant name
+in timelines, rounds, conversations, and exchanges. The icon is embedded in the
+page and follows the participant color in both light and dark themes, without
+requiring an external image download.
+
 ## Resume and limits
 
 ```sh
