@@ -89,6 +89,10 @@ that agent for both judge and jury, keeping its separate reviewer and judge comm
 permissions. With exactly two installed CLIs, either can be randomly selected as
 judge; the other reviews. Opt-in built-ins are included in this detection.
 
+When one CLI serves both roles, a reviewer's rebuttal still returns the finding
+to the judge's triage queue, subject to the usual turn limit. A judge's own
+explanation does not reopen the finding just because the names are identical.
+
 The selected roles appear before the run starts and are saved with it. `jury reply`
 and `jury review --resume <slug>` reuse those assignments even if installed CLIs
 change. An unavailable saved agent causes an error rather than a fresh assignment.

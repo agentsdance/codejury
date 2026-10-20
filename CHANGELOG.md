@@ -9,6 +9,8 @@
   retain their measured duration instead of rounding to six-second increments.
 - Show TRAE's own icon instead of a generic triangle throughout the console and
   standalone demo, including conversation and exchange participants (#125).
+- Keep a reviewer's rebuttal eligible for triage when the same agent CLI serves
+  as both judge and reviewer; the judge's own explanations stay resolved.
 
 ## 0.8.1 — 2026-10-19
 
