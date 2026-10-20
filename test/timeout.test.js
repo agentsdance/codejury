@@ -241,6 +241,55 @@ for (const parentIgnores of [false, true]) {
   }
 }
 
+for (const exitCode of [0, 1]) {
+  test(`reviewer exit ${exitCode} kills background descendants without a timeout`, {
+    skip: process.platform === "win32", timeout: 15000,
+  }, async t => {
+    let output = "";
+    let pids = [];
+    t.after(() => {
+      if (pids[0]) { try { process.kill(-pids[0], "SIGKILL"); } catch {} }
+      for (const pid of pids) {
+        try { process.kill(pid, "SIGKILL"); } catch {}
+      }
+    });
+    const onTimeout = t.mock.fn();
+    const result = await runAgent(fake(`
+      const { spawn } = require("node:child_process");
+      console.log("pid=" + process.pid);
+      const child = spawn(process.execPath, ["-e", \`
+        process.on("SIGTERM", () => {});
+        setInterval(() => {}, 1000);
+        process.send("ready");
+      \`], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+      child.once("message", () => {
+        console.log("pid=" + child.pid);
+        console.log("NO NEW FINDINGS");
+        child.disconnect();
+        child.unref();
+        process.exitCode = ${exitCode};
+      });
+    `), { ...options, timeoutSeconds: 5, onTimeout, onChunk: chunk => {
+      output += chunk;
+      pids = [...output.matchAll(/pid=(\d+)\n/g)].map(match => Number(match[1]));
+    } });
+    assert.equal(pids.length, 2, "the reviewer must wait for its background tool to start");
+    assert.equal(result.ok, exitCode === 0);
+    assert.equal(result.verdict, exitCode === 0 ? "clean" : "error");
+    assert.equal(result.timedOut, undefined);
+    assert.equal(onTimeout.mock.callCount(), 0);
+    if (exitCode !== 0) assert.match(result.report, /exited 1/);
+    const descendant = pids[1];
+    // Signal delivery and orphan reaping can lag runAgent's settlement.
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try { process.kill(descendant, 0); } catch { break; }
+      await delay(10);
+    }
+    assert.throws(() => process.kill(descendant, 0), { code: "ESRCH" },
+      `background tool ${descendant} survived reviewer exit ${exitCode}`);
+  });
+}
+
 test("normal completion and spawn errors clear the deadline without a timeout status", async t => {
   shortTimers(t);
   const onTimeout = t.mock.fn();
