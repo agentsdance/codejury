@@ -290,19 +290,25 @@ for (const exitCode of [0, 1]) {
   });
 }
 
-test("normal completion and spawn errors clear the deadline without a timeout status", async t => {
-  shortTimers(t);
-  const onTimeout = t.mock.fn();
-  const runOptions = { ...options, onTimeout };
-  const good = await runAgent(fake("console.log('NO NEW FINDINGS')"), runOptions);
-  const bad = await runAgent({ ...fake(""), argv: ["/jury-test-missing-agent"] }, runOptions);
-  assert.equal(good.verdict, "clean");
-  assert.equal(good.timedOut, undefined);
-  assert.equal(bad.verdict, "error");
-  assert.equal(bad.timedOut, undefined);
-  await delay(500);
-  assert.equal(onTimeout.mock.callCount(), 0, "neither settled review may fire its deadline callback");
-});
+for (const startupMs of [0, 600]) {
+  test(`normal completion and spawn errors clear the deadline without a timeout status (${startupMs} ms startup)`, async t => {
+    // Let the shortened deadlines fire only after both results so slow CI can
+    // exercise normal completion. An uncleared timer will then fire below.
+    let settled = false;
+    shortTimers(t, () => settled);
+    const onTimeout = t.mock.fn();
+    const runOptions = { ...options, onTimeout };
+    const good = await runAgent(fake(`setTimeout(() => console.log('NO NEW FINDINGS'), ${startupMs})`), runOptions);
+    const bad = await runAgent({ ...fake(""), argv: ["/jury-test-missing-agent"] }, runOptions);
+    settled = true;
+    assert.equal(good.verdict, "clean");
+    assert.equal(good.timedOut, undefined);
+    assert.equal(bad.verdict, "error");
+    assert.equal(bad.timedOut, undefined);
+    await delay(500);
+    assert.equal(onTimeout.mock.callCount(), 0, "neither settled review may fire its deadline callback");
+  });
+}
 
 test("explicit longer limits still apply and a graceful zero exit cannot erase a timeout", async t => {
   let ready = false;
