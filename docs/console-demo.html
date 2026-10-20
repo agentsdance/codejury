@@ -605,8 +605,12 @@ let RUN = {
 
 // One mark per agent. Inline SVG on currentColor: no external asset, so the
 // console works served locally and as a self-contained page, and both themes
-// get the right contrast for free. Unknown agents fall back to a plain dot.
+// get the right contrast for free. Unknown agents fall back to geometric glyphs.
 const ICONS = {
+  // TRAE's own mark from https://www.trae.ai (icon-logo.svg). Keep it inline
+  // and use currentColor, like the other product marks, for offline/themed use.
+  trae: '<svg viewBox="0 0 48 35" width="16" height="15" aria-hidden="true">' +
+    '<path fill="currentColor" d="M48 34.642H6.857v-6.854H0V.358h48zM6.857 27.788h34.286V7.215H6.857zm17.145-10.391-4.849 4.848-4.848-4.848 4.848-4.848zm13.713-.003-4.848 4.848-4.848-4.848 4.848-4.848z"/></svg>',
   // Official marks (simple-icons, CC0 icon set; the marks themselves remain the
   // trademarks of their owners and are used here only to identify the tools).
   claude: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +

@@ -7,6 +7,8 @@
   and record an explicit timeout in saved runs and the CLI/console (#121).
 - Preserve event timestamp precision in the console timeline, so short reviews
   retain their measured duration instead of rounding to six-second increments.
+- Show TRAE's own icon instead of a generic triangle throughout the console and
+  standalone demo, including conversation and exchange participants (#125).
 
 ## 0.8.1 — 2026-10-19
 
