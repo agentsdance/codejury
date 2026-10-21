@@ -118,7 +118,7 @@ test('a related-PR invalid trunk removes its unrecorded workspace before checkin
   assert.deepEqual(await readdir(path.join(fixture.state, 'checkouts')), []);
 });
 
-test('invalid trunk on resume preserves recorded group workspaces and local fixes', async t => {
+test('remotely deleted trunk on resume preserves recorded group workspaces and local fixes', async t => {
   const fixture = await groupFixture(t);
   const reviewed = await fixture.review(['--push=false']);
   assert.equal(reviewed.code, 0, reviewed.stderr);
@@ -126,10 +126,10 @@ test('invalid trunk on resume preserves recorded group workspaces and local fixe
   const member = run.target.targets[1];
   const head = await fixture.git(member.worktree, 'rev-parse', 'HEAD');
   const receipts = await fixture.receipts();
-  await fixture.git(member.worktree, 'update-ref', '-d', `refs/remotes/origin/${member.trunk}`);
+  await fixture.git(fixture.members[1].remote, 'update-ref', '-d', `refs/heads/${member.trunk}`);
   const resumed = await fixture.review(['--resume', slug]);
   assert.equal(resumed.code, 1);
-  assert.match(resumed.stderr, /invalid trunk/);
+  assert.match(resumed.stderr, /remote trunk .* does not exist/);
   assert.equal(await fixture.git(member.worktree, 'rev-parse', 'HEAD'), head);
   assert.equal(await readFile(path.join(member.worktree, 'contract.txt'), 'utf8'), 'v3\n');
   await assert.rejects(access(path.join(run.target.workspace, '.jury-lock')), { code: 'ENOENT' });
