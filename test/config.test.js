@@ -91,3 +91,18 @@ test("judge permissions differ from reviewer permissions without replacing custo
   await write(dir, "jury.config.json", { agents: [{ name: "codex", argv: ["custom-codex"] }] });
   assert.deepEqual(judgeAgent(await loadConfig(dir)).argv, ["custom-codex"]);
 });
+
+
+test("Codex resume permissions are role-specific and custom resume replaces the default", async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const cfg = await loadConfig(dir);
+  const reviewer = cfg.agents.find(a => a.name === "codex");
+  const judge = judgeAgent(cfg, "codex");
+  assert.ok(reviewer.resume.argv.includes("read-only"));
+  assert.ok(judge.resume.argv.includes("workspace-write"));
+  assert.notEqual(judge.resume, reviewer.resume);
+  const resume = { supported: true, argv: ["custom-codex", "{{sessionId}}", "{{promptText}}"] };
+  await write(dir, "jury.config.json", { agents: [{ name: "codex", argv: ["custom-codex"], resume }] });
+  assert.deepEqual(judgeAgent(await loadConfig(dir), "codex").resume, resume);
+});

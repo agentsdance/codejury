@@ -5,6 +5,10 @@
 - Reject invalid or unavailable trunk branches before launching review agents.
   Generated reviewer and judge diff commands now fail closed when the base ref
   cannot be resolved instead of silently omitting committed changes.
+- Allow an explicit reviewer/judge pair from the same agent without an extra flag,
+  retaining separate role sessions and saved resume/reply routing. Codex explicitly
+  retains read-only reviewer and workspace-write judge permissions on resume. Label
+  same-agent conversation roles and document the lack of model diversity (#133).
 
 ## 0.8.2-rc.1 — 2026-10-20
 

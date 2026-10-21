@@ -27,7 +27,7 @@ async function scratch(t, prefix) {
 // (exec: -m, --model), agy 1.2.10 (--model), cursor-agent 2026.09.23 (--model),
 // traecli 0.207.1 (exec: -m, --model).
 const FLAG_AT = {
-  codex: { argv: 2, judgeArgv: 2, resume: 3 },
+  codex: { argv: 2, judgeArgv: 2, resume: 5 },
   claude: { argv: 1, judgeArgv: 1, resume: 1 },
   opencode: { argv: 2, judgeArgv: 2, resume: 2 },
   qwen: { argv: 1, judgeArgv: 1, resume: 1 },
@@ -78,6 +78,9 @@ test("the schema keeps the model slot and its arguments together", () => {
   const codex = byName.get("codex");
   const noSlot = { ...codex, judgeArgv: codex.judgeArgv.filter(a => a !== "{{modelArgs}}") };
   assert.ok(validateAgent(noSlot).some(p => /judgeArgv must contain a "\{\{modelArgs\}\}"/.test(p)));
+  const noJudgeResumeSlot = { ...codex, resume: { ...codex.resume,
+    judgeArgv: codex.resume.judgeArgv.filter(a => a !== "{{modelArgs}}") } };
+  assert.ok(validateAgent(noJudgeResumeSlot).some(p => /resume.judgeArgv must contain/.test(p)));
   const { modelArgs, ...slotOnly } = codex;
   assert.ok(validateAgent(slotOnly).some(p => /modelArgs is not defined/.test(p)));
   assert.ok(validateAgent({ ...codex, modelArgs: ["--model"] }).some(p => /"modelArgs" must be/.test(p)));
@@ -102,14 +105,14 @@ test("the model reaches the process on first runs, resumed rounds, judging and r
   assert.ok((await runAgent({ ...grok, model: "grok-4.3", argv: swap(grok.argv) }, opts)).ok);
   const calls = (await readFile(log, "utf8")).trim().split("\n").map(l => JSON.parse(l));
   assert.deepEqual(calls[0].argv.slice(0, 3), ["exec", "--model", "gpt-x"]);
-  assert.deepEqual(calls[1].argv.slice(0, 5), ["exec", "resume", "--model", "gpt-x", "0123abcd-0000"]);
+  assert.deepEqual(calls[1].argv.slice(0, 7), ["exec", "--sandbox", "read-only", "resume", "--model", "gpt-x", "0123abcd-0000"]);
   assert.deepEqual(calls[2].argv.slice(0, 4), ["exec", "--model", "gpt-x", "--sandbox"]);
   assert.ok(!calls[3].argv.includes("--model"));
   assert.ok(!calls[3].argv.some(a => a.includes("{{")));
   assert.equal(calls[4].grok, "grok-4.3");
 
   const reply = replyArgv(codex, { promptText: "verdicts", worktree: dir, sessionId: "abc-123" });
-  assert.deepEqual(reply.argv.slice(0, 6), ["codex", "exec", "resume", "--model", "gpt-x", "abc-123"]);
+  assert.deepEqual(reply.argv.slice(0, 8), ["codex", "exec", "--sandbox", "read-only", "resume", "--model", "gpt-x", "abc-123"]);
   const fresh = replyArgv({ ...codex, model: undefined }, { promptText: "verdicts", worktree: dir });
   assert.ok(!fresh.argv.some(a => a.includes("{{modelArgs}}") || a === "--model"));
 });

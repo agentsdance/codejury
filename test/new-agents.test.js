@@ -186,7 +186,7 @@ for (const spec of cases) test(`${spec.name}: installed discovery, literal invoc
     const r=command(['review','--dir',worktree,'--trunk','master','--web=false','--push=false','--rounds','1',flag,spec.name]);
     assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/REVIEW COMPLETE/);
     const self=command(['review','--dir',worktree,'--trunk','master','--web=false','--push=false','--judge',spec.name,flag,spec.name]);
-    assert.notEqual(self.status,0);assert.match(self.stderr,/selected judge and cannot review its own work/);
+    assert.equal(self.status,0,self.stderr);assert.match(self.stdout,/selected as judge and reviewer in separate sessions/);
   }
   if (spec.resume) {
     const {appendEvent,readEvents}=await import(pathToFileURL(path.join(root,'lib/store.js')));

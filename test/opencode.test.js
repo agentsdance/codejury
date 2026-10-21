@@ -54,7 +54,11 @@ test('OpenCode installed CLI discovers, selects, and saves the judge, delivering
   const cfg = await loadConfig(worktree, { globalFile: path.join(dir, 'absent') });
   const agent = (cfg.available ?? cfg.agents).find(a => a.name === 'opencode');
   const prompt = '--literal "quotes"; $(touch unwanted)\nReview only.';
-  const invoke = a => runAgent({ ...a, argv: [exe, ...a.argv.slice(1)] }, { worktree, prompt, stopToken: 'NO NEW FINDINGS', timeoutSeconds: 3 });
+  const invoke = (a, sessionId = null) => runAgent({
+    ...a,
+    argv: [exe, ...a.argv.slice(1)],
+    resume: a.resume && { ...a.resume, argv: [exe, ...a.resume.argv.slice(1)] },
+  }, { worktree, prompt, stopToken: 'NO NEW FINDINGS', timeoutSeconds: 3, sessionId });
   assert.equal((await invoke(agent)).verdict, 'clean');
   let call = JSON.parse(await readFile(path.join(worktree, 'call.json')));
   assert.equal(call.cwd, await realpath(worktree));
@@ -66,10 +70,15 @@ test('OpenCode installed CLI discovers, selects, and saves the judge, delivering
   assert.equal(agent.resume.supported, true);
   assert.ok(agent.resume.argv.includes('{{sessionId}}'));
   assert.ok(!agent.resume.argv.includes('--continue'));
-  assert.equal((await invoke(judgeAgent(cfg, 'opencode'))).verdict, 'clean');
+  const judge = judgeAgent(cfg, 'opencode');
+  assert.equal((await invoke(judge)).verdict, 'clean');
   call = JSON.parse(await readFile(path.join(worktree, 'call.json')));
   assert.ok(call.args.includes('build')); assert.ok(call.args.includes('--auto'));
   assert.equal(call.permission.edit, undefined);
+  assert.equal((await invoke(judge, 'ses_fixture')).verdict, 'clean');
+  call = JSON.parse(await readFile(path.join(worktree, 'call.json')));
+  assert.ok(call.args.includes('build')); assert.ok(call.args.includes('--auto'));
+  assert.deepEqual(call.args.slice(call.args.indexOf('--session'), call.args.indexOf('--session') + 2), ['--session', 'ses_fixture']);
   const env = { ...process.env, HOME: dir, USERPROFILE: dir, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
   const exec = args => execFileSync(process.execPath, [cli, ...args], { cwd: worktree, env, encoding: 'utf8' });
   assert.match(spawnSync(process.execPath, [cli, 'agents'], { cwd: worktree, env, encoding: 'utf8' }).stdout, /ok\s+opencode\s+reviewer/);
