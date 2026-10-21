@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rebuild a saved run snapshot when concurrent commands append newer events
+  during publication, so a late publisher does not hide completed replies or
+  finding updates from the console and run listing.
 - Stop console fixture processes before deleting their files, and complete all
   registered teardown actions even if one fails, so cleanup errors do not leave
   web-launch package tests waiting on a surviving console.

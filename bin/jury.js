@@ -20,7 +20,7 @@ import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { assertTrunk } from "../lib/trunk.js";
 import { serve } from "../lib/server.js";
-import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
+import { appendEvent, publishEvents, readEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, judgeSessionIn, openFindings, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
@@ -273,7 +273,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
   await appendEvent(dir, { t: "round.start", n: round, sha: git.sha, prompt, promptFile });
   // Publish immediately: a review that takes 18 minutes should be visible for
   // all 18, not appear only once it is over.
-  const publish = async () => writeRun(dir, foldEvents(await readEvents(dir), { target }));
+  const publish = () => publishEvents(dir, { target });
   await publish();
 
   // Concurrently: the slowest reviewer sets the round's wall clock, and running
@@ -952,7 +952,7 @@ function beat(dir, agent, round, forAgent = null) {
  */
 async function publishRun(dir, target) {
   await appendEvent(dir, { t: "target", target });
-  await writeRun(dir, foldEvents(await readEvents(dir), { target }));
+  await publishEvents(dir, { target });
 }
 
 /**
@@ -1206,9 +1206,7 @@ async function resolveRun(slug, root = process.cwd()) {
 }
 
 async function republish(dir) {
-  const events = await readEvents(dir);
-  const seed = events.filter((e) => e.t === "target").at(-1)?.target ?? {};
-  await writeRun(dir, foldEvents(events, { target: seed }));
+  await publishEvents(dir);
 }
 
 /**
