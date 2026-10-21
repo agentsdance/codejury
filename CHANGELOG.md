@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve multiline reasoning and evidence from settled findings in subsequent
+  review prompts instead of dropping their continuation lines.
 - Skip saved snapshots with invalid top-level containers and report the affected
   field, so one malformed run cannot break listing valid neighboring reviews.
   Keep directory identities authoritative and prevent saved metadata from
