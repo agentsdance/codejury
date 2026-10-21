@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep fresh reviews in separate run directories even when started at the same
+  instant, so fast or concurrent invocations cannot merge their histories.
+  Explicit resume continues to use the selected run, including older names.
 - Read Codex session IDs from JSON thread metadata, so a UUID quoted in review
   prose cannot redirect later replies. Parse completed assistant responses and
   retain readable streamed text while preserving the raw event transcript.

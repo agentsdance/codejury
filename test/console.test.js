@@ -10,6 +10,22 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+test("console attempt labels support unique run names and legacy minute-only names", async () => {
+  for (const file of ["web/index.html", "docs/console-demo.html"]) {
+    const source = await readFile(path.join(root, file), "utf8");
+    const fn = source.match(/function attemptOf\(r\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(fn, `${file} must label repeated reviews`);
+    const attemptOf = new Function(`${fn}; return attemptOf;`)();
+    assert.equal(attemptOf({ slug: "repo-42-20261021-1930" }), "10/21 19:30");
+    const first = attemptOf({ slug: "repo-42-20261021-193001123-12345678-1234-1234-1234-123456789abc" });
+    const second = attemptOf({ slug: "repo-42-20261021-193001123-abcdef01-1234-1234-1234-123456789abc" });
+    assert.equal(first, "10/21 19:30:01.123 · 12345678");
+    assert.equal(second, "10/21 19:30:01.123 · abcdef01");
+    assert.notEqual(first, second, `${file} must visibly distinguish simultaneous reviews`);
+    assert.equal(attemptOf({ slug: "repo-42" }), "");
+  }
+});
+
 /** The console is a single self-contained page, so its render helpers are
  *  lifted out of the <script> block rather than imported. Only the pure ones
  *  come across: the rest reaches for `document` the moment it is evaluated. */

@@ -923,10 +923,11 @@ function runLabel(r) {
  * does not need to defend its uniqueness.
  */
 function attemptOf(r) {
-  const m = /-(\d{8})-(\d{4})$/.exec(r.slug ?? "");
+  const m = /-(\d{8})-(\d{4})(?:(\d{2})(\d{3})-([0-9a-f-]{36}))?$/.exec(r.slug ?? "");
   if (!m) return "";
-  const [, d, hm] = m;
-  return `${d.slice(4, 6)}/${d.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2)}`;
+  const [, d, hm, s, ms, id] = m;
+  const minute = `${d.slice(4, 6)}/${d.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2)}`;
+  return id ? `${minute}:${s}.${ms} · ${id.slice(0, 8)}` : minute;
 }
 function hasSiblings(r, all) {
   const key = `${r.target?.repo}#${r.target?.id}`;
