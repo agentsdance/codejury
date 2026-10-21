@@ -37,6 +37,16 @@ test("HTTPS and scp-style remotes normalize to the same identity", () => {
   );
 });
 
+test("the default SSH port preserves identity while non-default ports stay distinct", () => {
+  const https = repositoryFromRemote("https://git.example.com/acme/widgets.git");
+  assert.deepEqual(repositoryFromRemote("ssh://git@git.example.com:22/acme/widgets.git"), https);
+  assert.notDeepEqual(repositoryFromRemote("ssh://git@git.example.com:2222/acme/widgets.git"), https);
+  assert.notDeepEqual(
+    repositoryFromRemote("https://git.example.com:8443/acme/widgets.git"),
+    repositoryFromPrUrl("https://git.example.com:9443/acme/widgets/-/merge_requests/198"),
+  );
+});
+
 test("a PR cannot operate on an unrelated checkout", () => {
   assert.throws(
     () => assertPrCheckout(
@@ -337,6 +347,8 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
   for (const fixture of [
     { kind: "gitlab", label: "gitlab" },
     { kind: "gitlab", label: "gitlab with a cached default", discoverTrunk: true },
+    { kind: "gitlab", label: "gitlab with a cached default over standard SSH",
+      discoverTrunk: true, origin: "ssh://git@git.example.com:22/acme/widgets.git" },
     { kind: "github", label: "github" },
     { kind: "gitlab", label: "gitlab without a local trunk", removeLocalTrunk: true },
     { kind: "gitlab", label: "gitlab with a cached default and no local trunk",
@@ -378,14 +390,17 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
       const url = kind === "gitlab"
         ? "https://git.example.com/acme/widgets/-/merge_requests/198"
         : "https://github.com/acme/widgets/pull/198";
-      await git("remote", "set-url", "origin", kind === "gitlab"
+      await git("remote", "set-url", "origin", fixture.origin || (kind === "gitlab"
         ? "https://git.example.com/acme/widgets.git"
-        : "https://github.com/acme/widgets.git");
+        : "https://github.com/acme/widgets.git"));
       if (kind === "gitlab") {
         await git("update-ref", "refs/merge-requests/198/head", featureHead.trim());
       }
 
       const exec = async (command, args, options) => {
+        if (command === "git" && args[0] === "clone" && args.at(-2) !== caller) {
+          throw new Error("offline network clone");
+        }
         if (command === "gh") return { stdout: JSON.stringify({
           title: "PR", body: "", state: "OPEN", baseRefName: "main",
           headRefName: "feature", headRefOid: featureHead.trim(),
