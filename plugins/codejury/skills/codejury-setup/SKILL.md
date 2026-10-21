@@ -8,6 +8,9 @@ description: Set up CodeJury or diagnose its local prerequisites when the user a
 CodeJury runs on the user's computer. It orchestrates separately installed agent
 CLIs; this plugin supplies instructions, not agent accounts or subscriptions.
 Follow the user's requested scope and existing authorization.
+Reviews start from PR links; local files or folders alone are not supported
+review targets for this plugin. Setup can check prerequisites before a PR is
+selected, without starting a review.
 
 1. Check `node --version`, `npm --version`, and `git --version`. Node must be at
    least 20.10. For GitHub PRs, also check `gh --version` and `gh auth status`.
@@ -35,7 +38,9 @@ Follow the user's requested scope and existing authorization.
    agents judge`, `jury agents jury`, or `jury agents model` only when the user
    asks to save defaults.
 5. Report the CLI version, available agents, remaining prerequisites, and a
-   suitable next command. Do not start agents just to validate setup.
+   suitable PR-link command. If no PR URL is available, request it before a
+   subsequent review rather than defaulting to local files. Do not start agents
+   just to validate setup.
 
 A CodeJury review can edit files and create commits. Agent providers process
 the review's code and prompts and may charge for usage. `--push=false` disables

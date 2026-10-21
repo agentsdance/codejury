@@ -1,6 +1,6 @@
 ---
 name: codejury-review
-description: Run or resume CodeJury's multi-agent review-and-fix loop when the user asks to use CodeJury, assemble a jury of coding agents, or continue a CodeJury review. For inspecting existing results without starting agents, use the saved-results workflow instead.
+description: Review pull requests supplied by URL with CodeJury's multi-agent review-and-fix loop, or resume a saved PR review. Require a PR link before starting a new review. Use the saved-results workflow to inspect prior findings without starting agents.
 ---
 
 # Review with CodeJury
@@ -9,6 +9,15 @@ Use CodeJury's CLI to own the review loop. Do not manually replace it with
 separate reviewers or claim a simulated run is a real review. Follow the user's
 chosen target, agents, models, and limits; explicit user instructions take
 precedence over the defaults below.
+
+## Supported target
+
+The supported entry point is a pull-request URL. Require one or more PR links
+from the user or established conversation context before starting a new review.
+If the request only names local files, a directory, or uncommitted changes, ask
+for the corresponding PR link. Do not substitute the current checkout, invent
+a PR, or advertise arbitrary local-file review. For a resume, recover the
+original PR link from the saved run or conversation.
 
 ## Runner and prerequisites
 
@@ -31,9 +40,11 @@ launching agents. Read `jury help review` for flags rather than inventing them.
   `--push=false` promise; explain the mismatch and clarify the workflow.
 - Respect specified judges, juries, models, round limits, and repository config.
   Do not silently save global defaults or add reviewers the user did not request.
-- Use `--push=false` unless pushing the resulting fixes is authorized. Use
-  `--web=false` for a command that exits when the review finishes. If the user
-  requests a live console, manage the resulting long-running process explicitly.
+- Use `--push=false` unless pushing the resulting fixes is authorized. For an
+  interactive desktop review, keep the default live console enabled, share its
+  printed URL as a clickable link as soon as it starts, and retain the managed
+  process. Use `--web=false` for a headless workflow that should exit when the
+  review finishes, or when the user requests no dashboard.
 - Pass paths, URLs, summaries, and other user text as distinct arguments with
   proper quoting; never evaluate a user-supplied command string.
 
@@ -41,16 +52,19 @@ launching agents. Read `jury help review` for flags rather than inventing them.
 
 **Single PR, local-only fixes:** create a persistent clone or worktree of the
 PR's source branch, or use an existing matching clean checkout. Discover the
-head and base from the PR metadata. Leave unrelated working changes intact.
-Run without a PR URL:
+head and base from the supplied PR's metadata and verify that the checkout
+matches that PR. This checkout only retains fixes for the URL-selected PR;
+it is not a separate local-file review mode. Leave unrelated working changes
+intact. Internally invoke the CLI against this verified checkout:
 
 ```sh
 node "<plugin-root>/scripts/jury.mjs" review \
-  --dir /path/to/persistent-checkout --trunk base-branch --web=false --push=false
+  --dir /path/to/persistent-checkout --trunk base-branch --push=false
 ```
 
 Replace the example path and base. Keep this checkout after completion and
-report it to the user. A single-PR URL review removes its temporary checkout,
+report it with the original PR URL to the user. Include that URL in the run's
+title or summary so the saved review remains traceable. A single-PR URL review removes its temporary checkout,
 including unpushed commits; adding `--dir` to a URL only changes the state root
 and does not prevent this cleanup.
 
@@ -74,6 +88,9 @@ Run through the host's managed long-running process facility and retain the
 process handle and output. Give progress updates while agents run. A reviewer
 has a fixed ten-minute execution deadline; the whole multi-round review can
 take longer. Do not launch duplicate reviews merely because output is quiet.
+With the live console enabled, the process stays up after review completion;
+inspect the completion message and saved run status instead of waiting for the
+server process to exit. Keep the dashboard available while the user needs it.
 
 On a login, quota, timeout, or reviewer failure, inspect the saved diagnostics
 and report the failure. Resume after its cause is addressed. Do not repeatedly
