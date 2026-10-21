@@ -335,7 +335,7 @@ test("a local merge request checkout refreshes an explicitly requested trunk ref
 
 test("offline local PR checkouts preserve the caller's cached remote trunk", async (t) => {
   for (const fixture of [
-    { kind: "gitlab", label: "gitlab" },
+    { kind: "gitlab", label: "gitlab without a trunk override", discoverTrunk: true },
     { kind: "github", label: "github" },
     { kind: "gitlab", label: "gitlab without a local trunk", removeLocalTrunk: true },
   ]) {
@@ -355,6 +355,9 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
       await git("commit", "-qm", "base");
       await git("push", "-q", "origin", "main");
       const { stdout: cachedTrunk } = await git("rev-parse", "refs/remotes/origin/main");
+      if (fixture.discoverTrunk) {
+        await git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+      }
 
       // X is deliberately unpublished. The feature is based on X, while the
       // cached remote-tracking trunk still names the public base before X.
@@ -391,9 +394,15 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
         return run(command, args, options);
       };
       const resolved = await resolvePrCheckout(url, {
-        allowPush: false, exec, dir: caller, root, trunk: "main",
+        allowPush: false, exec, dir: caller, root,
+        ...(!fixture.discoverTrunk && { trunk: "main" }),
       });
       t.after(resolved.cleanup);
+
+      if (fixture.discoverTrunk) {
+        assert.equal(resolved.trunk, "main");
+        await assertTrunk(resolved.worktree, resolved.trunk);
+      }
 
       const { stdout: actualTrunk } = await run("git", [
         "-C", resolved.worktree, "rev-parse", "refs/remotes/origin/main",
