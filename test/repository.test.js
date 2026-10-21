@@ -40,6 +40,8 @@ test("HTTPS and scp-style remotes normalize to the same identity", () => {
 test("the default SSH port preserves identity while non-default ports stay distinct", () => {
   const https = repositoryFromRemote("https://git.example.com/acme/widgets.git");
   assert.deepEqual(repositoryFromRemote("ssh://git@git.example.com:22/acme/widgets.git"), https);
+  assert.deepEqual(repositoryFromRemote("git+ssh://git@git.example.com:22/acme/widgets.git"), https);
+  assert.deepEqual(repositoryFromRemote("ssh+git://git@git.example.com:22/acme/widgets.git"), https);
   assert.notDeepEqual(repositoryFromRemote("ssh://git@git.example.com:2222/acme/widgets.git"), https);
   assert.notDeepEqual(
     repositoryFromRemote("https://git.example.com:8443/acme/widgets.git"),
@@ -466,14 +468,15 @@ test("offline GitLab default discovery rejects unusable or unrelated caches", as
       origin: "https://git.example.com/other/widgets.git" },
     { label: "origin belongs to another port", ref: "refs/remotes/origin/main",
       origin: "https://git.example.com:8443/acme/widgets.git",
-      url: "https://git.example.com:9443/acme/widgets/-/merge_requests/198",
-      rejectsCheckout: true },
+      upstream: "https://git.example.com:9443/acme/widgets.git",
+      url: "https://git.example.com:9443/acme/widgets/-/merge_requests/198" },
     { label: "reachable remote has no advertised default", ref: "refs/remotes/origin/main",
       online: true },
   ]) {
     await t.test(fixture.label, async (t) => {
       await git("update-ref", "--no-deref", "-d", "refs/remotes/origin/HEAD");
       await git("remote", "set-url", "origin", fixture.origin || origin);
+      await git("remote", "set-url", "upstream", fixture.upstream || origin);
       if (fixture.ref) await git("symbolic-ref", "refs/remotes/origin/HEAD", fixture.ref);
       if (fixture.direct) await git("update-ref", "refs/remotes/origin/HEAD", "HEAD");
       const exec = (command, args, options) => {
@@ -487,10 +490,6 @@ test("offline GitLab default discovery rejects unusable or unrelated caches", as
         fixture.url || "https://git.example.com/acme/widgets/-/merge_requests/198",
         { allowPush: false, exec, dir: caller, root },
       );
-      if (fixture.rejectsCheckout) {
-        await assert.rejects(resolve(), /could not resolve .* merge request !198/);
-        return;
-      }
       const resolved = await resolve();
       t.after(resolved.cleanup);
       assert.equal(resolved.trunk, "");
