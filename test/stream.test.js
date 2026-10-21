@@ -10,6 +10,7 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { openArtifact } from "../lib/store.js";
 import { runAgent } from "../lib/agents.js";
 
@@ -139,4 +140,86 @@ test("a dry run streams nothing and still returns a report", async () => {
   );
   assert.equal(chunks.length, 0);
   assert.equal(r.verdict, "clean");
+});
+
+// The child cannot send the remainder until the first pipe read is observed.
+// This forces a real byte boundary without relying on sleeps or chunk sizes.
+async function splitOutput({ text, character, splitAfter = 1, mode = "whole", stderr = false, onFirstRead }) {
+  const { dir, cleanup } = await scratch();
+  const flag = path.join(dir, "first-read-observed");
+  const chunks = [];
+  const release = () => writeFileSync(flag, "");
+  onFirstRead?.(release);
+  try {
+    const result = await runAgent({
+      name: "utf8-fixture", cwd: "worktree", report: mode,
+      argv: [process.execPath, "-e", `
+        const fs = require("node:fs");
+        const bytes = Buffer.from(${JSON.stringify(text)});
+        const split = bytes.indexOf(Buffer.from(${JSON.stringify(character)})) + ${splitAfter};
+        const output = process.${stderr ? "stderr" : "stdout"};
+        output.write(bytes.subarray(0, split));
+        const timer = setInterval(() => {
+          if (!fs.existsSync(${JSON.stringify(flag)})) return;
+          clearInterval(timer);
+          output.write(bytes.subarray(split));
+          process.exitCode = ${stderr ? 1 : 0};
+        }, 10);
+      `],
+    }, {
+      worktree: dir, prompt: "unused", stopToken: "NO NEW FINDINGS", timeoutSeconds: 5,
+      onChunk(chunk) {
+        chunks.push(chunk);
+        if (!stderr) release();
+      },
+    });
+    return { result, streamed: chunks.join(""), chunks };
+  } finally {
+    await cleanup();
+  }
+}
+
+for (const [character, splitAfter] of [["é", 1], ["漢", 2], ["🙂", 3]]) {
+  test(`runAgent preserves split UTF-8 ${character} in live output and findings`, async () => {
+    const text = `FINDING: ${character} path is wrong\nWHERE: ${character}.js:1\n\nCheck the filename.`;
+    const { result, streamed, chunks } = await splitOutput({ text, character, splitAfter });
+    assert.equal(result.ok, true);
+    assert.equal(result.raw, text);
+    assert.equal(result.report, text);
+    assert.equal(streamed, text);
+    assert.ok(chunks.length >= 2, "output was observed before the remainder was written");
+    assert.equal(result.findings[0].claim, `${character} path is wrong`);
+    assert.equal(result.findings[0].loc, `${character}.js:1`);
+  });
+}
+
+test("split UTF-8 survives structured result decoding", async () => {
+  const report = "FINDING: 漢字 path is wrong\nWHERE: 漢字.js:1\n\nKeep the original filename.";
+  const text = JSON.stringify({ type: "result", subtype: "success", is_error: false, result: report });
+  const { result, streamed } = await splitOutput({ text, character: "漢", mode: "result-json" });
+  assert.equal(result.ok, true);
+  assert.equal(result.raw, text);
+  assert.equal(streamed, text);
+  assert.equal(result.report, report);
+  assert.equal(result.findings[0].loc, "漢字.js:1");
+});
+
+test("split UTF-8 is retained in a failed agent's stderr", async t => {
+  const text = "utf8-fixture diagnostic: café cannot be opened";
+  const emit = Readable.prototype.emit;
+  const { result } = await splitOutput({
+    text, character: "é", stderr: true,
+    onFirstRead(release) {
+      // Observe the actual stderr data event, then let the child finish it.
+      // All events still reach their normal listeners with unchanged bytes.
+      t.mock.method(Readable.prototype, "emit", function (event, ...args) {
+        const emitted = emit.call(this, event, ...args);
+        if (event === "data" && String(args[0]).includes("utf8-fixture diagnostic: caf")) release();
+        return emitted;
+      });
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.timedOut, undefined);
+  assert.equal(result.report, `${text}\nexited 1`);
 });

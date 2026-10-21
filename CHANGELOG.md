@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve Unicode in live reviewer output, saved findings, and failure diagnostics
+  when a UTF-8 character spans multiple process-output chunks.
 - Print and open the actual console port when `--port 0` requests an OS-assigned
   port, instead of sending the browser to the unusable port zero.
 - Run Claude Code plugin reviews with Claude as both judge and jury in separate sessions,

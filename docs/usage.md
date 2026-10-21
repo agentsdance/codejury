@@ -18,6 +18,8 @@ jury finding list --dir "" --run <slug>
 ```
 
 Run artifacts include event logs, generated prompts, reviewer output, and folded console data.
+Agent stdout and stderr are decoded as UTF-8 across process-output chunks, preserving
+Unicode text and filenames in live output, saved reports, and failure diagnostics.
 Timeline durations use recorded event timestamps; rounding is applied only to display labels,
 so short reviews retain their elapsed seconds in the saved console data.
 They are retained locally; remove old records manually when you no longer need them.
