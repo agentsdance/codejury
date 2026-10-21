@@ -16,13 +16,17 @@ test("port zero reports the actual listening port and a reachable console URL", 
   assert.match(await response.text(), /^<!doctype html>/i);
 });
 
-test("an occupied port walks to the next available port", async t => {
-  const createServer = http.createServer;
+for (const [name, occupiedCount] of [
+  ["an available requested port is preserved", 0],
+  ["an occupied port walks to the next available port", 1],
+  ["consecutive occupied ports are skipped in order", 2],
+]) {
+test(name, async t => {
   const attempts = [];
   const server = new EventEmitter();
   server.listen = (port, _host, listening) => {
     attempts.push(port);
-    if (attempts.length === 1) {
+    if (attempts.length <= occupiedCount) {
       queueMicrotask(() => server.emit("error",
         Object.assign(new Error("occupied"), { code: "EADDRINUSE" })));
     } else {
@@ -32,12 +36,12 @@ test("an occupied port walks to the next available port", async t => {
     return server;
   };
   server.address = () => ({ port: server.boundPort });
-  http.createServer = () => server;
-  t.after(() => { http.createServer = createServer; });
+  t.mock.method(http, "createServer", () => server);
 
   const requested = 4100;
   const result = await serve({ port: requested, onLog: () => {} });
-  assert.deepEqual(attempts, [requested, requested + 1]);
-  assert.equal(result.port, requested + 1);
-  assert.equal(result.url, `http://127.0.0.1:${requested + 1}`);
+  assert.deepEqual(attempts, Array.from({ length: occupiedCount + 1 }, (_, i) => requested + i));
+  assert.equal(result.port, requested + occupiedCount);
+  assert.equal(result.url, `http://127.0.0.1:${requested + occupiedCount}`);
 });
+}

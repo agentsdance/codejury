@@ -51,7 +51,9 @@ test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : 
   assert.ok(opened, output);
   const url = new URL(opened.url);
   if (automaticPort) assert.ok(Number(url.port) > 0, "browser URL must use the OS-assigned port");
-  else assert.equal(Number(url.port), port + 1, "an occupied port must fall back to the next port");
+  // Neighbors may also be occupied. Exact retry order is tested without sockets.
+  else assert.ok(Number(url.port) > port && Number(url.port) <= port + 20,
+    "an occupied port must fall back within the retry range");
   const slug = url.searchParams.get("run");
   assert.ok(slug);
   assert.notEqual(slug, "old-review");
@@ -111,7 +113,8 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fall
   assert.ok(opened, output);
   const openedPort = Number(new URL(opened.url).port);
   assert.ok(openedPort > 0, "browser URL must use the listening port");
-  if (!automaticPort) assert.equal(openedPort, port + 1, "an occupied port must fall back to the next port");
+  if (!automaticPort) assert.ok(openedPort > port && openedPort <= port + 20,
+    "an occupied port must fall back within the retry range");
   assert.equal(new URL(opened.url).searchParams.get("run"), "saved");
   const response = await fetch(new URL("/api/run", opened.url));
   assert.equal(response.status, 200);
