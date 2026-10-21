@@ -1,7 +1,7 @@
 # Code Jury for Claude Code
 
-Run independent AI code reviewers and a judge from a Claude Code session. The judge triages
-findings and fixes accepted issues; Jury repeats the loop until the reviewers agree or the run
+Review PRs with independent AI code reviewers and a judge from a Claude Code session. The judge
+triages findings and fixes accepted issues; Jury repeats the loop until the reviewers agree or the run
 reaches its limit.
 
 ## Install
@@ -14,19 +14,17 @@ claude plugin install codejury@codejury
 Start a new Claude Code session after installing, then run:
 
 ```text
-/codejury:review
 /codejury:review https://github.com/owner/repo/pull/123
+/codejury:review https://github.com/owner/repo/pull/123 --reviewer claude --judge codex --rounds 3
 ```
 
-The first example reviews the current branch's committed changes against its base branch using
-your saved settings; no PR or MR is required for that branch comparison. The second reviews a
-specific PR. Both open the web console and display its link in Claude Code.
-You can also pass multiple related PR URLs, use `--dir` to select a checkout, or pass other
-`jury review` flags. To override your saved agent choices, add `--reviewer claude --judge codex`.
+The first example uses your saved agent settings. The second overrides the reviewer, judge, and
+round limit. Both open the web console and display its link in Claude Code.
 
-General local-directory review is not implemented: `--dir` selects a Git checkout, and the review
-compares committed changes against the base. It does not select staged, unstaged, or untracked
-changes, or audit the entire directory. A branch matching its base has no changes to review.
+A PR URL is required. If you run `/codejury:review` without one, Claude asks for the URL before
+starting. Local-branch and local-directory reviews are outside this plugin's scope.
+You can pass multiple related PR URLs or other `jury review` flags. With a PR URL, `--dir` selects
+where checkouts and run records are stored. Resuming a run also requires its original PR URL(s).
 
 You need Node.js 20.10 or newer, npm, Git, and installed, authenticated agent CLIs. GitHub PR URLs
 also need an authenticated `gh` CLI. The plugin uses an installed `jury`, or
@@ -41,8 +39,8 @@ Use `jury agents` (or `npx -y @agentsdance/codejury agents`) to inspect your set
   the review result when it is ready and leaves the console running for you to inspect.
   Pass `--web=false` for results only in Claude Code and a command that exits after review.
 - It defaults to `--push=false`, so Jury does not push. The judge can still edit files and Jury
-  can create commits. Pass `--push` to publish them. Local-branch reviews retain fixes in your
-  checkout; single-PR URL checkouts are temporary and their unpushed fixes are removed on exit.
+  can create commits. Pass `--push` to publish them. Single-PR URL checkouts are temporary and
+  their unpushed fixes are removed during cleanup.
 - Explicit `--web` and `--push` values take precedence.
 - `multi-agent-code-review` provides guidance for manually coordinating reviewers and triaging
   findings. Its source moved from `skill/SKILL.md` to `plugin/skills/multi-agent-code-review/SKILL.md`;

@@ -5,6 +5,9 @@ description: Review a pull request with several independent AI reviewers (codex,
 
 # Multi-agent code review
 
+This plugin supports PR reviews only. Require a PR URL before starting reviewers; if it is missing,
+ask for it. Do not infer a local-branch or local-directory review from the current checkout.
+
 You are the **main agent**. You write code, answer findings, and own the commit. Reviewers only read
 and report — never let one edit files.
 
@@ -30,7 +33,7 @@ round N
 
 ## Running reviewers
 
-Resolve the selected branch or PR head to `REVIEW_SHA`, then cut a detached worktree at that exact
+Resolve the requested PR's head to `REVIEW_SHA`, then cut a detached worktree at that exact
 commit. After local fixes, review their new commit even when pushing is disabled:
 
 ```bash
