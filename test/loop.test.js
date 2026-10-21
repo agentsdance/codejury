@@ -279,6 +279,17 @@ test("reply session folding preserves legacy IDs and keeps judge and newer revie
   assert.equal(sessionsIn(events).get('other'), 'other-reply');
 });
 
+test("an older in-flight reply cannot replace a newer review session", () => {
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: 'session-a' },
+    { t: 'reply.sent', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a' },
+    { t: 'agent.report', agent: 'codex', sessionId: 'session-b' },
+    { t: 'reply.answered', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a' },
+  ];
+
+  assert.equal(sessionsIn(events).get('codex'), 'session-b');
+});
+
 test("an abandoned launch ends at its own round, not at the present moment", async () => {
   const { foldEvents } = await import("../lib/store.js");
   // Round 1 is killed mid-flight; rounds 2 and 3 run later. Running round 1's
