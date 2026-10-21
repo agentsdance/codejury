@@ -82,6 +82,12 @@ Related PRs may mix GitHub and GitLab-style URLs. Two PRs sharing a source branc
 
 ## Common problems
 
+`jury reply` exits nonzero if any selected reviewer fails to run or returns an
+invalid result. It saves every reply before reporting the failure. After correcting
+the agent issue, retry `jury reply` with the same `--dir` and `--run`, optionally
+selecting the failed reviewer with `--reviewer`. A successful invocation that raises
+remaining findings still exits zero; inspect its report for the review verdict.
+
 | Symptom | Next step |
 |---|---|
 | Missing judge or reviewer | Install its CLI, select installed agents, or disable unused entries in `jury.config.json`. |

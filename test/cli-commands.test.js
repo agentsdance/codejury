@@ -119,3 +119,66 @@ test('review and agent/bare-flag aliases run subprocess reviewers and persist co
   assert.match(run(['runs', '--dir', cwd]).stdout, /1 round\(s\)/);
   assert.match(run(['reply', '--dir', cwd], 1).stderr, /nothing to reply about/);
 });
+
+async function replyFixture(t, reviewer) {
+  const f = await fixture(t);
+  const { cwd, env } = f;
+  const git = (...args) => execFileSync('git', args, { cwd, env, stdio: 'pipe' });
+  git('init', '-q', '-b', 'master');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', 'commit', '--allow-empty', '-qm', 'base');
+  const agents = [
+    { name: 'good', role: 'reviewer', argv: [process.execPath, '-e', "console.log('NO NEW FINDINGS')"] },
+    { name: 'other', role: 'reviewer', ...reviewer },
+  ];
+  await writeFile(path.join(cwd, 'jury.config.json'), JSON.stringify({ agents: [
+    ...DEFAULTS.agents.map(a => ({ name: a.name, enabled: false })),
+    { name: 'fixture-judge', role: 'main', argv: [process.execPath, '-e', "throw new Error('judge must not run')"] },
+    ...agents,
+  ] }));
+  const dir = path.join(cwd, 'runs', 'reply-fixture');
+  await appendEvent(dir, { t: 'target', target: { repo: 'fixture', id: '#1', judge: 'fixture-judge' } });
+  for (const a of agents) {
+    await appendEvent(dir, { t: 'finding.raised', id: a.name, agent: a.name, round: 1, claim: `${a.name} claim`, loc: 'file.js:1' });
+    await appendEvent(dir, { t: 'finding.resolved', id: a.name, verdict: 'rejected', reason: 'Fixture checked' });
+  }
+  const reply = (args = [], status = 0) => f.run(['reply', '--dir', cwd, '--run', 'reply-fixture', ...args], status);
+  return { ...f, dir, reply };
+}
+
+for (const [label, reviewer, diagnostic] of [
+  ['nonzero exit', { argv: [process.execPath, '-e', "console.error('fixture authentication expired'); process.exitCode = 7"] }, /fixture authentication expired/],
+  ['missing executable', { argv: ['jury-missing-reply-executable-fixture'] }, /ENOENT/],
+  ['invalid structured result', { argv: [process.execPath, '-e', "console.log('not JSON')"], report: 'result-json' }, /Invalid agent JSON output/],
+]) {
+  test(`reply returns failure for ${label} after preserving every reviewer's answer`, async t => {
+    const { dir, reply } = await replyFixture(t, reviewer);
+    const result = reply([], 1);
+    assert.match(result.stderr, /repl(?:y|ies).*failed.*other/i);
+    assert.match(result.stdout, diagnostic);
+    const events = await readEvents(dir);
+    const answers = events.filter(e => e.t === 'reply.answered');
+    assert.equal(answers.length, 2, 'a failed reply must not prevent other replies from being recorded');
+    assert.equal(answers.find(e => e.agent === 'good').verdict, 'clean');
+    assert.equal(answers.find(e => e.agent === 'other').verdict, 'error');
+    const saved = JSON.parse(await readFile(path.join(dir, 'run.json'), 'utf8'));
+    assert.equal(saved.replies.length, 2, 'folded results must be published before returning failure');
+    assert.match(await readFile(path.join(dir, 'reply.good.stdout.txt'), 'utf8'), /NO NEW FINDINGS/);
+    await readFile(path.join(dir, 'reply.other.stdout.txt'), 'utf8');
+  });
+}
+
+test('reply succeeds when a reviewer answers with remaining findings', async t => {
+  const { dir, reply } = await replyFixture(t, {
+    argv: [process.execPath, '-e', "console.log('FINDING: still broken\\nWHERE: file.js:1\\n\\nPlease check again.')"],
+  });
+  reply();
+  const answers = (await readEvents(dir)).filter(e => e.t === 'reply.answered');
+  assert.equal(answers.find(e => e.agent === 'other').verdict, 'found');
+});
+
+test('reply dry-run prepares prompts without launching a failing executable', async t => {
+  const { dir, reply } = await replyFixture(t, { argv: ['jury-missing-reply-executable-fixture'] });
+  reply(['--dry-run']);
+  assert.ok(!(await readEvents(dir)).some(e => e.t.startsWith('reply.')));
+  assert.match(await readFile(path.join(dir, 'reply.other.md'), 'utf8'), /other claim/);
+});

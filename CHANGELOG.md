@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Return a nonzero exit status when a standalone `jury reply` reviewer fails,
+  after saving all replies and their diagnostics, including successful peers.
 - Preserve Unicode in live reviewer output, saved findings, and failure diagnostics
   when a UTF-8 character spans multiple process-output chunks.
 - Print and open the actual console port when `--port 0` requests an OS-assigned

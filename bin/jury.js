@@ -1139,7 +1139,7 @@ async function cmdReply(argv) {
   console.log(`replying ${pool.map((a) => a.name).join(", ")}  (separate conversations)`);
   console.log("");
 
-  await Promise.all(pool.map(async (a) => {
+  const results = await Promise.all(pool.map(async (a) => {
     const thread = threadFor(a.name, findings);
     const sessionId = sessionsIn(events).get(a.name);
     const resumable = replyArgv(a, { sessionId }).resumed;
@@ -1174,9 +1174,16 @@ async function cmdReply(argv) {
       ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
     });
     console.log(`\n${"─".repeat(64)}\n${a.name} answered (${r.seconds}s)\n${"─".repeat(64)}\n${r.report}`);
+    return r;
   }));
 
+  // Preserve every answer, including successful peers, before reporting a
+  // failed invocation to scripts that depend on this command's exit status.
   await republish(dir);
+  const failed = results.filter(r => r && !r.ok).map(r => r.agent);
+  if (failed.length) {
+    throw new Error(`Replies failed: ${failed.join(", ")}. Check the saved reports, fix the agent issue, and retry jury reply.`);
+  }
 }
 
 /** Which run a finding command applies to; unambiguous by default. */
