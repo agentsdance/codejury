@@ -336,8 +336,11 @@ test("a local merge request checkout refreshes an explicitly requested trunk ref
 test("offline local PR checkouts preserve the caller's cached remote trunk", async (t) => {
   for (const fixture of [
     { kind: "gitlab", label: "gitlab" },
+    { kind: "gitlab", label: "gitlab with a cached default", discoverTrunk: true },
     { kind: "github", label: "github" },
     { kind: "gitlab", label: "gitlab without a local trunk", removeLocalTrunk: true },
+    { kind: "gitlab", label: "gitlab with a cached default and no local trunk",
+      discoverTrunk: true, removeLocalTrunk: true },
   ]) {
     await t.test(fixture.label, async (t) => {
       const { kind } = fixture;
@@ -355,6 +358,9 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
       await git("commit", "-qm", "base");
       await git("push", "-q", "origin", "main");
       const { stdout: cachedTrunk } = await git("rev-parse", "refs/remotes/origin/main");
+      if (fixture.discoverTrunk) {
+        await git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+      }
 
       // X is deliberately unpublished. The feature is based on X, while the
       // cached remote-tracking trunk still names the public base before X.
@@ -391,9 +397,15 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
         return run(command, args, options);
       };
       const resolved = await resolvePrCheckout(url, {
-        allowPush: false, exec, dir: caller, root, trunk: "main",
+        allowPush: false, exec, dir: caller, root,
+        ...(!fixture.discoverTrunk && { trunk: "main" }),
       });
       t.after(resolved.cleanup);
+
+      if (fixture.discoverTrunk) {
+        assert.equal(resolved.trunk, "main");
+        await assertTrunk(resolved.worktree, resolved.trunk);
+      }
 
       const { stdout: actualTrunk } = await run("git", [
         "-C", resolved.worktree, "rev-parse", "refs/remotes/origin/main",
@@ -405,6 +417,60 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
       ]);
       assert.match(diff, /unpublished trunk work/);
       assert.match(diff, /feature work/);
+    });
+  }
+});
+
+test("offline GitLab default discovery rejects unusable or unrelated caches", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "jury-offline-default-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const caller = path.join(root, "caller");
+  const origin = "https://git.example.com/acme/widgets.git";
+  await run("git", ["init", "-q", "-b", "main", caller]);
+  const git = (...args) => run("git", ["-C", caller, ...args]);
+  await git("config", "user.email", "t@example.com");
+  await git("config", "user.name", "t");
+  await writeFile(path.join(caller, "base.txt"), "base\n");
+  await git("add", "base.txt");
+  await git("commit", "-qm", "base");
+  await git("remote", "add", "origin", origin);
+  await git("remote", "add", "upstream", origin);
+  await git("update-ref", "refs/remotes/origin/main", "HEAD");
+  await git("checkout", "-qb", "feature");
+  await writeFile(path.join(caller, "feature.txt"), "feature\n");
+  await git("add", "feature.txt");
+  await git("commit", "-qm", "feature");
+  await git("update-ref", "refs/merge-requests/198/head", "HEAD");
+
+  for (const fixture of [
+    { label: "missing origin/HEAD" },
+    { label: "dangling origin/HEAD", ref: "refs/remotes/origin/missing" },
+    { label: "local branch is not a cached remote default", ref: "refs/heads/main" },
+    { label: "direct origin/HEAD is not a symbolic default", direct: true },
+    { label: "origin belongs to another repository", ref: "refs/remotes/origin/main",
+      origin: "https://git.example.com/other/widgets.git" },
+    { label: "reachable remote has no advertised default", ref: "refs/remotes/origin/main",
+      online: true },
+  ]) {
+    await t.test(fixture.label, async (t) => {
+      await git("update-ref", "--no-deref", "-d", "refs/remotes/origin/HEAD");
+      await git("remote", "set-url", "origin", fixture.origin || origin);
+      if (fixture.ref) await git("symbolic-ref", "refs/remotes/origin/HEAD", fixture.ref);
+      if (fixture.direct) await git("update-ref", "refs/remotes/origin/HEAD", "HEAD");
+      const exec = (command, args, options) => {
+        if (command === "git" && (args.includes("fetch") || args.includes("ls-remote"))) {
+          if (fixture.online && args.includes("--symref")) return { stdout: "" };
+          throw new Error("offline");
+        }
+        return run(command, args, options);
+      };
+      const resolved = await resolvePrCheckout(
+        "https://git.example.com/acme/widgets/-/merge_requests/198",
+        { allowPush: false, exec, dir: caller, root },
+      );
+      t.after(resolved.cleanup);
+      assert.equal(resolved.trunk, "");
+      await assert.rejects(assertTrunk(resolved.worktree, resolved.trunk), /trunk/);
     });
   }
 });
