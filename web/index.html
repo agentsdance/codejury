@@ -945,11 +945,14 @@ function runLabel(r) {
  * does not need to defend its uniqueness.
  */
 function attemptOf(r) {
-  const m = /-(\d{8})-(\d{4})(?:(\d{2})(\d{3})-([0-9a-f-]{36}))?$/.exec(r.slug ?? "");
+  const m = /-(\d{8})-(\d{4})(?:(\d{2})(\d{3})-([0-9a-f-]{36}))?(?:-jury-group-([A-Za-z0-9]+))?$/.exec(r.slug ?? "");
   if (!m) return "";
-  const [, d, hm, s, ms, id] = m;
+  const [, d, hm, s, ms, id, workspace] = m;
   const minute = `${d.slice(4, 6)}/${d.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2)}`;
-  return id ? `${minute}:${s}.${ms} · ${id.slice(0, 8)}` : minute;
+  const time = id ? `${minute}:${s}.${ms}` : minute;
+  // Older related-PR attempts have no UUID; their workspace distinguishes them.
+  const unique = id ? id.slice(0, 8) : workspace;
+  return unique ? `${time} · ${unique}` : time;
 }
 function hasSiblings(r, all) {
   const key = `${r.target?.repo}#${r.target?.id}`;

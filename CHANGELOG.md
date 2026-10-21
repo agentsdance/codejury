@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show distinct console attempt labels for repeated related-PR reviews, including
+  older runs whose names end with a group workspace suffix.
 - Accept a Codex review that completes after a recovered connection error, while
   retaining retry diagnostics and rejecting failed, incomplete or stale reports.
 - Keep fresh reviews in separate run directories even when started at the same

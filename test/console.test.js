@@ -26,6 +26,32 @@ test("console attempt labels support unique run names and legacy minute-only nam
   }
 });
 
+test("related-PR attempt labels distinguish current runs despite the workspace suffix", async () => {
+  for (const file of ["web/index.html", "docs/console-demo.html"]) {
+    const source = await readFile(path.join(root, file), "utf8");
+    const fn = source.match(/function attemptOf\(r\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(fn);
+    const attemptOf = new Function(`${fn}; return attemptOf;`)();
+    const first = attemptOf({ slug: "related-prs-groupid-20261021-193001123-12345678-1234-1234-1234-123456789abc-jury-group-fCe2hV" });
+    const second = attemptOf({ slug: "related-prs-groupid-20261021-193001123-abcdef01-1234-1234-1234-123456789abc-jury-group-Dsb50g" });
+    assert.equal(first, "10/21 19:30:01.123 · 12345678", file);
+    assert.equal(second, "10/21 19:30:01.123 · abcdef01", file);
+    assert.notEqual(first, second);
+  }
+});
+
+test("legacy related-PR labels distinguish separate workspaces within one minute", async () => {
+  for (const file of ["web/index.html", "docs/console-demo.html"]) {
+    const source = await readFile(path.join(root, file), "utf8");
+    const fn = source.match(/function attemptOf\(r\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(fn);
+    const attemptOf = new Function(`${fn}; return attemptOf;`)();
+    assert.equal(attemptOf({ slug: "related-prs-groupid-20261021-1930-jury-group-fCe2hV" }), "10/21 19:30 · fCe2hV", file);
+    assert.equal(attemptOf({ slug: "related-prs-groupid-20261021-1930-jury-group-Dsb50g" }), "10/21 19:30 · Dsb50g", file);
+    assert.equal(attemptOf({ slug: "related-prs-groupid-jury-group-fCe2hV" }), "", 'do not invent a timestamp for an unstamped run');
+  }
+});
+
 /** The console is a single self-contained page, so its render helpers are
  *  lifted out of the <script> block rather than imported. Only the pure ones
  *  come across: the rest reaches for `document` the moment it is evaluated. */
