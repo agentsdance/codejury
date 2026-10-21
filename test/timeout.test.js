@@ -372,7 +372,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"]) {
     });
 }
 
-test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's result", async t => {
+async function assertTimeoutPersistence(t, blockedReviewer) {
   const repo = await mkdtemp(path.join(tmpdir(), "jury-timeout-"));
   const isolated = testEnvironment();
   t.after(async () => { isolated.dispose(); await rm(repo, { recursive: true, force: true }); });
@@ -388,12 +388,20 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   await writeFile(path.join(repo, "a.txt"), "after\n");
   await git("commit", "-qam", "change");
   const readyFile = path.join(repo, "reviewer-ready");
+  const handledFile = path.join(repo, "term-handled");
   await writeFile(path.join(repo, "jury.config.json"), JSON.stringify({ agents: [
     { ...fake(`setTimeout(() => {
-        // stderr preserves a diagnostic without making the stdout heartbeat
-        // quiet-period filter hide a missing onTimeout clearInterval.
-        process.on("SIGTERM", () => console.error("partial review"));
+        // Finish the stderr write before readiness. Expecting output only from
+        // SIGTERM assumes the child gets scheduled during our 200ms grace.
+        // stderr also keeps the stdout heartbeat quiet-period filter irrelevant.
+        require("node:fs").writeSync(2, "partial review\\n");
+        process.on("SIGTERM", () => {
+          require("node:fs").writeFileSync(${JSON.stringify(handledFile)}, "");
+        });
         require("node:fs").writeFileSync(process.env.JURY_TEST_READY, "");
+        // Deterministically model an unscheduled/busy reviewer: its JavaScript
+        // signal handler cannot run, although the OS can still terminate it.
+        ${blockedReviewer ? 'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);' : ''}
         setInterval(() => {}, 1000);
       }, 1200)`),
       env: { JURY_TEST_READY: readyFile }, enabled: true, role: "reviewer" },
@@ -404,8 +412,8 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   const deadlineFile = path.join(repo, "deadline.txt");
   const heartbeatFile = path.join(repo, "heartbeat-callbacks.ndjson");
   // Simulate a loaded CI machine: the fake reviewer deliberately starts later
-  // than our shortened clock. Advance the deadline only after its handler is
-  // installed, so this tests shutdown output rather than OS scheduling speed.
+  // than our shortened clock. Advance the deadline only after its diagnostic
+  // is in the pipe, so this tests retained output rather than OS scheduling speed.
   await writeFile(clock, `
     import { existsSync, writeFileSync, appendFileSync, promises as fs } from "node:fs";
     import { AsyncLocalStorage } from "node:async_hooks";
@@ -469,6 +477,8 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   const reports = events.filter(e => e.t === "agent.report");
   assert.equal(reports.length, 2);
   const timeout = reports.find(e => e.agent === "trae");
+  assert.ok(existsSync(readyFile), "the diagnostic must be written before advancing the deadline");
+  if (blockedReviewer) assert.equal(existsSync(handledFile), false, "SIGKILL must reap the blocked fixture without its SIGTERM callback");
   assert.equal(timeout.verdict, "error");
   assert.equal(timeout.timedOut, true);
   assert.equal(timeout.timeoutSeconds, 600);
@@ -491,4 +501,9 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   const turns = conversation(events).find(thread => thread.agent === "trae").turns;
   assert.equal(turns.some(turn => turn.kind === "waiting" || turn.kind === "streaming"), false);
   assert.match(turns.find(turn => turn.kind === "report").text, /Timed out after 10 minutes/);
-});
+}
+
+for (const blockedReviewer of [false, true]) {
+  test(`CLI saves a timeout, stops its heartbeat, and retains the other reviewer's result${blockedReviewer ? " when the reviewer cannot handle signals" : ""}`,
+    t => assertTimeoutPersistence(t, blockedReviewer));
+}

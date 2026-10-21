@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Synchronize timeout-test diagnostics before advancing the deadline, including
+  a busy reviewer that cannot run a signal handler during the shortened grace.
 - Rebuild a saved run snapshot when concurrent commands append newer events
   during publication, so a late publisher does not hide completed replies or
   finding updates from the console and run listing.
