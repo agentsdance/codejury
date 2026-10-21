@@ -16,6 +16,24 @@ test("port zero reports the actual listening port and a reachable console URL", 
   assert.match(await response.text(), /^<!doctype html>/i);
 });
 
+test("port zero is passed to the listener for OS assignment", async t => {
+  const attempts = [];
+  const server = new EventEmitter();
+  server.listen = (port, _host, listening) => {
+    attempts.push(port);
+    server.boundPort = port === 0 ? 43210 : port;
+    queueMicrotask(listening);
+    return server;
+  };
+  server.address = () => ({ port: server.boundPort });
+  t.mock.method(http, "createServer", () => server);
+
+  const result = await serve({ port: 0, onLog: () => {} });
+  assert.deepEqual(attempts, [0]);
+  assert.equal(result.port, 43210);
+  assert.equal(result.url, "http://127.0.0.1:43210");
+});
+
 for (const [name, occupiedCount] of [
   ["an available requested port is preserved", 0],
   ["an occupied port walks to the next available port", 1],
