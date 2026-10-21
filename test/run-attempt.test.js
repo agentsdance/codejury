@@ -37,7 +37,7 @@ async function fixture(t) {
   const runs = path.join(repo, 'runs');
   const events = async slug => (await readFile(path.join(runs, slug, 'events.ndjson'), 'utf8'))
     .trim().split('\n').map(JSON.parse);
-  return { repo, runs, review, events };
+  return { repo, runs, review, events, git };
 }
 
 test('fresh reviews at the same instant keep separate histories and legacy explicit resume still works', async t => {
@@ -81,4 +81,19 @@ test('concurrent fresh CLI processes at the same instant cannot share run artifa
     assert.equal(await readFile(path.join(f.runs, slug, rounds[0].promptFile), 'utf8'), rounds[0].prompt);
   }
   assert.deepEqual(summaries.sort(), ['one', 'two']);
+});
+
+test('a valid long local branch still creates a review run within the filesystem name limit', async t => {
+  const f = await fixture(t);
+  const branch = 'review-' + 'x'.repeat(203);
+  await f.git('checkout', '-qb', branch);
+  await f.review('long branch review');
+  const [slug] = await readdir(f.runs);
+  assert.ok(Buffer.byteLength(slug) <= 255);
+  const events = await f.events(slug);
+  assert.equal(events.find(e => e.t === 'target').target.id, branch, 'the saved target retains its full identity');
+  assert.deepEqual(events.filter(e => e.t === 'round.start').map(e => e.n), [1]);
+  await f.review('long branch continuation', ['--resume', slug]);
+  assert.equal((await readdir(f.runs)).length, 1);
+  assert.deepEqual((await f.events(slug)).filter(e => e.t === 'round.start').map(e => e.n), [1, 2]);
 });
