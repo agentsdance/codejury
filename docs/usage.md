@@ -31,6 +31,10 @@ in timelines, rounds, conversations, and exchanges. The icon is embedded in the
 page and follows the participant color in both light and dark themes, without
 requiring an external image download.
 
+Closing or reloading the console page releases that connection's live-stream
+watcher and timers, including while its initial event log is loading. The review
+continues independently of the browser connection.
+
 ## Resume and limits
 
 ```sh
