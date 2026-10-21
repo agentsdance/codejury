@@ -49,6 +49,12 @@ test("the default SSH port preserves identity while non-default ports stay disti
   );
 });
 
+test("the default native Git port preserves identity while custom ports stay distinct", () => {
+  const implicit = repositoryFromRemote("git://git.example.com/acme/widgets.git");
+  assert.deepEqual(repositoryFromRemote("git://git.example.com:9418/acme/widgets.git"), implicit);
+  assert.notDeepEqual(repositoryFromRemote("git://git.example.com:9419/acme/widgets.git"), implicit);
+});
+
 test("a PR cannot operate on an unrelated checkout", () => {
   assert.throws(
     () => assertPrCheckout(
@@ -351,6 +357,12 @@ test("offline local PR checkouts preserve the caller's cached remote trunk", asy
     { kind: "gitlab", label: "gitlab with a cached default", discoverTrunk: true },
     { kind: "gitlab", label: "gitlab with a cached default over standard SSH",
       discoverTrunk: true, origin: "ssh://git@git.example.com:22/acme/widgets.git" },
+    { kind: "gitlab", label: "gitlab with a cached default over git+ssh",
+      discoverTrunk: true, origin: "git+ssh://git@git.example.com:22/acme/widgets.git" },
+    { kind: "gitlab", label: "gitlab with a cached default over ssh+git",
+      discoverTrunk: true, origin: "ssh+git://git@git.example.com:22/acme/widgets.git" },
+    { kind: "gitlab", label: "gitlab with a cached default over native Git",
+      discoverTrunk: true, origin: "git://git.example.com:9418/acme/widgets.git" },
     { kind: "github", label: "github" },
     { kind: "gitlab", label: "gitlab without a local trunk", removeLocalTrunk: true },
     { kind: "gitlab", label: "gitlab with a cached default and no local trunk",
