@@ -56,6 +56,22 @@
       "--",
       "{{promptText}}"
     ],
+    "judgeArgv": [
+      "opencode",
+      "run",
+      "{{modelArgs}}",
+      "--dir",
+      "{{worktree}}",
+      "--agent",
+      "build",
+      "--format",
+      "json",
+      "--auto",
+      "--session",
+      "{{sessionId}}",
+      "--",
+      "{{promptText}}"
+    ],
     "idFrom": "\"sessionID\"\\s*:\\s*\"([^\"]+)\""
   },
   "modelArgs": [

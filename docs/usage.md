@@ -102,6 +102,25 @@ and `jury review --resume <slug>` reuse those assignments even if installed CLIs
 change. An unavailable saved agent causes an error rather than a fresh assignment.
 Explicit `--judge`, `--reviewer`/`--jury`, a saved global judge, or repository agent
 role/enabled settings take precedence over automatic selection for new runs.
-Explicit CLI role overrides on resume use the normal selection rules. Outside the
-automatic one-CLI fallback, the judge cannot review its own work. Zero or more than
-two installed CLIs retain the existing configured/default selection behavior.
+Explicit CLI role overrides on resume use the normal selection rules. You can also
+select the same agent directly, even when other CLIs are installed:
+
+```sh
+jury review <pr-url> --reviewer codex --judge codex --push=false
+```
+
+No additional flag is needed. Reviewer and judge use separate prompts and session
+IDs; a fresh review never resumes the judge's history. Codex reviewer turns and
+replies are read-only, while judge turns use workspace-write, including on resume.
+The roles are saved for `reply` and `review --resume`. Same-agent sessions do not
+provide model diversity or guarantee independent judgment. Default reviewer pools
+still exclude the judge. Zero or more than two installed CLIs retain the existing
+configured/default selection behavior when roles are not explicitly selected.
+
+### Local review base branch
+
+Pass a bare branch name such as `--trunk master`, not `origin/master` or a full
+Git ref. Its `refs/remotes/origin/<branch>` tracking ref must be available and
+share history with HEAD; fetch the base branch before reviewing if needed.
+Jury validates this before launching agents. Review prompts use Git’s triple-dot
+diff to compare HEAD to the merge base, and fail if that base becomes unavailable.

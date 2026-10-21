@@ -22,6 +22,7 @@ test("default web opens a URL selecting the current run, even on a fallback port
   await git("config", "user.email", "test@example.com");
   await git("config", "user.name", "Test");
   await git("commit", "--allow-empty", "-qm", "base");
+  await git("update-ref", "refs/remotes/origin/main", "HEAD");
   await git("checkout", "-qb", "feature");
   await writeRun(path.join(repo, "runs", "old-review"), {
     target: { state: "human", id: "#26", attempt: "20200101-0000" }, rounds: [], exchanges: [],

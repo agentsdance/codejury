@@ -188,6 +188,7 @@ test("through the CLI: listed opt-in, run when named, and replied to in its reco
   const git = (args) => execFileSync("git", args, { cwd: worktree, env, stdio: "ignore" });
   git(["init", "-q", "-b", "master"]);
   git(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "--allow-empty", "-qm", "base"]);
+  git(["update-ref", "refs/remotes/origin/master", "HEAD"]);
   git(["checkout", "-qb", "feature"]);
   // Keep one mock judge and this actual built-in registry entry. Never launch another installed agent.
   await writeFile(path.join(worktree, "jury.config.json"), JSON.stringify({ agents: [
@@ -218,6 +219,6 @@ test("through the CLI: listed opt-in, run when named, and replied to in its reco
   assert.ok(!made.args.some((a) => a.includes("original finding context")), "a resumed session already holds its review");
 
   const self = command(["review", "--dir", worktree, "--trunk", "master", "--web=false", "--push=false", "--judge", "kimi", "--reviewer", "kimi"]);
-  assert.notEqual(self.status, 0);
-  assert.match(self.stderr, /selected judge and cannot review its own work/);
+  assert.equal(self.status, 0, self.stderr);
+  assert.match(self.stdout, /kimi selected as judge and reviewer in separate sessions/);
 });

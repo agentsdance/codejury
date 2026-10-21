@@ -17,6 +17,7 @@ import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveG
 import { runAgent, probe, supportsModel } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
+import { assertTrunk } from "../lib/trunk.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
@@ -217,13 +218,13 @@ function selectReviewers(cfg, requested, judge = null) {
   // installed before any review could start.
   const byName = new Map(knownAgents(cfg).map((a) => [a.name, a]));
   const allowed = new Set(eligible.map((a) => a.name));
+  if (byName.has(judge)) allowed.add(judge);
   const optIn = knownAgents(cfg)
     .filter((a) => a.enabled === false && (a.role ?? "reviewer") === "reviewer" && a.name !== judge);
   for (const agent of optIn) allowed.add(agent.name);
 
   const problems = names.filter((name) => !allowed.has(name)).map((name) => {
     const agent = byName.get(name);
-    if (name === judge) return `"${name}" is the selected judge and cannot review its own work`;
     if (agent) return `"${name}" has role "${agent.role ?? "reviewer"}", not "reviewer"`;
     return `"${name}" is not configured or is disabled`;
   });
@@ -516,7 +517,7 @@ async function cmdAgent(argv) {
   if (group) resolvedCheckoutCleanup = group.cleanup;
   const resolved = !group && values.pr
     ? await resolvePrCheckout(values.pr, {
-      allowPush: values.push, root: requestedWorktree, dir: resolveFrom,
+      allowPush: values.push, root: requestedWorktree, dir: resolveFrom, trunk: values.trunk,
     })
     : null;
   const worktree = group?.worktree ?? resolved?.worktree ?? requestedWorktree;
@@ -535,6 +536,19 @@ async function cmdAgent(argv) {
   const trunkGiven = Boolean(values.trunk);
   const trunk = values.trunk ?? group?.targets[0].trunk ?? resolved?.trunk ?? (await defaultTrunk(worktree));
   values.trunk = trunk;
+  if (group) {
+    try {
+      for (const t of group.targets) await assertTrunk(t.worktree, t.trunk);
+    } catch (error) {
+      // A new group is not resumable until its workspace has been recorded.
+      // Do not strand complete clones when validation fails before that point.
+      if (group.discard) {
+        resolvedCheckoutCleanup = null;
+        await group.discard();
+      }
+      throw error;
+    }
+  } else await assertTrunk(worktree, trunk);
   const pr = group ? { title: group.targets.map(t => t.title || t.url).join(" + "), summary: "" } : resolved ?? await prDetails(values.pr, worktree);
 
   // The next round has to review NEW code or it is not a loop, so pushing is
@@ -587,8 +601,12 @@ async function cmdAgent(argv) {
   }
   const priorTarget = [...prior].reverse().find(e => e.t === "target")?.target;
   const priorJudge = priorTarget?.judge;
+  const savedSameAgent = values.resume ? priorTarget?.sameAgentRoles : null;
+  const requestedPool = requestedReviewers(values);
+  const restoreSameAgent = savedSameAgent && values.judge === undefined && requestedPool === undefined;
+  const selectedReviewers = restoreSameAgent ? savedSameAgent.reviewers : requestedPool;
   const roles = await automaticRoles(cfg, {
-    judge: values.judge, reviewers: requestedReviewers(values),
+    judge: restoreSameAgent ? savedSameAgent.judge : values.judge, reviewers: selectedReviewers,
     previous: values.resume ? priorTarget : null,
   });
   const requestedJudge = values.judge ?? (values.resume ? priorJudge : null);
@@ -607,11 +625,14 @@ async function cmdAgent(argv) {
   target.judge = judge.name;
   if (roles) target.automaticRoles = roles;
 
-  // Only the automatic one-CLI assignment permits self-review. Explicit
-  // selection keeps configured main agents out of the reviewer pool.
+  // Explicit same-agent selections use the original read-only reviewer spec,
+  // not the writable judge spec. Restore saved roles without a new random draw.
   const pool = roles ? automaticReviewers(cfg, roles)
-    : selectReviewers(cfg, requestedReviewers(values), judge.name);
+    : selectReviewers(cfg, selectedReviewers, judge.name);
   if (!pool.length) throw new Error("no reviewers configured after excluding the judge");
+  if (!roles && pool.some(a => a.name === judge.name)) {
+    target.sameAgentRoles = { judge: judge.name, reviewers: pool.map(a => a.name) };
+  }
   assertModelsSupported([judge, ...pool]);
   target.models = modelsUsed([judge, ...pool]);
   if (!values["dry-run"]) {
@@ -637,6 +658,9 @@ async function cmdAgent(argv) {
     console.log(names.length === 1
       ? `${judge.name} will work as both judge and jury.`
       : `${judge.name} will work as judge, and ${pool[0].name} will work as jury.`);
+  }
+  if (target.sameAgentRoles) {
+    console.log(`${judge.name} selected as judge and reviewer in separate sessions (no model diversity).`);
   }
   console.log(st.field("target", `${target.repo} ${st.bold(target.id)}`));
   console.log(st.field("worktree", st.muted(group ? worktree : `${worktree} @ ${git.sha} (${resolved?.branch ?? git.branch})`)));
@@ -1098,7 +1122,8 @@ async function cmdReply(argv) {
   const findings = await findingsIn(dir);
   const { sha } = await describe(worktree, "master");
 
-  const roles = [...events].reverse().find(e => e.t === "target")?.target?.automaticRoles;
+  const savedTarget = [...events].reverse().find(e => e.t === "target")?.target;
+  const roles = savedTarget?.sameAgentRoles ?? savedTarget?.automaticRoles;
   let pool = roles ? automaticReviewers(cfg, roles, requestedReviewers(values))
     : selectReviewers(cfg, requestedReviewers(values), judge);
   // Only reviewers that actually said something, and only once you have

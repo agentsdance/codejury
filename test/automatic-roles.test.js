@@ -78,7 +78,8 @@ else console.log('NO NEW FINDINGS');
   await git('config', 'user.name', 'Fixture'); await git('config', 'user.email', 'fixture@example.com');
   await writeFile(path.join(repo, 'a.txt'), 'before\n');
   await writeFile(path.join(repo, '.gitignore'), '.reviewed\nruns/\n');
-  await git('add', '.'); await git('commit', '-qm', 'base'); await git('checkout', '-qb', 'feature');
+  await git('add', '.'); await git('commit', '-qm', 'base');
+  await git("update-ref", "refs/remotes/origin/master", "HEAD"); await git('checkout', '-qb', 'feature');
   await writeFile(path.join(repo, 'a.txt'), 'after\n'); await git('commit', '-qam', 'change');
   const invoke = args => exec(process.execPath, ['--import', preload, cli, ...args], { cwd: repo, env });
   const args = ['review', '--dir', repo, '--trunk', 'master', '--rounds', '2', '--web=false', '--push=false'];
@@ -136,6 +137,7 @@ else console.log('NO NEW FINDINGS');
   await assert.rejects(invoke([...args, '--resume', slug]), /not installed/);
   assert.equal(await readFile(path.join(dir, 'calls.jsonl'), 'utf8'), beforeMissing);
   await writeFile(path.join(bin, expectedReviewer), script, { mode: 0o755 });
-  // Explicit self-review is still refused outside the automatic fallback.
-  await assert.rejects(invoke([...args, '--judge', expectedJudge, '--reviewer', expectedJudge]), /cannot review its own work/);
+  // Explicit same-agent selection also works outside the automatic fallback.
+  const same = await invoke([...args, '--judge', expectedJudge, '--reviewer', expectedJudge]);
+  assert.match(same.stdout, /selected as judge and reviewer in separate sessions/);
 });
