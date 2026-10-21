@@ -3,14 +3,26 @@ import assert from 'node:assert/strict';
 import {setTimeout as realSetTimeout,clearTimeout as realClearTimeout} from 'node:timers';
 import {extractReport,runAgent} from '../lib/agents.js';
 const success={type:'result',subtype:'success',is_error:false,result:'NO NEW FINDINGS'};
-test('empty whole reports do not establish newly assigned sessions',async()=>{
- const argv=[process.execPath,'-e','', '{{sessionId}}'];
- const result=await runAgent({name:'blank',report:'whole',newSession:true,argv,
-  resume:{supported:true,argv}},
- {worktree:process.cwd(),prompt:'review',stopToken:'NO NEW FINDINGS',timeoutSeconds:5});
- assert.equal(result.ok,false);
- assert.equal(result.report,'Agent returned no response text');
- assert.equal(result.sessionId,null);
+test('empty extracted reports cannot establish newly assigned sessions',async()=>{
+ const options={worktree:process.cwd(),prompt:'review',stopToken:'NO NEW FINDINGS',timeoutSeconds:5};
+ for(const [mode,outputs] of [['whole',['',' \n\t']],['tail',['',' \n\t','codex\n','preamble\ncodex\n \n']]]) {
+  for(const output of outputs) {
+   const argv=[process.execPath,'-e',`process.stdout.write(${JSON.stringify(output)})`,'{{sessionId}}'];
+   const agent={name:'blank',report:mode,newSession:true,argv,resume:{supported:true,argv}};
+   const result=await runAgent(agent,options);
+   assert.equal(result.ok,false,`${mode}: ${JSON.stringify(output)}`);
+   assert.equal(result.report,'Agent returned no response text');
+   assert.equal(result.sessionId,null);
+   const known=await runAgent(agent,{...options,sessionId:'known-session'});
+   assert.equal(known.ok,false);
+   assert.equal(known.sessionId,'known-session');
+  }
+ }
+ const argv=[process.execPath,'-e',"console.log('session: exposed-session\\ncodex')",'{{sessionId}}'];
+ const exposed=await runAgent({name:'exposed',report:'tail',newSession:true,argv,
+  resume:{supported:true,argv,idFrom:'session: (\\S+)'}},options);
+ assert.equal(exposed.ok,false);
+ assert.equal(exposed.sessionId,'exposed-session');
 });
 
 test('structured agents approve only a successful final result',()=>{
