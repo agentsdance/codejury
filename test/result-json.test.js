@@ -33,7 +33,9 @@ test('nonzero agents retain an assigned session id for the next reply',async()=>
 });
 
 test('timed out agents retain an exposed session id for the next reply',async()=>{
- const options={worktree:process.cwd(),prompt:'review',stopToken:'NO NEW FINDINGS',timeoutSeconds:0.1};
+ // Leave enough time for the child to start on loaded CI runners; the behavior
+ // under test is retaining output after timeout, not sub-second startup.
+ const options={worktree:process.cwd(),prompt:'review',stopToken:'NO NEW FINDINGS',timeoutSeconds:1};
  const resume={supported:true,argv:[process.execPath,'-e','', '{{sessionId}}']};
  const exposed=await runAgent({name:'exposed',resume:{...resume,idFrom:'session: (\\S+)'},
   argv:[process.execPath,'-e',"console.log('session: exposed-session'); setInterval(()=>{},1000)"]},options);
