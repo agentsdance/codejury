@@ -136,6 +136,7 @@ else console.log('NO NEW FINDINGS');
   await assert.rejects(invoke([...args, '--resume', slug]), /not installed/);
   assert.equal(await readFile(path.join(dir, 'calls.jsonl'), 'utf8'), beforeMissing);
   await writeFile(path.join(bin, expectedReviewer), script, { mode: 0o755 });
-  // Explicit self-review is still refused outside the automatic fallback.
-  await assert.rejects(invoke([...args, '--judge', expectedJudge, '--reviewer', expectedJudge]), /cannot review its own work/);
+  // Explicit same-agent selection also works outside the automatic fallback.
+  const same = await invoke([...args, '--judge', expectedJudge, '--reviewer', expectedJudge]);
+  assert.match(same.stdout, /selected as judge and reviewer in separate sessions/);
 });

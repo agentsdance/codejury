@@ -144,3 +144,10 @@ test("zero-width reply markers use recorded duration or a truthful sent fallback
   assert.equal(timelineDuration({ r: "reply", s: 16, e: 16 }), "sent");
   assert.equal(timelineDuration({ r: "reply", s: 16, e: 16, t: "reply failed" }), "sent");
 });
+
+
+test("same-agent conversation labels distinguish judge and reviewer roles", async () => {
+  const { turnHTML } = await loadRenderer();
+  assert.match(turnHTML({ kind: "report", who: "claude", text: "review" }, "claude"), /claude \(reviewer\)/);
+  assert.match(turnHTML({ kind: "verdict", who: "claude", text: "verdict" }, "claude"), /claude \(judge\)/);
+});

@@ -218,6 +218,6 @@ test("through the CLI: listed opt-in, run when named, and replied to in its reco
   assert.ok(!made.args.some((a) => a.includes("original finding context")), "a resumed session already holds its review");
 
   const self = command(["review", "--dir", worktree, "--trunk", "master", "--web=false", "--push=false", "--judge", "kimi", "--reviewer", "kimi"]);
-  assert.notEqual(self.status, 0);
-  assert.match(self.stderr, /selected judge and cannot review its own work/);
+  assert.equal(self.status, 0, self.stderr);
+  assert.match(self.stdout, /kimi selected as judge and reviewer in separate sessions/);
 });
