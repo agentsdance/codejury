@@ -30,6 +30,7 @@ test("an opt-in built-in agent runs when named, without being enabled first", as
   await writeFile(path.join(repo, "a.txt"), "one\n");
   await g("add", "-A");
   await g("commit", "-qm", "base");
+  await g("update-ref", "refs/remotes/origin/master", "HEAD");
   await g("checkout", "-q", "-b", "feature");
   await writeFile(path.join(repo, "a.txt"), "two\n");
   await g("commit", "-qam", "change");

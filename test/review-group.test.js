@@ -106,6 +106,25 @@ test("resume refuses a different PR set, concurrent use, and an independently ch
   await assert.rejects(prepareGroup(urls, { previous: run.target, allowPush: true }), /remote branch changed/);
 });
 
+test("resume rejects a remotely deleted trunk even when its cached ref remains", async t => {
+  const f = await groupFixture(t);
+  const reviewed = await f.review(["--push=false"]);
+  assert.equal(reviewed.code, 0, reviewed.stderr);
+  const { run, slug } = await f.saved();
+  const target = run.target.targets[0];
+  const cached = await f.git(target.worktree, "rev-parse", `refs/remotes/origin/${target.trunk}`);
+  const receipts = await f.receipts();
+
+  await f.git(f.members[0].remote, "update-ref", "-d", `refs/heads/${target.trunk}`);
+  assert.equal(await f.git(target.worktree, "rev-parse", `refs/remotes/origin/${target.trunk}`), cached,
+    "the retained checkout must still have a plausible stale trunk ref");
+
+  const resumed = await f.review(["--resume", slug]);
+  assert.equal(resumed.code, 1);
+  assert.match(resumed.stderr, /remote trunk .* does not exist/);
+  assert.deepEqual(await f.receipts(), receipts, "no agents run after remote trunk deletion");
+});
+
 test("PR URLs are deduplicated without confusing identical PR numbers in different repositories", () => {
   const a = "https://github.com/a/repo/pull/7", b = "https://github.com/b/repo/pull/7";
   assert.deepEqual(reviewUrls([a, `${a}/files?x=1`, b], a), [a, b]);

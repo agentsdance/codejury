@@ -11,6 +11,7 @@ import {
   repositoryFromRemote,
   resolvePrCheckout,
 } from "../lib/repository.js";
+import { assertTrunk } from "../lib/trunk.js";
 
 const run = promisify(execFile);
 
@@ -34,6 +35,24 @@ test("HTTPS and scp-style remotes normalize to the same identity", () => {
     repositoryFromRemote("git@github.com:acme/widgets.git"),
     repositoryFromRemote("https://github.com/acme/widgets.git"),
   );
+});
+
+test("the default SSH port preserves identity while non-default ports stay distinct", () => {
+  const https = repositoryFromRemote("https://git.example.com/acme/widgets.git");
+  assert.deepEqual(repositoryFromRemote("ssh://git@git.example.com:22/acme/widgets.git"), https);
+  assert.deepEqual(repositoryFromRemote("git+ssh://git@git.example.com:22/acme/widgets.git"), https);
+  assert.deepEqual(repositoryFromRemote("ssh+git://git@git.example.com:22/acme/widgets.git"), https);
+  assert.notDeepEqual(repositoryFromRemote("ssh://git@git.example.com:2222/acme/widgets.git"), https);
+  assert.notDeepEqual(
+    repositoryFromRemote("https://git.example.com:8443/acme/widgets.git"),
+    repositoryFromPrUrl("https://git.example.com:9443/acme/widgets/-/merge_requests/198"),
+  );
+});
+
+test("the default native Git port preserves identity while custom ports stay distinct", () => {
+  const implicit = repositoryFromRemote("git://git.example.com/acme/widgets.git");
+  assert.deepEqual(repositoryFromRemote("git://git.example.com:9418/acme/widgets.git"), implicit);
+  assert.notDeepEqual(repositoryFromRemote("git://git.example.com:9419/acme/widgets.git"), implicit);
 });
 
 test("a PR cannot operate on an unrelated checkout", () => {
@@ -216,13 +235,320 @@ test("a merge request already in the caller's repository resolves without the he
   assert.equal(resolved.sha, head);
   // The whole point: a host that pruned refs/merge-requests/195/head cannot
   // break a review whose commits are already on this machine.
-  assert.ok(!calls.some((c) => c.args.startsWith("fetch")));
+  assert.ok(!calls.some((c) =>
+    c.cwd === resolved.worktree && c.args.startsWith("fetch") && c.args.includes("refs/merge-requests/")));
+  assert.ok(calls.some((c) =>
+    c.cwd === resolved.worktree && c.args.includes("refs/heads/main:refs/remotes/origin/main")));
   assert.ok(calls.some((c) => c.args.includes("clone --quiet --no-checkout /repos/widgets")));
   // Cloning from disk leaves origin pointing at a filesystem path; pushing
   // there would never reach the real remote.
   assert.ok(calls.some((c) =>
     c.args === "remote set-url origin https://git.example.com/acme/platform/widgets.git"));
   assert.ok(resolved.worktree.startsWith("/home/dev/.jury/checkouts/"));
+});
+
+test("a local merge request checkout refreshes its discovered trunk ref", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "jury-local-mr-trunk-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const remote = path.join(root, "remote.git");
+  const seed = path.join(root, "seed");
+  const caller = path.join(root, "caller");
+  await run("git", ["init", "--bare", "-q", "-b", "main", remote]);
+  await run("git", ["init", "-q", "-b", "main", seed]);
+  const git = (dir, ...args) => run("git", ["-C", dir, ...args]);
+  await git(seed, "config", "user.email", "t@example.com");
+  await git(seed, "config", "user.name", "t");
+  await writeFile(path.join(seed, "a.txt"), "base\n");
+  await git(seed, "add", "a.txt");
+  await git(seed, "commit", "-qm", "base");
+  await git(seed, "push", "-q", remote, "main");
+  await run("git", ["clone", "-q", remote, caller]);
+  await writeFile(path.join(seed, "trunk-only.txt"), "new trunk work\n");
+  await git(seed, "add", "trunk-only.txt");
+  await git(seed, "commit", "-qm", "advance main");
+  const { stdout: trunkHead } = await git(seed, "rev-parse", "HEAD");
+  await git(seed, "push", "-q", remote, "main");
+  await git(seed, "checkout", "-qb", "feature");
+  await writeFile(path.join(seed, "a.txt"), "feature\n");
+  await git(seed, "commit", "-qam", "feature");
+  await git(seed, "push", "-q", remote, "feature");
+  const { stdout: featureHead } = await git(seed, "rev-parse", "HEAD");
+  await git(remote, "update-ref", "refs/merge-requests/195/head", featureHead.trim());
+  await git(caller, "remote", "set-url", "origin", "https://git.example.com/acme/widgets.git");
+
+  const exec = (command, args, options) => {
+    const rewritten = command === "git" && (args.includes("fetch") || args.includes("ls-remote"))
+      ? args.map((arg) => arg === "origin" ? remote : arg)
+      : args;
+    return run(command, rewritten, options);
+  };
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { allowPush: false, exec, dir: caller, root },
+  );
+  t.after(resolved.cleanup);
+
+  assert.equal(resolved.trunk, "main");
+  await assertTrunk(resolved.worktree, resolved.trunk);
+  const { stdout: hydratedTrunk } = await git(
+    resolved.worktree, "rev-parse", "refs/remotes/origin/main",
+  );
+  assert.equal(hydratedTrunk.trim(), trunkHead.trim());
+  const { stdout: diff } = await git(
+    resolved.worktree, "diff", "refs/remotes/origin/main...HEAD", "--",
+  );
+  assert.doesNotMatch(diff, /trunk-only|new trunk work/);
+});
+
+test("a local merge request checkout refreshes an explicitly requested trunk ref", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "jury-local-mr-explicit-trunk-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const remote = path.join(root, "remote.git");
+  const seed = path.join(root, "seed");
+  const caller = path.join(root, "caller");
+  await run("git", ["init", "--bare", "-q", "-b", "main", remote]);
+  await run("git", ["init", "-q", "-b", "main", seed]);
+  const git = (dir, ...args) => run("git", ["-C", dir, ...args]);
+  await git(seed, "config", "user.email", "t@example.com");
+  await git(seed, "config", "user.name", "t");
+  await writeFile(path.join(seed, "a.txt"), "base\n");
+  await git(seed, "add", "a.txt");
+  await git(seed, "commit", "-qm", "base");
+  await git(seed, "branch", "release");
+  await git(seed, "push", "-q", remote, "main", "release");
+  await run("git", ["clone", "-q", remote, caller]);
+  await git(caller, "branch", "release", "origin/release");
+
+  await git(seed, "checkout", "-q", "release");
+  await writeFile(path.join(seed, "release.txt"), "new release work\n");
+  await git(seed, "add", "release.txt");
+  await git(seed, "commit", "-qm", "advance release");
+  const { stdout: releaseHead } = await git(seed, "rev-parse", "HEAD");
+  await git(seed, "push", "-q", remote, "release");
+  await git(seed, "checkout", "-qb", "feature", "main");
+  await writeFile(path.join(seed, "a.txt"), "feature\n");
+  await git(seed, "commit", "-qam", "feature");
+  const { stdout: featureHead } = await git(seed, "rev-parse", "HEAD");
+  await git(seed, "push", "-q", remote, "feature");
+  await git(remote, "update-ref", "refs/merge-requests/196/head", featureHead.trim());
+  await git(caller, "remote", "set-url", "origin", "https://git.example.com/acme/widgets.git");
+
+  const exec = (command, args, options) => {
+    const rewritten = command === "git" && (args.includes("fetch") || args.includes("ls-remote"))
+      ? args.map((arg) => arg === "origin" ? remote : arg)
+      : args;
+    return run(command, rewritten, options);
+  };
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/196",
+    { allowPush: false, exec, dir: caller, root, trunk: "release" },
+  );
+  t.after(resolved.cleanup);
+
+  const { stdout: hydratedTrunk } = await git(
+    resolved.worktree, "rev-parse", "refs/remotes/origin/release",
+  );
+  assert.equal(hydratedTrunk.trim(), releaseHead.trim());
+});
+
+test("offline local PR checkouts preserve the caller's cached remote trunk", async (t) => {
+  for (const fixture of [
+    { kind: "gitlab", label: "gitlab" },
+    { kind: "gitlab", label: "gitlab with a cached default", discoverTrunk: true },
+    { kind: "gitlab", label: "gitlab with a cached default over standard SSH",
+      discoverTrunk: true, origin: "ssh://git@git.example.com:22/acme/widgets.git" },
+    { kind: "gitlab", label: "gitlab with a cached default over git+ssh",
+      discoverTrunk: true, origin: "git+ssh://git@git.example.com:22/acme/widgets.git" },
+    { kind: "gitlab", label: "gitlab with a cached default over ssh+git",
+      discoverTrunk: true, origin: "ssh+git://git@git.example.com:22/acme/widgets.git" },
+    { kind: "gitlab", label: "gitlab with a cached default over native Git",
+      discoverTrunk: true, origin: "git://git.example.com:9418/acme/widgets.git" },
+    { kind: "github", label: "github" },
+    { kind: "gitlab", label: "gitlab without a local trunk", removeLocalTrunk: true },
+    { kind: "gitlab", label: "gitlab with a cached default and no local trunk",
+      discoverTrunk: true, removeLocalTrunk: true },
+  ]) {
+    await t.test(fixture.label, async (t) => {
+      const { kind } = fixture;
+      const root = await mkdtemp(path.join(tmpdir(), `jury-offline-${kind}-trunk-`));
+      t.after(() => rm(root, { recursive: true, force: true }));
+      const remote = path.join(root, "remote.git");
+      const caller = path.join(root, "caller");
+      await run("git", ["init", "--bare", "-q", "-b", "main", remote]);
+      await run("git", ["clone", "-q", remote, caller]);
+      const git = (...args) => run("git", ["-C", caller, ...args]);
+      await git("config", "user.email", "t@example.com");
+      await git("config", "user.name", "t");
+      await writeFile(path.join(caller, "base.txt"), "base\n");
+      await git("add", "base.txt");
+      await git("commit", "-qm", "base");
+      await git("push", "-q", "origin", "main");
+      const { stdout: cachedTrunk } = await git("rev-parse", "refs/remotes/origin/main");
+      if (fixture.discoverTrunk) {
+        await git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+      }
+
+      // X is deliberately unpublished. The feature is based on X, while the
+      // cached remote-tracking trunk still names the public base before X.
+      await writeFile(path.join(caller, "unpublished.txt"), "unpublished trunk work\n");
+      await git("add", "unpublished.txt");
+      await git("commit", "-qm", "local main X");
+      const { stdout: localTrunk } = await git("rev-parse", "HEAD");
+      await git("checkout", "-qb", "feature");
+      await writeFile(path.join(caller, "feature.txt"), "feature work\n");
+      await git("add", "feature.txt");
+      await git("commit", "-qm", "feature");
+      const { stdout: featureHead } = await git("rev-parse", "HEAD");
+      if (fixture.removeLocalTrunk) await git("branch", "-D", "main");
+
+      const url = kind === "gitlab"
+        ? "https://git.example.com/acme/widgets/-/merge_requests/198"
+        : "https://github.com/acme/widgets/pull/198";
+      await git("remote", "set-url", "origin", fixture.origin || (kind === "gitlab"
+        ? "https://git.example.com/acme/widgets.git"
+        : "https://github.com/acme/widgets.git"));
+      if (kind === "gitlab") {
+        await git("update-ref", "refs/merge-requests/198/head", featureHead.trim());
+      }
+
+      const exec = async (command, args, options) => {
+        if (command === "git" && args[0] === "clone" && args.at(-2) !== caller) {
+          throw new Error("offline network clone");
+        }
+        if (command === "gh") return { stdout: JSON.stringify({
+          title: "PR", body: "", state: "OPEN", baseRefName: "main",
+          headRefName: "feature", headRefOid: featureHead.trim(),
+          headRepository: { nameWithOwner: "acme/widgets" },
+        }) };
+        if (command === "git" && (args.includes("fetch") || args.includes("ls-remote"))) {
+          throw new Error("offline");
+        }
+        return run(command, args, options);
+      };
+      const resolved = await resolvePrCheckout(url, {
+        allowPush: false, exec, dir: caller, root,
+        ...(!fixture.discoverTrunk && { trunk: "main" }),
+      });
+      t.after(resolved.cleanup);
+
+      if (fixture.discoverTrunk) {
+        assert.equal(resolved.trunk, "main");
+        await assertTrunk(resolved.worktree, resolved.trunk);
+      }
+
+      const { stdout: actualTrunk } = await run("git", [
+        "-C", resolved.worktree, "rev-parse", "refs/remotes/origin/main",
+      ]);
+      assert.equal(actualTrunk.trim(), cachedTrunk.trim());
+      assert.notEqual(actualTrunk.trim(), localTrunk.trim());
+      const { stdout: diff } = await run("git", [
+        "-C", resolved.worktree, "diff", "refs/remotes/origin/main...HEAD", "--",
+      ]);
+      assert.match(diff, /unpublished trunk work/);
+      assert.match(diff, /feature work/);
+    });
+  }
+});
+
+test("offline GitLab default discovery rejects unusable or unrelated caches", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "jury-offline-default-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const caller = path.join(root, "caller");
+  const origin = "https://git.example.com/acme/widgets.git";
+  await run("git", ["init", "-q", "-b", "main", caller]);
+  const git = (...args) => run("git", ["-C", caller, ...args]);
+  await git("config", "user.email", "t@example.com");
+  await git("config", "user.name", "t");
+  await writeFile(path.join(caller, "base.txt"), "base\n");
+  await git("add", "base.txt");
+  await git("commit", "-qm", "base");
+  await git("remote", "add", "origin", origin);
+  await git("remote", "add", "upstream", origin);
+  await git("update-ref", "refs/remotes/origin/main", "HEAD");
+  await git("checkout", "-qb", "feature");
+  await writeFile(path.join(caller, "feature.txt"), "feature\n");
+  await git("add", "feature.txt");
+  await git("commit", "-qm", "feature");
+  await git("update-ref", "refs/merge-requests/198/head", "HEAD");
+
+  for (const fixture of [
+    { label: "missing origin/HEAD" },
+    { label: "dangling origin/HEAD", ref: "refs/remotes/origin/missing" },
+    { label: "local branch is not a cached remote default", ref: "refs/heads/main" },
+    { label: "direct origin/HEAD is not a symbolic default", direct: true },
+    { label: "origin belongs to another repository", ref: "refs/remotes/origin/main",
+      origin: "https://git.example.com/other/widgets.git" },
+    { label: "origin belongs to another port", ref: "refs/remotes/origin/main",
+      origin: "https://git.example.com:8443/acme/widgets.git",
+      upstream: "https://git.example.com:9443/acme/widgets.git",
+      url: "https://git.example.com:9443/acme/widgets/-/merge_requests/198" },
+    { label: "reachable remote has no advertised default", ref: "refs/remotes/origin/main",
+      online: true },
+  ]) {
+    await t.test(fixture.label, async (t) => {
+      await git("update-ref", "--no-deref", "-d", "refs/remotes/origin/HEAD");
+      await git("remote", "set-url", "origin", fixture.origin || origin);
+      await git("remote", "set-url", "upstream", fixture.upstream || origin);
+      if (fixture.ref) await git("symbolic-ref", "refs/remotes/origin/HEAD", fixture.ref);
+      if (fixture.direct) await git("update-ref", "refs/remotes/origin/HEAD", "HEAD");
+      const exec = (command, args, options) => {
+        if (command === "git" && (args.includes("fetch") || args.includes("ls-remote"))) {
+          if (fixture.online && args.includes("--symref")) return { stdout: "" };
+          throw new Error("offline");
+        }
+        return run(command, args, options);
+      };
+      const resolve = () => resolvePrCheckout(
+        fixture.url || "https://git.example.com/acme/widgets/-/merge_requests/198",
+        { allowPush: false, exec, dir: caller, root },
+      );
+      const resolved = await resolve();
+      t.after(resolved.cleanup);
+      assert.equal(resolved.trunk, "");
+      await assert.rejects(assertTrunk(resolved.worktree, resolved.trunk), /trunk/);
+    });
+  }
+});
+
+test("a deleted remote trunk is not accepted from a stale local branch", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "jury-local-mr-deleted-trunk-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const remote = path.join(root, "remote.git");
+  const seed = path.join(root, "seed");
+  const caller = path.join(root, "caller");
+  await run("git", ["init", "--bare", "-q", "-b", "main", remote]);
+  await run("git", ["init", "-q", "-b", "main", seed]);
+  const git = (dir, ...args) => run("git", ["-C", dir, ...args]);
+  await git(seed, "config", "user.email", "t@example.com");
+  await git(seed, "config", "user.name", "t");
+  await writeFile(path.join(seed, "a.txt"), "base\n");
+  await git(seed, "add", "a.txt");
+  await git(seed, "commit", "-qm", "base");
+  await git(seed, "push", "-q", remote, "main");
+  await git(seed, "checkout", "-qb", "feature");
+  await writeFile(path.join(seed, "a.txt"), "feature\n");
+  await git(seed, "commit", "-qam", "feature");
+  const { stdout: featureHead } = await git(seed, "rev-parse", "HEAD");
+  await git(seed, "push", "-q", remote, "feature");
+  await git(remote, "update-ref", "refs/merge-requests/197/head", featureHead.trim());
+  await run("git", ["clone", "-q", remote, caller]);
+  await git(remote, "update-ref", "-d", "refs/heads/main");
+  await git(caller, "remote", "set-url", "origin", "https://git.example.com/acme/widgets.git");
+
+  const exec = (command, args, options) => {
+    const rewritten = command === "git" && (args.includes("fetch") || args.includes("ls-remote"))
+      ? args.map((arg) => arg === "origin" ? remote : arg)
+      : args;
+    return run(command, rewritten, options);
+  };
+
+  await assert.rejects(
+    resolvePrCheckout(
+      "https://git.example.com/acme/widgets/-/merge_requests/197",
+      { allowPush: false, exec, dir: caller, root, trunk: "main" },
+    ),
+    /remote trunk "main" does not exist/,
+  );
 });
 
 test("a local repository for a different project is never reviewed under this request's name", async () => {

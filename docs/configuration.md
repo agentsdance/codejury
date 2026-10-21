@@ -195,8 +195,17 @@ an unrelated conversation.
 | Amp, Cursor, Copilot, TRAE CLI | — | no; replies start fresh with the finding context |
 
 Agents that do not resume lose nothing in substance: `buildReply` quotes their
-own prior findings back to them. The judge never resumes at all — each finding
-is triaged in its own session so one verdict cannot anchor the next.
+own prior findings back to them. A resumable judge keeps its own conversation across
+findings and rounds, persisted separately from reviewer sessions. Explicitly selecting
+`--reviewer codex --judge codex` uses these separate roles without an extra flag; it
+provides no model diversity or guarantee of independent judgment. Initial reviews
+start fresh, and replies resume only the reviewer session that produced the findings.
+
+`resume.argv` is the reviewer resume command. An optional `resume.judgeArgv` supplies
+a different command for resumed judging; otherwise the judge uses `resume.argv`.
+Both must name `{{sessionId}}`, never a latest-session shortcut. Codex sets explicit
+`--sandbox read-only` for reviewer resumes and `--sandbox workspace-write` for judge
+resumes. Custom resume configuration replaces the built-in resume object.
 
 - Kimi Code: verified CLI 0.39.1 and 0.42.0 (`npm install -g @moonshot-ai/kimi-code`); run `kimi login`, or put an API key in `~/.kimi-code/config.toml`, whose `default_model` is the model used. Prompt mode (`kimi -p`) rejects `--plan`, `--yolo` and `--auto` and approves every tool call itself, so the reviewer boundary is the shipped agent profile: it wraps Kimi's default prompt, removes the Edit and Write tools, and allows only the read-only `explore` sub-agent (the default `coder` sub-agent can write). The shell stays available, so the profile is not a sandbox. The report is read from `--output-format stream-json`, and replies resume the exact session id Kimi prints at the end of the stream; the profile flag is omitted on resume because Kimi refuses it next to `--session`, and the session keeps the agent it was created with. Kimi keeps its own session history per working directory under `~/.kimi-code`. The legacy Python `kimi-cli` installs an executable of the same name but takes different flags (`kimi --version` prints 1.x for it and 0.x for Kimi Code); to keep using it, override the entry in `jury.config.json`:
 

@@ -21,9 +21,11 @@ test('one CLI keeps reviewer messages and judge activity on separate sides', asy
   });
   for (const kind of ['report', 'answer', 'rebuttal']) {
     expect(result.find(turn => turn.kind === kind)?.side, kind).toBe('r');
+    expect(result.find(turn => turn.kind === kind)?.text, kind).toContain('codex (reviewer)');
   }
   for (const kind of ['waiting', 'verdict']) {
     expect(result.find(turn => turn.kind === kind)?.side, kind).toBe('l');
+    expect(result.find(turn => turn.kind === kind)?.text, kind).toContain('codex (judge)');
   }
   expect(result.find(turn => turn.kind === 'rebuttal')?.text).not.toContain('Reviewer answer excerpt');
 });

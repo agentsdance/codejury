@@ -21,6 +21,7 @@ test("review and reply combine reviewer aliases without launching duplicate or u
   await writeFile(path.join(repo, "a.txt"), "before\n");
   await git("add", "a.txt");
   await git("commit", "-qm", "base");
+  await git("update-ref", "refs/remotes/origin/master", "HEAD");
   await git("checkout", "-qb", "feature");
   await writeFile(path.join(repo, "a.txt"), "after\n");
   await git("commit", "-qam", "change");

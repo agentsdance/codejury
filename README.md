@@ -38,7 +38,8 @@ needed. See [Built-in agents](#built-in-agents) for install commands.
 Install and authenticate each agent's CLI separately. Run `jury agents` to see
 which enabled agents are installed (`ok`) or missing (`MISSING`). Any enabled
 agent can be selected as a reviewer with `--jury <name>` or as the main agent
-with `--judge <name>`; the same agent cannot fill both roles in one review.
+with `--judge <name>`. The same agent can fill both roles in separate sessions
+when explicitly selected (see below).
 Additional CLIs can be added through [custom agent configuration](docs/configuration.md#custom-agent).
 
 ## Quick start
@@ -48,6 +49,27 @@ You need Node.js 20+, Git, and authenticated coding-agent CLIs. GitHub PRs also 
 With one installed supported CLI, Jury automatically uses it as both judge and jury.
 With two, it randomly assigns one as judge and the other as jury. Explicit role settings take precedence.
 Agent installation, login, subscriptions, and usage charges are separate from Code Jury.
+
+To deliberately use Codex as both reviewer and judge, even with other CLIs installed:
+
+```sh
+jury review <pr-url> --reviewer codex --judge codex --push=false
+```
+
+This explicit selection applies to the selected run, not global defaults. Reviewer and judge use
+separate prompts and provider sessions: a fresh first-pass reviewer never resumes the
+judge's conversation. Codex reviews and reviewer replies use `read-only`; judge turns
+and resumed judge sessions use `workspace-write`. Only findings, verdicts and replies
+are exchanged through the review workflow, not private judge session history. Both
+roles still see the same working tree and the workflow's settled findings.
+
+`jury review --resume <slug>` restores the saved roles; `jury reply --run <slug>`
+routes replies to the saved reviewer session, never the judge session. Use the same
+`--dir` and target arguments as the original run. Other reviewers can be included in the reviewer list.
+
+Separate sessions do not provide model diversity or guarantee independent judgment or
+review quality. Prefer distinct agents when independent perspectives matter. Default reviewer pools still exclude the judge; automatic one-CLI fallback is unchanged.
+
 
 ```sh
 npm install -g @agentsdance/codejury

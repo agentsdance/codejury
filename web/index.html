@@ -1356,7 +1356,7 @@ function turnHTML(t, agent) {
       body = bubble(t.text ?? "", esc(t.kind ?? "turn"));
   }
   return `<div class="msg" data-side="${side}"><span class="nm"
-    ><span class="ic" style="color:${nm === judgeName() ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}${stampFor(t)}</span>${body}</div>`;
+    ><span class="ic" style="color:${nm === judgeName() ? "var(--main-hue)" : hueFor(nm)}">${icon(nm)}</span>${esc(nm)}${agent === judgeName() ? (judge ? " (judge)" : " (reviewer)") : ""}${stampFor(t)}</span>${body}</div>`;
 }
 
 /**

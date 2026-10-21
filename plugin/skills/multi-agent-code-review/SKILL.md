@@ -63,7 +63,7 @@ Four sections, in order. Template in [prompts/review-round.md](https://github.co
 
 Plus `DO NOT edit any files`. You want findings to triage, not competing patches.
 
-**Pin the diff base**: `git diff $(git merge-base HEAD origin/<trunk>) HEAD`. Never the trunk tip —
+**Pin the diff base**: `git diff 'refs/remotes/origin/<trunk>...HEAD' --`. Never the trunk tip —
 commits the trunk gained after the branch point appear as deletions in your diff and produce confident,
 entirely false findings.
 
