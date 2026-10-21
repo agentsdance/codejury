@@ -2,10 +2,13 @@
 
 ## Unreleased
 
-- Add a desktop-only Codex plugin with setup, review/resume, and saved-results
+- Add a desktop-only Codex plugin with setup, PR-link review/resume, and saved-results
   skills, a local marketplace, and a submission ZIP builder. The plugin uses
   the published `0.8.2-rc.1` CLI and preserves unpushed single-PR fixes in a
-  persistent checkout.
+  persistent checkout. Plugin 0.1.1 includes public privacy and terms pages,
+  a live console link, and Windows path handling fixes.
+- Resolve offline local GitLab reviews from the caller's valid cached remote default
+  when available, instead of requiring a redundant `--trunk` override.
 - Reject invalid or unavailable trunk branches before launching review agents.
   Generated reviewer and judge diff commands now fail closed when the base ref
   cannot be resolved instead of silently omitting committed changes.
