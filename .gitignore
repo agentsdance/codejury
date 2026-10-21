@@ -8,3 +8,4 @@ cr.config.json
 
 test-results/
 playwright-report/
+dist/

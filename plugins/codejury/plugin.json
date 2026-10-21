@@ -1,0 +1,54 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codejury",
+  "version": "0.1.1",
+  "description": "Review pull requests supplied by URL with CodeJury's independent AI reviewers and judge, resume PR reviews, and inspect saved findings.",
+  "author": {
+    "name": "ZHOU ZHENGXI",
+    "url": "https://github.com/zzxwill"
+  },
+  "homepage": "https://codejury.ai-infra.org/",
+  "repository": "https://github.com/agentsdance/codejury",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "pull-requests",
+    "coding-agents"
+  ],
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "onboardingSkill": "./skills/codejury-setup/SKILL.md",
+      "interface": {
+        "displayName": "CodeJury",
+        "shortDescription": "AI pull request review",
+        "longDescription": "Review pull requests supplied by URL with independent coding agents and a judge that investigates findings, applies fixes, and asks reviewers to check again. Set up the CLI, run or resume a PR review, and inspect saved findings and conversations. A new review requires a PR link; arbitrary local files and folders are not supported plugin review targets. PR reviews use a local checkout. Desktop only: requires Node.js 20.10+, npm, Git, and separately installed and authenticated coding-agent CLIs. GitHub PRs also require GitHub CLI. This plugin uses CodeJury CLI 0.8.2-rc.1 (a release candidate), downloaded from npm on first use. Reviews can edit files and create commits; pushes are disabled unless requested. Code and prompts are processed by your selected agents and their providers, subject to their terms and usage charges. CodeJury keeps review records locally and operates no hosted review service. The included console screenshot shows a real prior review; results vary by repository and agent.",
+        "developerName": "ZHOU ZHENGXI",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Review PR links",
+          "Address PR findings",
+          "Inspect saved reviews"
+        ],
+        "websiteURL": "https://codejury.ai-infra.org/",
+        "supportURL": "https://github.com/agentsdance/codejury/issues",
+        "privacyPolicyURL": "https://codejury.ai-infra.org/privacy/",
+        "termsOfServiceURL": "https://codejury.ai-infra.org/terms/",
+        "defaultPrompt": [
+          "Set up CodeJury and check which coding agents I can use.",
+          "Review this PR link with CodeJury and keep fixes local: <PR URL>",
+          "Summarize the findings from my latest saved CodeJury review."
+        ],
+        "brandColor": "#315BDC",
+        "composerIcon": "./assets/logo.svg",
+        "logo": "./assets/logo.svg",
+        "screenshots": [
+          "./assets/review-dashboard.png"
+        ]
+      },
+      "publication": {
+        "release_notes": "Fix Windows installation in paths containing spaces and portable ZIP resource paths. Add public privacy and terms pages, align the publisher with the verified individual identity, and show the live review console link by default. Uses CodeJury CLI 0.8.2-rc.1. New reviews require PR links."
+      }
+    }
+  }
+}
