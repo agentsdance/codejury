@@ -514,11 +514,11 @@ test("each invocation is its own run, so re-reviewing a PR does not merge into t
   // run, and a killed run's open rounds interleaved with the next one's.
   const bare = slugFor(target);
   const a = slugFor({ ...target, attempt: attemptStamp(new Date(2026, 7, 26, 10, 24)) });
-  const b = slugFor({ ...target, attempt: attemptStamp(new Date(2026, 7, 26, 10, 27)) });
+  const b = slugFor({ ...target, attempt: attemptStamp(new Date(2026, 7, 26, 10, 24, 0, 1)) });
 
   assert.notEqual(a, b, "two invocations must not share a run directory");
-  assert.match(a, /-20260826-1024$/);
-  assert.match(b, /-20260826-1027$/);
+  assert.match(a, /-20260826-102400000-[0-9a-f-]+$/);
+  assert.match(b, /-20260826-102400001-[0-9a-f-]+$/);
   // Stamps sort chronologically, so the directory listing reads in order.
   assert.ok(a < b);
   // Resuming still targets the original, attempt-less shape.
