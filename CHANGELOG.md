@@ -6,6 +6,27 @@
   `claude plugin install codejury@codejury`. `/codejury:review <pr-url>` runs a review from a Claude
   Code session without pushing unless asked, and the review-loop skill moved from `skill/SKILL.md`
   to `plugin/skills/multi-agent-code-review/SKILL.md` (#115).
+
+## 0.8.2-rc.1 — 2026-10-20
+
+- Stop reviewers after a fixed ten-minute deadline, even while they emit output.
+  Terminate their process group with a bounded grace period, retain partial output,
+  and record an explicit timeout in saved runs and the CLI/console (#121).
+- Preserve event timestamp precision in the console timeline, so short reviews
+  retain their measured duration instead of rounding to six-second increments.
+- Show TRAE's own icon instead of a generic triangle throughout the console and
+  standalone demo, including conversation and exchange participants (#125).
+- Keep a reviewer's rebuttal eligible for triage when the same agent CLI serves
+  as both judge and reviewer; the judge's own explanations stay resolved.
+- Release live-console stream resources when the browser disconnects during
+  the initial event-log read.
+
+## 0.8.1 — 2026-10-19
+
+- Show the matching icon beside both the judge and jury agent names in exchange headers, in the console and standalone demo.
+
+## 0.8.0 — 2026-10-19
+
 - The `agy` install hint now points at the official `https://antigravity.google/cli/install.sh`;
   the npm package it named does not exist.
 - Configure the model each agent runs with: `jury agents model <agent> <model>` saves a default in

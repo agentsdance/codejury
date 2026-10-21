@@ -18,11 +18,22 @@ jury finding list --dir "" --run <slug>
 ```
 
 Run artifacts include event logs, generated prompts, reviewer output, and folded console data.
+Timeline durations use recorded event timestamps; rounding is applied only to display labels,
+so short reviews retain their elapsed seconds in the saved console data.
 They are retained locally; remove old records manually when you no longer need them.
 Related-PR task checkouts retain local commits for resume. Single-PR URL checkouts are removed when the CLI finishes, including local-only commits.
 For durable single-PR local-only fixes, review your own source-branch checkout with
 `jury --dir /path/to/checkout --trunk <base> --push=false` (no URL), or export commits
 from the temporary checkout while the run is active.
+
+The console and standalone demo show TRAE's own mark beside its participant name
+in timelines, rounds, conversations, and exchanges. The icon is embedded in the
+page and follows the participant color in both light and dark themes, without
+requiring an external image download.
+
+Closing or reloading the console page releases that connection's live-stream
+watcher and timers, including while its initial event log is loading. The review
+continues independently of the browser connection.
 
 ## Resume and limits
 
@@ -81,6 +92,10 @@ On a fresh setup with exactly one installed supported agent CLI, `jury review` u
 that agent for both judge and jury, keeping its separate reviewer and judge command
 permissions. With exactly two installed CLIs, either can be randomly selected as
 judge; the other reviews. Opt-in built-ins are included in this detection.
+
+When one CLI serves both roles, a reviewer's rebuttal still returns the finding
+to the judge's triage queue, subject to the usual turn limit. A judge's own
+explanation does not reopen the finding just because the names are identical.
 
 The selected roles appear before the run starts and are saved with it. `jury reply`
 and `jury review --resume <slug>` reuse those assignments even if installed CLIs
