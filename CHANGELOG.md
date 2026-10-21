@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Run Claude Code plugin reviews with Claude as both judge and jury in separate sessions,
+  overriding CLI role settings without changing saved configuration. Older CLIs that reject
+  this pairing retry once with the repository CLI.
+- Rename the manual Claude Code plugin skill from `multi-agent-code-review` to `codejury`.
 - Add a desktop-only Codex plugin with setup, PR-link review/resume, and saved-results
   skills, a local marketplace, and a submission ZIP builder. The plugin uses
   the published `0.8.2-rc.1` CLI and preserves unpushed single-PR fixes in a
@@ -11,7 +15,7 @@
   `claude plugin install codejury@codejury`. `/codejury:review <pr-url>` runs a review from a Claude
   Code session with the web console enabled and its link shown by default, without pushing unless
   asked. A PR URL is required; Claude asks for it if omitted. Pass `--web=false` to disable the console.
-  The review-loop skill moved from `skill/SKILL.md` to `plugin/skills/multi-agent-code-review/SKILL.md`.
+  The review-loop skill moved from `skill/SKILL.md` to `plugin/skills/codejury/SKILL.md`.
   The manual guidance now uses the current
   agent configuration and exact review session IDs (#115).
 - Resolve offline local GitLab reviews from the caller's valid cached remote default

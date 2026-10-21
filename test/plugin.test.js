@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { reviewerOptions } from "../lib/cli-options.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const json = file => JSON.parse(readFileSync(path.join(root, file), "utf8"));
@@ -27,7 +28,7 @@ test("the marketplace lists the plugin under the same name as its manifest", () 
 test("every plugin skill has a name and description, and the review skill uses real flags", () => {
   const skills = path.join(root, "plugin/skills");
   const names = readdirSync(skills).sort();
-  assert.deepEqual(names, ["multi-agent-code-review", "review"]);
+  assert.deepEqual(names, ["codejury", "review"]);
   for (const name of names) {
     const text = readFileSync(path.join(skills, name, "SKILL.md"), "utf8");
     const front = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1];
@@ -40,7 +41,11 @@ test("every plugin skill has a name and description, and the review skill uses r
   const review = readFileSync(path.join(skills, "review/SKILL.md"), "utf8");
   assert.match(review, /^disable-model-invocation: true$/m);
   const help = execFileSync(process.execPath, [path.join(root, "bin/jury.js"), "help", "review"], { encoding: "utf8" });
-  for (const flag of review.match(/--[a-z][\w-]*/g)) assert.ok(help.includes(`${flag} `), `jury review has no ${flag}`);
+  for (const flag of review.match(/--[a-z][\w-]*/g)) {
+    if (flag === "--package") continue; // npm's repository-CLI fallback selector
+    // Reviewer aliases include a supported legacy option omitted from public help.
+    assert.ok(help.includes(`${flag} `) || Object.hasOwn(reviewerOptions, flag.slice(2)), `jury review has no ${flag}`);
+  }
   assert.equal(json("package.json").name, "@agentsdance/codejury");
   assert.match(review, /npx -y @agentsdance\/codejury/);
 });
