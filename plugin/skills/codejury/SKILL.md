@@ -1,6 +1,6 @@
 ---
 name: codejury
-description: Review a pull request with several independent AI reviewers (codex, droid, …) and loop until they agree there is nothing new. Use when asked to "review this PR with codex and droid", "run the review loop", "loop it", "get a second opinion on this PR", or to re-review after pushing fixes. Also use when asked to triage findings an AI reviewer produced.
+description: Review a pull request with CodeJury using separate Claude judge and reviewer sessions. Use when asked to run the CodeJury review loop, re-review a PR after fixes, or manually triage CodeJury findings.
 ---
 
 # CodeJury
@@ -8,12 +8,14 @@ description: Review a pull request with several independent AI reviewers (codex,
 This plugin supports PR reviews only. Require a PR URL before starting reviewers; if it is missing,
 ask for it. Do not infer a local-branch or local-directory review from the current checkout.
 
-You are the **main agent**. You write code, answer findings, and own the commit. Reviewers only read
-and report — never let one edit files.
+In Claude Code, you are the **judge** for the manual workflow. You write code, answer findings,
+and own the commit. Use only separate Claude sessions as reviewers, regardless of saved CLI role
+settings. Reviewers only read and report — never let one edit files or reuse your judge session.
 
 The CLI owns the mechanics; you own the judgement. See [DESIGN.md](https://github.com/agentsdance/codejury/blob/master/DESIGN.md) for the split.
 
-For the automated loop, use `/codejury:review`; the configured judge owns its fixes. The guidance
+For the automated loop, use `/codejury:review`; it always selects Claude as both judge and jury
+in separate sessions, and only the judge owns fixes. The guidance
 below is for explicitly requested manual review and triage. Do not edit a checkout while an
 automated Jury run is using it. In CLI examples, substitute `npx -y @agentsdance/codejury` for
 `jury` if it is not installed, and keep the same `--dir` and `--run` when working with saved findings.
@@ -40,14 +42,16 @@ commit. After local fixes, review their new commit even when pushing is disabled
 git worktree add "$WT" "$REVIEW_SHA" --detach
 ```
 
-Launch concurrently and in the background — the slowest sets the round's wall clock. Use the
-current [agent definitions](https://github.com/agentsdance/codejury/tree/master/lib/agents) and
+Launch Claude reviewers in the background. Use the
+current [Claude definition](https://github.com/agentsdance/codejury/blob/master/lib/agents/claude.json) and
 [configuration guide](https://github.com/agentsdance/codejury/blob/master/docs/configuration.md),
 with overrides in `jury.config.json`
 ([example](https://github.com/agentsdance/codejury/blob/master/jury.config.example.json)):
 
-- **prompt delivery** — argv (`codex`) vs a file flag (`droid -f`)
-- **cwd** — process cwd (`codex`) vs an explicit `--cwd` flag (`droid`)
+- **prompt delivery** — pass the review prompt with `claude -p`.
+- **permissions** — use the Claude definition's read-only reviewer arguments, including plan mode
+  and withheld edit tools; the judge alone can edit.
+- **cwd** — use the PR worktree as the process working directory.
 - **resume** — retain each reviewer's exact session id and pass it to that agent's configured
   resume command. Never select the most recent session: it may belong to another task. If there is
   no usable session id, start fresh with only that reviewer's prior findings quoted back.
@@ -106,7 +110,7 @@ Reply to every finding — silence is not a resolution. Per finding:
 question. Template in [prompts/feedback.md](https://github.com/agentsdance/codejury/blob/master/prompts/feedback.md).
 
 ```bash
-jury reply --dir "$WT"           # one conversation per reviewer, concurrently
+jury reply --dir "$WT" --reviewer claude   # reply to the Claude reviewer session
 ```
 
 You hold a **separate** conversation with each reviewer, about its own findings only. Never relay one

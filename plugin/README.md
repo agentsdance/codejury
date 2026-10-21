@@ -15,11 +15,11 @@ Start a new Claude Code session after installing, then run:
 
 ```text
 /codejury:review https://github.com/owner/repo/pull/123
-/codejury:review https://github.com/owner/repo/pull/123 --reviewer claude --judge codex --rounds 3
+/codejury:review https://github.com/owner/repo/pull/123 --rounds 3
 ```
 
-The first example uses your saved agent settings. The second overrides the reviewer, judge, and
-round limit. Both open the web console and display its link in Claude Code.
+Both examples use Claude as judge and jury, in separate sessions. The second sets the round limit.
+Both open the web console and display its link in Claude Code.
 
 A PR URL is required. If you run `/codejury:review` without one, Claude asks for the URL before
 starting. Local-branch and local-directory reviews are outside this plugin's scope.
@@ -31,10 +31,18 @@ also need an authenticated `gh` CLI. The plugin uses an installed `jury`, or
 `npx -y @agentsdance/codejury` if `jury` is absent. It does not bundle or authenticate agent CLIs.
 Use `jury agents` (or `npx -y @agentsdance/codejury agents`) to inspect your setup.
 
+If an older CLI rejects Claude in both roles, the plugin retries once with the repository CLI
+using `npx -y --package=git+https://github.com/agentsdance/codejury.git jury`. This leaves your
+installed CLI and saved configuration unchanged.
+
 ## Behavior
 
-- `/codejury:review` runs only when invoked by the user. It respects your CLI flags,
-  `jury.config.json`, and saved agent/model defaults.
+- `/codejury:review` runs only when invoked by the user. It always sets `--judge claude` and
+  `--reviewer claude`, including on resume. Supplied role flags and saved CLI role choices are
+  overridden for this run; model and other settings still apply. Saved settings are not changed.
+- Jury launches separate Claude sessions for the two roles. The reviewer is read-only; the judge
+  can make fixes. Your Claude Code session monitors the run. Both roles use the same agent, so
+  this does not provide model diversity.
 - It defaults to `--web=true`: the browser console opens and Claude shares its URL. Claude reports
   the review result when it is ready and leaves the console running for you to inspect.
   Pass `--web=false` for results only in Claude Code and a command that exits after review.

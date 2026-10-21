@@ -31,11 +31,17 @@ below, including `agents`, `runs`, and reopening the console.
 
 ## 3. Build the command
 
-Start from `jury review` (or `npx -y @agentsdance/codejury review`), then preserve the user's
-arguments and quote each value safely for the shell. Do not evaluate argument text as shell code.
+Start from `jury review` (or `npx -y @agentsdance/codejury review`). Normalize the role flags as
+described below, preserve the remaining arguments, and quote each value safely for the shell.
+Do not evaluate argument text as shell code.
 
 - One or more PR URLs select the PRs to review. Let Jury resolve their checkouts. With a PR URL,
   `--dir` selects the checkout/state root. Resuming a run still requires its original PR URL(s).
+- In Claude Code, always use Claude for both roles. Remove every supplied `--judge`, `--reviewer`,
+  `--jury`, and legacy `--agents` option and its value, including repeated, comma-separated,
+  space-separated, and `=` forms. Then add exactly one `--judge claude` and one
+  `--reviewer claude`. Apply this to new and resumed runs. These per-run flags override saved CLI
+  and repository role settings. Briefly report that Claude is both judge and jury.
 - Add `--web=true` unless the arguments already set `--web`. Open the browser console by default;
   an explicit `--web=false` or `--web false` disables it.
 - Add `--push=false` unless the arguments already set `--push`. Jury pushes fixes by default; pushing
@@ -45,8 +51,9 @@ Recognize both `--push=false` and `--push false`, as well as bare `--push` or `-
 For example, preserve `--push false` and `--web=false` without appending conflicting defaults.
 Explain that `--push=false` still lets the judge edit files and Jury create local commits.
 
-Do not choose reviewers, a judge or models for the user; Jury already applies the flags, the
-repository's `jury.config.json` and the saved defaults (`jury agents`).
+Keep model and other non-role settings. Do not rewrite saved configuration to select these roles.
+The judge and reviewer must run in separate Claude sessions: the reviewer stays read-only, and
+only the judge may edit files. Do not combine their sessions or run another reviewer as a fallback.
 
 ## 4. Run it
 
@@ -57,6 +64,14 @@ share that exact URL as a clickable Markdown link, including its port and run qu
 Do not guess the URL. Skip this step when the user disabled the console. If it stops early (a
 missing or unauthenticated agent CLI, a missing `gh` login for a GitHub URL), show the error and
 the fix it names; `jury agents` lists which agent CLIs are installed.
+
+Older CLIs, including 0.8.1, reject a reviewer that is also the judge. If that specific error
+appears, explain that the installed CLI is too old and retry once using
+`npx -y --package=git+https://github.com/agentsdance/codejury.git jury` with the same normalized
+arguments. The repository CLI supports separate sessions for both roles. Use that CLI prefix
+for subsequent commands too. If the retry fails, show the error; do not substitute another agent
+or keep retrying. Explicitly disabled Claude or missing authentication still requires fixing
+that prerequisite.
 
 Monitor the background output while the review runs. With the console enabled, do not rely on a
 background-task completion notification: the server keeps the process alive after review ends.
@@ -76,4 +91,4 @@ select the reported run with `--run` when opening the console. Single-PR checkou
 their unpushed fixes are removed during cleanup. Do not promise that those commits remain available.
 
 Do not fix the findings yourself, and do not edit the files Jury is working on while it runs:
-the judge owns the fixes for this review.
+Jury launches separate Claude CLI sessions for judge and reviewer, and only the judge owns fixes.

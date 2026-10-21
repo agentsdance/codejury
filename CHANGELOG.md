@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Run Claude Code plugin reviews with Claude as both judge and jury in separate sessions,
+  overriding CLI role settings without changing saved configuration. Older CLIs that reject
+  this pairing retry once with the repository CLI.
 - Rename the manual Claude Code plugin skill from `multi-agent-code-review` to `codejury`.
 - Code Jury is now a Claude Code plugin: `claude plugin marketplace add agentsdance/codejury`, then
   `claude plugin install codejury@codejury`. `/codejury:review <pr-url>` runs a review from a Claude
