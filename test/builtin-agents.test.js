@@ -68,6 +68,11 @@ test("the schema rejects the mistakes a new agent is likely to make", () => {
     .some((p) => /resume\.reason/.test(p)),
     "declining resume must be a documented decision, not an omission");
 
+  for (const idFromEvent of [null, {}, { type: "thread.started", field: "" }]) {
+    assert.ok(validateAgent({ ...ok, resume: { ...ok.resume, idFromEvent } })
+      .some((p) => /resume\.idFromEvent/.test(p)));
+  }
+
   const unsandboxed = { ...ok, sandbox: "none" };
   delete unsandboxed.sandboxNote;
   assert.ok(validateAgent(unsandboxed).some((p) => /sandboxNote/.test(p)),
@@ -161,7 +166,6 @@ test("an agent taking a generated session id declares newSession", () => {
 // idFrom pattern is only useful if it matches what the agent genuinely prints,
 // so the fixture is the observed shape rather than an invented one.
 const ID_SAMPLES = {
-  codex: ["session_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
   copilot: ["session_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
   cursor: ["chat_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
   kimi: ["session_id: 4f9a2c1b-33de-4a10-9f0e-7788aa112233", "4f9a2c1b-33de-4a10-9f0e-7788aa112233"],
@@ -192,8 +196,8 @@ test("every resuming agent can name the session it resumes", () => {
   // conversation — or worse, resumes whatever ran last.
   for (const agent of BUILTIN_AGENTS) {
     if (!agent.resume?.supported) continue;
-    assert.ok(agent.newSession || agent.resume.idFrom,
-      `${agent.name}: resume needs newSession or resume.idFrom to know which session to resume`);
+    assert.ok(agent.newSession || agent.resume.idFrom || agent.resume.idFromEvent,
+      `${agent.name}: resume needs newSession, idFrom or idFromEvent to know which session to resume`);
   }
 });
 

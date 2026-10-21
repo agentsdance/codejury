@@ -46,7 +46,9 @@ and remain visible in the saved reports.
 Supported prompt delivery is `argv` or `file` (`{{promptFile}}`); stdin is closed.
 `cwd: "worktree"` starts in the checkout; with `cwd: "flag"`, pass `{{worktree}}` in the command.
 `report: "tail"` extracts a final response from a verbose transcript; `report: "kimi-json"` reads the
-assistant messages out of Kimi Code's `--output-format stream-json` lines; otherwise the whole output is read.
+assistant messages out of Kimi Code's `--output-format stream-json` lines. `report: "codex-json"`
+reads the final assistant message from Codex's `--json` events and requires a completed turn.
+Use `report: "whole"` for CLIs that print only their response.
 Reviewers have a hard 600-second (ten-minute) deadline per invocation, including replies.
 Output does not reset it, and `expectSeconds` does not extend it. A timeout remains a failed,
 incomplete review with the message **Timed out after 10 minutes**, partial output, and measured
@@ -177,7 +179,10 @@ that worktree rather than this review.
 
 An id reaches Jury one of two ways. Some CLIs accept one we generate
 (`--session-id`), so the conversation is identified before it exists. The rest
-print one in structured output, which is read back with `resume.idFrom`. An id
+print one in structured output, which is read back with `resume.idFrom` or
+`resume.idFromEvent`. Codex uses `--json` and
+`"idFromEvent": { "type": "thread.started", "field": "thread_id" }` to read the
+top-level provider event, separate from assistant text and tool output. An id
 is never inferred from assistant prose: a model that happens to mention a UUID
 is not reporting its session, and resuming on that would deliver a verdict into
 an unrelated conversation.
@@ -187,7 +192,7 @@ an unrelated conversation.
 | Claude | assigned `--session-id` | yes |
 | Grok | assigned `--session-id` | yes |
 | Qwen | assigned `--session-id` | yes |
-| Codex | printed by `exec` | yes |
+| Codex | `thread_id` in `exec --json`'s `thread.started` event | yes |
 | Droid | `session_id` in `-o json` | yes |
 | Antigravity | `conversation_id` in `--output-format json` | yes |
 | OpenCode | `sessionID` in the JSON event stream | yes |
