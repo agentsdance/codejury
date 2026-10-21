@@ -14,12 +14,14 @@ claude plugin install codejury@codejury
 Start a new Claude Code session after installing, then run:
 
 ```text
+/codejury:review
 /codejury:review https://github.com/owner/repo/pull/123
-/codejury:review --reviewer claude --judge codex --rounds 3
 ```
 
-The second example reviews the current branch. You can also pass multiple related PR URLs,
-use `--dir` to select a checkout, or pass other `jury review` flags.
+The first example reviews the current branch using your saved settings; no PR or MR is required.
+The second reviews a specific PR. Both open the web console and display its link in Claude Code.
+You can also pass multiple related PR URLs, use `--dir` to select a checkout, or pass other
+`jury review` flags. To override your saved agent choices, add `--reviewer claude --judge codex`.
 
 You need Node.js 20.10 or newer, npm, Git, and installed, authenticated agent CLIs. GitHub PR URLs
 also need an authenticated `gh` CLI. The plugin uses an installed `jury`, or
@@ -30,10 +32,13 @@ Use `jury agents` (or `npx -y @agentsdance/codejury agents`) to inspect your set
 
 - `/codejury:review` runs only when invoked by the user. It respects your CLI flags,
   `jury.config.json`, and saved agent/model defaults.
-- It defaults to `--web=false` so the command exits after review, and `--push=false` so fixes stay
-  local. The judge can still edit files and Jury can create commits. Pass `--push` to publish them.
-- Explicit `--web` and `--push` values take precedence. With `--web=true`, the console stays open
-  after the review completes.
+- It defaults to `--web=true`: the browser console opens and Claude shares its URL. Claude reports
+  the review result when it is ready and leaves the console running for you to inspect.
+  Pass `--web=false` for results only in Claude Code and a command that exits after review.
+- It defaults to `--push=false`, so Jury does not push. The judge can still edit files and Jury
+  can create commits. Pass `--push` to publish them. Local-branch reviews retain fixes in your
+  checkout; single-PR URL checkouts are temporary and their unpushed fixes are removed on exit.
+- Explicit `--web` and `--push` values take precedence.
 - `multi-agent-code-review` provides guidance for manually coordinating reviewers and triaging
   findings. Its source moved from `skill/SKILL.md` to `plugin/skills/multi-agent-code-review/SKILL.md`;
   update any copies or symlinks that used the old path.
