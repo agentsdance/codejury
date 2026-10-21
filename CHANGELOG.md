@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a desktop-only Codex plugin with setup, review/resume, and saved-results
+  skills, a local marketplace, and a submission ZIP builder. The plugin uses
+  the published `0.8.2-rc.1` CLI and preserves unpushed single-PR fixes in a
+  persistent checkout.
+
 ## 0.8.2-rc.1 — 2026-10-20
 
 - Stop reviewers after a fixed ten-minute deadline, even while they emit output.

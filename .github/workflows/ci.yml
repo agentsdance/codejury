@@ -31,6 +31,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm run test:package
+      - run: npm run package:plugin
   browser:
     name: Installed console / Chromium
     runs-on: ubuntu-latest
