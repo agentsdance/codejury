@@ -29,9 +29,18 @@ jobs:
       - run: git config --global user.name 'Code Jury CI'
       - run: git config --global user.email 'ci@example.com'
       - run: npm ci --ignore-scripts
-      - run: npm test
-      - run: npm run test:package
+      - name: Run npm test
+        run: node scripts/ci-check.mjs test
+      - name: Run npm run test:package
+        run: node scripts/ci-check.mjs test:package
       - run: npm run package:plugin
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-diagnostics-node${{ matrix.node }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/codejury-ci/
+          if-no-files-found: ignore
+          retention-days: 7
   browser:
     name: Installed console / Chromium
     runs-on: ubuntu-latest

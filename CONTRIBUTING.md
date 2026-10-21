@@ -60,3 +60,19 @@ CI runs this browser suite separately from the Node/OS matrix. Failures retain
 screenshots, a trace, and the HTML report as `console-browser-failure` artifacts.
 Locally, inspect `playwright-report/index.html` or `test-results/` after a failure.
 These tests use saved review data; they do not call live model providers.
+
+### Diagnosing CI test hangs
+
+The Node/OS matrix runs the same `npm test` and `npm run test:package` commands
+through `node scripts/ci-check.mjs test` and `node scripts/ci-check.mjs test:package`.
+Each phase has a three-minute watchdog, within the existing fifteen-minute job
+limit. A timeout remains a failed check and terminates that phase's process group.
+Tests and their parallelism are unchanged.
+
+Package validation prints named subprocess start/end markers. The independent
+watchdog streams Node process lifecycle/resource records and snapshots of its own
+process group and descendants, without command arguments or environment values.
+CI uploads these records as `test-diagnostics-node<version>-<os>` artifacts for
+seven days. Logs also receive the records periodically so a failed artifact upload
+does not remove the only copy. A missing runner log still limits diagnosis; a
+successful retry alone does not explain a prior timeout.
