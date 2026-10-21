@@ -27,7 +27,7 @@ test("the marketplace lists the plugin under the same name as its manifest", () 
 test("every plugin skill has a name and description, and the review skill uses real flags", () => {
   const skills = path.join(root, "plugin/skills");
   const names = readdirSync(skills).sort();
-  assert.deepEqual(names, ["multi-agent-code-review", "review"]);
+  assert.deepEqual(names, ["codejury", "review"]);
   for (const name of names) {
     const text = readFileSync(path.join(skills, name, "SKILL.md"), "utf8");
     const front = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1];

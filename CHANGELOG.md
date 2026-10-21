@@ -2,11 +2,12 @@
 
 ## Unreleased
 
+- Rename the manual Claude Code plugin skill from `multi-agent-code-review` to `codejury`.
 - Code Jury is now a Claude Code plugin: `claude plugin marketplace add agentsdance/codejury`, then
   `claude plugin install codejury@codejury`. `/codejury:review <pr-url>` runs a review from a Claude
   Code session with the web console enabled and its link shown by default, without pushing unless
   asked. A PR URL is required; Claude asks for it if omitted. Pass `--web=false` to disable the console.
-  The review-loop skill moved from `skill/SKILL.md` to `plugin/skills/multi-agent-code-review/SKILL.md`.
+  The review-loop skill moved from `skill/SKILL.md` to `plugin/skills/codejury/SKILL.md`.
   The manual guidance now uses the current
   agent configuration and exact review session IDs (#115).
 - Resolve offline local GitLab reviews from the caller's valid cached remote default

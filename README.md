@@ -116,7 +116,7 @@ when `jury` is not installed) with `--web=true` and, unless you pass `--push`, `
 Claude shares the web console link, summarizes the findings and verdicts when the review ends,
 and leaves the console running. Pass `--web=false` to disable it. The plugin requires a PR URL;
 if omitted, Claude asks for it before starting. The plugin also ships the
-`multi-agent-code-review` skill for running the review loop by hand. Agent CLIs are still installed
+`codejury` skill for running the review loop by hand. Agent CLIs are still installed
 and authenticated separately. `--push=false` disables pushing; it does not make the review read-only.
 Single-PR checkouts are temporary and their unpushed fixes are removed during cleanup.
 See the [plugin guide](plugin/README.md) for prerequisites, updates, and local installation checks.

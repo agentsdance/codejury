@@ -42,8 +42,8 @@ Use `jury agents` (or `npx -y @agentsdance/codejury agents`) to inspect your set
   can create commits. Pass `--push` to publish them. Single-PR URL checkouts are temporary and
   their unpushed fixes are removed during cleanup.
 - Explicit `--web` and `--push` values take precedence.
-- `multi-agent-code-review` provides guidance for manually coordinating reviewers and triaging
-  findings. Its source moved from `skill/SKILL.md` to `plugin/skills/multi-agent-code-review/SKILL.md`;
+- `codejury` provides guidance for manually coordinating reviewers and triaging
+  findings. Its source moved from `skill/SKILL.md` to `plugin/skills/codejury/SKILL.md`;
   update any copies or symlinks that used the old path.
 
 ## Update
@@ -70,8 +70,7 @@ claude --plugin-dir ./plugin
 
 To test marketplace installation, add the local repository path as a marketplace and install
 `codejury@codejury`. Use an isolated `CLAUDE_CONFIG_DIR` for development so this does not change your
-normal marketplace settings. `claude plugin details codejury` should list `review` and
-`multi-agent-code-review`.
+normal marketplace settings. `claude plugin details codejury` should list `codejury` and `review`.
 
 The plugin lives under `plugin/` so installation includes only its manifest, skills, and this guide.
 Skill references to repository documentation use GitHub URLs because the rest of the source tree

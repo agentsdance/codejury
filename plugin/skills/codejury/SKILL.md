@@ -1,9 +1,9 @@
 ---
-name: multi-agent-code-review
+name: codejury
 description: Review a pull request with several independent AI reviewers (codex, droid, …) and loop until they agree there is nothing new. Use when asked to "review this PR with codex and droid", "run the review loop", "loop it", "get a second opinion on this PR", or to re-review after pushing fixes. Also use when asked to triage findings an AI reviewer produced.
 ---
 
-# Multi-agent code review
+# CodeJury
 
 This plugin supports PR reviews only. Require a PR URL before starting reviewers; if it is missing,
 ask for it. Do not infer a local-branch or local-directory review from the current checkout.
