@@ -101,7 +101,34 @@ jury help review                      # complete review options
 `jury <pr-url>` is shorthand for `jury review <pr-url>`. You can also run without installing:
 `npx @agentsdance/codejury review <pr-url> --reviewer claude --push=false`.
 
-### Claude Code plugin
+## Codex desktop plugin
+
+The standalone plugin in [`plugins/codejury`](plugins/codejury) provides setup,
+PR-link review/resume, and saved-results skills. A new review requires a PR URL;
+local files or folders alone are not supported plugin review targets.
+It uses the published `0.8.2-rc.1` CLI
+through an isolated npm cache and an absolute CLI entrypoint, so an existing
+`jury` installation cannot select another version. Node.js 20.10+, npm, Git,
+and authenticated coding-agent CLIs
+are still required. Reviews may edit code and create commits; pushes are disabled
+unless requested, and local-only fixes use a persistent checkout.
+
+To install from a checkout with the marketplace files:
+
+```sh
+codex plugin marketplace add /absolute/path/to/codejury
+codex plugin add codejury@codejury
+```
+
+Restart the desktop app after local plugin changes. Use the **CodeJury** plugin
+to set up agents, review a PR, or inspect a saved run. The package is marked
+desktop-only because its workflows call local programs.
+
+Build the public-directory submission archive with `npm run package:plugin`.
+This produces `dist/codejury-plugin-0.1.1.zip`. Building or installing it locally
+does not mean OpenAI has reviewed or listed it in the public directory.
+
+## Claude Code plugin
 
 Code Jury is also a [Claude Code plugin](https://code.claude.com/docs/en/plugins). Add this
 repository as a plugin marketplace and install it:
