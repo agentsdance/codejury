@@ -1,47 +1,64 @@
 ---
-name: multi-agent-code-review
-description: Review a pull request with several independent AI reviewers (codex, droid, …) and loop until they agree there is nothing new. Use when asked to "review this PR with codex and droid", "run the review loop", "loop it", "get a second opinion on this PR", or to re-review after pushing fixes. Also use when asked to triage findings an AI reviewer produced.
+name: codejury
+description: Review a pull request with CodeJury using separate Claude judge and reviewer sessions. Use when asked to run the CodeJury review loop, re-review a PR after fixes, or manually triage CodeJury findings.
 ---
 
-# Multi-agent code review
+# CodeJury
 
-You are the **main agent**. You write code, answer findings, and own the commit. Reviewers only read
-and report — never let one edit files.
+This plugin supports PR reviews only. Require a PR URL before starting reviewers; if it is missing,
+ask for it. Do not infer a local-branch or local-directory review from the current checkout.
 
-The CLI owns the mechanics; you own the judgement. See `DESIGN.md` for the split.
+In Claude Code, you are the **judge** for the manual workflow. You write code, answer findings,
+and own the commit. Use only separate Claude sessions as reviewers, regardless of saved CLI role
+settings. Reviewers only read and report — never let one edit files or reuse your judge session.
+
+The CLI owns the mechanics; you own the judgement. See [DESIGN.md](https://github.com/agentsdance/codejury/blob/master/DESIGN.md) for the split.
+
+For the automated loop, use `/codejury:review`; it always selects Claude as both judge and jury
+in separate sessions, and only the judge owns fixes. The guidance
+below is for explicitly requested manual review and triage. Do not edit a checkout while an
+automated Jury run is using it. In CLI examples, substitute `npx -y @agentsdance/codejury` for
+`jury` if it is not installed, and keep the same `--dir` and `--run` when working with saved findings.
 
 ## The loop
 
 ```
 round N
-  ├─ worktree at the pushed HEAD
+  ├─ worktree at the commit being reviewed
   ├─ launch every reviewer in parallel, in the background
   ├─ triage each finding: reproduce → fix → prove the test fails without the fix
   ├─ reply to every finding, including rejections
-  ├─ verify, amend, push
+  ├─ verify, commit, push if authorized
   ├─ append what was settled to the prompt
-  └─ stop iff every reviewer emitted the stop token on the SAME commit
+  └─ stop iff every reviewer succeeded and emitted the stop token on the SAME commit
 ```
 
 ## Running reviewers
 
-Cut a detached worktree at the pushed commit so reviewers see what a human reviewer would:
+Resolve the requested PR's head to `REVIEW_SHA`, then cut a detached worktree at that exact
+commit. After local fixes, review their new commit even when pushing is disabled:
 
 ```bash
-git worktree add "$WT" origin/<branch> --detach
+git worktree add "$WT" "$REVIEW_SHA" --detach
 ```
 
-Launch concurrently and in the background — the slowest sets the round's wall clock. Agent
-invocations are configuration (`config.example.yaml`); only three things vary:
+Launch Claude reviewers in the background. Use the
+current [Claude definition](https://github.com/agentsdance/codejury/blob/master/lib/agents/claude.json) and
+[configuration guide](https://github.com/agentsdance/codejury/blob/master/docs/configuration.md),
+with overrides in `jury.config.json`
+([example](https://github.com/agentsdance/codejury/blob/master/jury.config.example.json)):
 
-- **prompt delivery** — argv (`codex`) vs a file flag (`droid -f`)
-- **cwd** — process cwd (`codex`) vs an explicit `--cwd` flag (`droid`)
-- **resume** — `codex exec resume --last` keeps context; droid's text output carries no session id, so
-  a follow-up must be a fresh run with its prior findings quoted back
+- **prompt delivery** — pass the review prompt with `claude -p`.
+- **permissions** — use the Claude definition's read-only reviewer arguments, including plan mode
+  and withheld edit tools; the judge alone can edit.
+- **cwd** — use the PR worktree as the process working directory.
+- **resume** — retain each reviewer's exact session id and pass it to that agent's configured
+  resume command. Never select the most recent session: it may belong to another task. If there is
+  no usable session id, start fresh with only that reviewer's prior findings quoted back.
 
 ## The prompt
 
-Four sections, in order. Template in `prompts/review-round.md`.
+Four sections, in order. Template in [prompts/review-round.md](https://github.com/agentsdance/codejury/blob/master/prompts/review-round.md).
 
 1. **What the change does** — a few bullets, so the reviewer does not infer intent.
 2. **ALREADY SETTLED — do NOT re-report** — grows every round. Without it, each fresh reviewer
@@ -90,10 +107,10 @@ without reproducing anything, which is the whole point of the loop.
 
 Reply to every finding — silence is not a resolution. Per finding:
 **ACCEPTED** / **AGREE-BUT-DEFERRED** / **REJECTED**, each with reasoning, each ending in a direct
-question. Template in `prompts/feedback.md`.
+question. Template in [prompts/feedback.md](https://github.com/agentsdance/codejury/blob/master/prompts/feedback.md).
 
 ```bash
-jury reply --dir "$WT"           # one conversation per reviewer, concurrently
+jury reply --dir "$WT" --reviewer claude   # reply to the Claude reviewer session
 ```
 
 You hold a **separate** conversation with each reviewer, about its own findings only. Never relay one
@@ -102,8 +119,9 @@ agreement stops being evidence. `jury reply` redacts the other agents' names out
 for you, so writing "agy raised this too" in a `--reason` is safe — but do not rely on it as licence
 to quote another thread.
 
-Delivery follows `resume.supported`: codex resumes the session that already holds its review, so it
-gets your verdicts alone; agy starts fresh every run, so its own findings are quoted back to it.
+Delivery follows `resume.supported` and the recorded session id. Codex, Claude, Droid and
+Antigravity support resuming their own conversations. Without a usable session id, start a fresh
+conversation and quote only that reviewer's findings back to it.
 
 Rejections need evidence, not authority. One was settled by writing a three-line throwaway test and
 pasting the panic.
@@ -121,6 +139,7 @@ that is a design decision, not a fact, and the loop should stop arguing.
 - **Mock frameworks may not re-apply inside a loop.** Build the mock once outside it.
 - **A verbose agent's stdout contains the prompt**, so grepping the whole stream for the stop token
   matches the instruction that asked for it. Parse the final report block.
+- **A failed reviewer is not a sign-off**, even if its partial output includes the stop token.
 - **Reviewers recycle suggestions when they have nothing left.** A verbatim repeat of a prior cosmetic
   note is a decent convergence signal.
 

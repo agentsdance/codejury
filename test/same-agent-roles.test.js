@@ -99,3 +99,74 @@ else console.log('FINDING: claim ' + n + ' A\\nWHERE: a.txt:1\\nFirst concern\\n
   assert.match(distinct.stdout, /juries\s+codex/);
   assert.doesNotMatch(distinct.stdout, /selected as judge and reviewer/);
 });
+
+test('Claude judge and jury keep separate permissions and reviewer sessions across replies and resume', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'jury-same-claude-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = path.join(root, 'bin'), repo = path.join(root, 'repo');
+  await Promise.all([bin, repo].map(p => mkdir(p)));
+  for (const name of ['git', 'which']) {
+    const { stdout } = await exec('which', [name]);
+    await symlink(stdout.trim(), path.join(bin, name));
+  }
+  const callsFile = path.join(root, 'calls.jsonl');
+  await writeFile(path.join(bin, 'claude'), `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const prompt = args[args.indexOf('-p') + 1];
+const judging = prompt.includes('A code reviewer raised this finding');
+const replying = prompt.startsWith('Thanks —');
+let n = Number(fs.existsSync('.reviews') ? fs.readFileSync('.reviews', 'utf8') : 0);
+if (!judging && !replying) fs.writeFileSync('.reviews', String(++n));
+fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify({ args, judging, replying }) + '\\n');
+if (judging) {
+  console.log('CLAUDE_JUDGE_PRIVATE_CONTEXT');
+  console.log(JSON.stringify({ reproduced: null, verdict: 'rejected', reason: 'Public verdict only', test: null }));
+} else if (replying) console.log('NO NEW FINDINGS');
+else console.log('FINDING: claim ' + n + ' A\\nWHERE: a.txt:1\\nFirst concern\\n\\nFINDING: claim ' + n + ' B\\nWHERE: a.txt:2\\nSecond concern');
+`, { mode: 0o755 });
+  // The fixture's configured judge must never launch when both roles select Claude.
+  await writeFile(path.join(bin, 'codex'), `#!${process.execPath}\nprocess.exit(91);\n`, { mode: 0o755 });
+  const env = { ...process.env, PATH: bin, GIT_CONFIG_GLOBAL: path.join(root, 'absent'), GIT_CONFIG_NOSYSTEM: '1' };
+  const git = (...args) => exec(path.join(bin, 'git'), ['-C', repo, ...args], { env });
+  await git('init', '-q', '-b', 'master');
+  await git('config', 'user.name', 'Fixture'); await git('config', 'user.email', 'fixture@example.com');
+  await writeFile(path.join(repo, 'a.txt'), 'before\n');
+  await writeFile(path.join(repo, '.gitignore'), '.reviews\nruns/\njury.config.json\n');
+  await git('add', '.'); await git('commit', '-qm', 'base');
+  await git('update-ref', 'refs/remotes/origin/master', 'HEAD');
+  await git('checkout', '-qb', 'feature');
+  await writeFile(path.join(repo, 'a.txt'), 'after\n'); await git('commit', '-qam', 'change');
+  await writeFile(path.join(repo, 'jury.config.json'), JSON.stringify({ agents: [{ name: 'codex', role: 'main' }] }));
+  const invoke = args => exec(process.execPath, [cli, ...args], { cwd: repo, env });
+  const args = ['review', '--dir', repo, '--trunk', 'master', '--rounds', '1', '--web=false', '--push=false',
+    '--judge', 'claude', '--reviewer', 'claude'];
+  assert.match((await invoke(args)).stdout, /REVIEW COMPLETE/);
+  const [slug] = await readdir(path.join(repo, 'runs'));
+  const dir = path.join(repo, 'runs', slug);
+  const firstSession = sessionsIn(await readEvents(dir)).get('claude');
+  assert.ok(firstSession);
+  assert.match((await invoke([...args, '--resume', slug])).stdout, /REVIEW COMPLETE/);
+  const events = await readEvents(dir);
+  const secondSession = sessionsIn(events).get('claude');
+  assert.ok(secondSession); assert.notEqual(firstSession, secondSession);
+  assert.deepEqual(events.filter(e => e.t === 'target').at(-1).target.sameAgentRoles,
+    { judge: 'claude', reviewers: ['claude'] });
+  const calls = (await readFile(callsFile, 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(calls.filter(c => c.judging).length, 4);
+  assert.equal(calls.filter(c => c.replying).length, 2);
+  assert.equal(calls.filter(c => !c.judging && !c.replying).length, 2);
+  for (const c of calls) {
+    assert.equal(c.args[c.args.indexOf('--permission-mode') + 1], c.judging ? 'acceptEdits' : 'plan');
+    if (c.judging) {
+      assert.ok(!c.args.includes(firstSession) && !c.args.includes(secondSession));
+      assert.ok(!c.args.includes('--resume'));
+      assert.ok(!c.args.includes('--disallowedTools'));
+    } else {
+      assert.equal(c.args[c.args.indexOf('--disallowedTools') + 1], 'Edit,Write,NotebookEdit');
+      assert.ok(!c.args[c.args.indexOf('-p') + 1].includes('CLAUDE_JUDGE_PRIVATE_CONTEXT'));
+    }
+  }
+  assert.deepEqual(calls.filter(c => c.replying).map(c => c.args[c.args.indexOf('--resume') + 1]),
+    [firstSession, secondSession]);
+});

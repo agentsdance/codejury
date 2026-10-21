@@ -1,0 +1,12 @@
+{
+  "name": "codejury",
+  "interface": { "displayName": "CodeJury" },
+  "plugins": [
+    {
+      "name": "codejury",
+      "source": { "source": "local", "path": "./plugins/codejury" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}
