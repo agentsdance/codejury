@@ -24,8 +24,9 @@ if (!installed()) {
   const staging = mkdtempSync(path.join(cache, '.install-'));
   try {
     console.error(`Downloading CodeJury ${version} from npm into ${cache}`);
+    // cwd is the staging directory; keep cache paths out of the Windows shell command.
     const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
-      'install', '--prefix', staging, '--no-save', '--package-lock=false',
+      'install', '--prefix', '.', '--no-save', '--package-lock=false',
       '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org',
       `@agentsdance/codejury@${version}`,
     ], { cwd: staging, stdio: 'inherit', shell: process.platform === 'win32' });

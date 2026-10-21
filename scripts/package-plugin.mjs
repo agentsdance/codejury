@@ -16,7 +16,7 @@ const walk = (directory = '') => readdirSync(path.join(root, directory)).sort().
   if (name.startsWith('.') || name === 'node_modules' || name === 'runs') throw new Error(`Unexpected private/development path: ${relative}`);
   return stat.isDirectory() ? walk(relative) : [relative];
 });
-const files = walk();
+const files = walk().map(relative => relative.split(path.sep).join('/'));
 const extension = manifest.extensions['com.openai'];
 for (const relative of [extension.onboardingSkill, extension.interface.logo,
   extension.interface.composerIcon, ...(extension.interface.screenshots ?? [])]) {
