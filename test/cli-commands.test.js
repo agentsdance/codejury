@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,7 +10,7 @@ const cli = process.env.JURY_TEST_CLI ?? new URL('../bin/jury.js', import.meta.u
 const packageRoot = path.dirname(path.dirname(cli));
 const { DEFAULTS } = await import(pathToFileURL(path.join(packageRoot, 'lib/config.js')));
 const { appendEvent, readEvents, writeRun, foldEvents } = await import(pathToFileURL(path.join(packageRoot, 'lib/store.js')));
-const { conversation } = await import(pathToFileURL(path.join(packageRoot, 'lib/loop.js')));
+const { conversation, sessionsIn } = await import(pathToFileURL(path.join(packageRoot, 'lib/loop.js')));
 
 async function fixture(t) {
   const home = await mkdtemp(path.join(tmpdir(), 'jury-commands-'));
@@ -198,6 +198,49 @@ test('reply preserves each judge prompt in the saved conversation', async t => {
     assert.equal(replies[0].text, prompt, 'a replay must show the judge reply rather than an empty turn');
     assert.match(turns.find(turn => turn.kind === 'answer').text, /NO NEW FINDINGS/);
   }
+});
+
+test('a late standalone reply cannot replace a newer review session', async t => {
+  const gate = path.join(tmpdir(), `jury-reply-gate-${process.pid}-${Date.now()}`);
+  t.after(() => rm(gate, { force: true }));
+  const script = `const fs=require('node:fs'); const gate=process.argv[1]; const done=()=>{if(fs.existsSync(gate)){console.log('NO NEW FINDINGS'); return true}}; if(!done()) { const timer=setInterval(()=>{if(done()) clearInterval(timer)}, 10) }`;
+  const { cwd, env, dir } = await replyFixture(t, {
+    argv: [process.execPath, '-e', "console.log('NO NEW FINDINGS')"],
+    resume: { supported: true, argv: [process.execPath, '-e', script, gate, '{{sessionId}}'] },
+  });
+  await appendEvent(dir, { t: 'agent.report', agent: 'other', sessionId: 'session-a' });
+  const sessionCursor = (await readEvents(dir)).length;
+
+  const child = spawn(process.execPath, [cli, 'reply', '--dir', cwd, '--run', 'reply-fixture'], {
+    cwd, env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000,
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+  child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { stderr += chunk; });
+  const completed = new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', status => resolve({ status, stdout, stderr }));
+  });
+
+  let result;
+  try {
+    const deadline = Date.now() + 5000;
+    while (!(await readEvents(dir)).some(e => e.t === 'reply.sent' && e.agent === 'other')) {
+      if (Date.now() > deadline) assert.fail('standalone reply did not start');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    await appendEvent(dir, { t: 'agent.report', agent: 'other', sessionId: 'session-b' });
+  } finally {
+    // Release the fake reviewer even if an assertion fails before the race.
+    await writeFile(gate, 'continue');
+    result = await completed;
+  }
+  assert.equal(result.status, 0, JSON.stringify(result));
+
+  const events = await readEvents(dir);
+  assert.equal(events.find(e => e.t === 'reply.sent' && e.agent === 'other').sessionCursor, sessionCursor);
+  assert.equal(sessionsIn(events).get('other'), 'session-b');
 });
 
 test('reply dry-run prepares prompts without launching a failing executable', async t => {

@@ -1,13 +1,13 @@
 // The autonomous loop: what makes it terminate, and what it shows while it runs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { appendEvent, readEvents, readArtifact } from "../lib/store.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record, currentJudge } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record, currentJudge, sessionsIn, replyRound } from "../lib/loop.js";
 import { findingsIn } from "../lib/findings.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "jury-loop-"));
@@ -240,6 +240,155 @@ test("a reviewer that could not run is never counted as agreement", async () => 
   assert.equal(out[0].failed, true);
   assert.equal(out[0].clean, false, "a reviewer that never ran agreed to nothing");
   await rm(dir, { recursive: true, force: true });
+});
+
+test("automatic replies persist a discovered session and keep it when resumed output omits the ID", async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const calls = path.join(dir, 'calls.jsonl');
+  const output = 'session: reply-session\nNO NEW FINDINGS';
+  const script = `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(1))+'\\n'); console.log(process.argv[1] === 'fresh' ? ${JSON.stringify(output)} : 'NO NEW FINDINGS');`;
+  const agent = { name: 'fixture', argv: [process.execPath, '-e', script, 'fresh'],
+    resume: { supported: true, argv: [process.execPath, '-e', script, 'resume', '{{sessionId}}'], idFrom: 'session: (\\S+)' } };
+  await appendEvent(dir, { t: 'finding.raised', id: 'A', agent: agent.name, round: 1, claim: 'claim' });
+  await appendEvent(dir, { t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'checked' });
+  for (let round = 1; round <= 3; round++) {
+    const answers = await replyRound({ dir, pool: [agent], cfg: { stopToken: 'NO NEW FINDINGS' }, worktree: dir,
+      sha: 'abc', round, findings: await findingsIn(dir), sessions: sessionsIn(await readEvents(dir)) });
+    assert.equal(answers[0].clean, true);
+    assert.equal(sessionsIn(await readEvents(dir)).get(agent.name), 'reply-session');
+  }
+  assert.deepEqual((await readFile(calls, 'utf8')).trim().split('\n').map(JSON.parse),
+    [['fresh'], ['resume', 'reply-session'], ['resume', 'reply-session']]);
+});
+
+test("reply session folding preserves legacy IDs and keeps judge and newer review sessions separate", () => {
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: 'review' },
+    { t: 'reply.answered', agent: 'codex' },
+    { t: 'judge.session', agent: 'codex', sessionId: 'private-judge' },
+  ];
+  assert.equal(sessionsIn(events).get('codex'), 'review');
+  events.push({ t: 'reply.answered', agent: 'codex', sessionId: 'reply' });
+  events.push({ t: 'reply.answered', agent: 'other', sessionId: 'other-reply' });
+  assert.equal(sessionsIn(events).get('codex'), 'reply');
+  events.push({ t: 'agent.report', agent: 'codex', sessionId: 'new-review' });
+  assert.equal(sessionsIn(events).get('codex'), 'new-review');
+  events.push({ t: 'reply.answered', agent: 'codex', sessionId: null });
+  assert.equal(sessionsIn(events).has('codex'), false);
+  assert.equal(sessionsIn(events).get('other'), 'other-reply');
+});
+
+test("an older in-flight reply cannot replace a newer review session", () => {
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: 'session-a' },
+    { t: 'reply.sent', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a' },
+    { t: 'agent.report', agent: 'codex', sessionId: 'session-b' },
+    { t: 'reply.answered', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a' },
+  ];
+
+  assert.equal(sessionsIn(events).get('codex'), 'session-b');
+});
+
+test("an older concurrent reply cannot erase or replace a newer reply session", () => {
+  for (const staleSessionId of [null, 'wrong-session']) {
+    const events = [
+      { t: 'reply.sent', agent: 'codex', replyId: 'slow-reply', sessionCursor: 0 },
+      { t: 'reply.sent', agent: 'codex', replyId: 'fast-reply', sessionCursor: 0 },
+      { t: 'reply.answered', agent: 'codex', replyId: 'fast-reply', sessionId: 'usable-session' },
+      { t: 'reply.answered', agent: 'codex', replyId: 'slow-reply', sessionId: staleSessionId },
+    ];
+
+    assert.equal(sessionsIn(events).get('codex'), 'usable-session');
+  }
+});
+
+test("a delayed older reply send cannot suppress a newer snapshot's reply session", () => {
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: 'old-review-session' },
+    { t: 'agent.report', agent: 'codex', sessionId: null },
+    { t: 'reply.sent', agent: 'codex', replyId: 'newer-snapshot-reply', sessionCursor: 2 },
+    { t: 'reply.sent', agent: 'codex', replyId: 'delayed-older-reply', sessionCursor: 1 },
+    { t: 'reply.answered', agent: 'codex', replyId: 'newer-snapshot-reply', sessionId: 'new-reply-session' },
+    { t: 'reply.answered', agent: 'codex', replyId: 'delayed-older-reply', sessionId: 'old-review-session' },
+  ];
+
+  assert.equal(sessionsIn(events).get('codex'), 'new-reply-session');
+});
+
+test("concurrent replies retain a usable session despite abandoned or no-ID replies", () => {
+  for (const withCursor of [false, true]) {
+    const sent = replyId => ({ t: 'reply.sent', agent: 'codex', replyId,
+      ...(withCursor ? { sessionCursor: 0 } : {}) });
+    const answered = replyId => ({ t: 'reply.answered', agent: 'codex', replyId,
+      sessionId: replyId === 'valid' ? 'usable-session' : null });
+    for (const starts of [['valid', 'failed'], ['failed', 'valid']]) {
+      for (const finishes of [['valid', 'failed'], ['failed', 'valid'], ['valid']]) {
+        const events = starts.map(sent);
+        for (const replyId of finishes) {
+          events.push(answered(replyId));
+          if (events.some(e => e.t === 'reply.answered' && e.replyId === 'valid')) {
+            assert.equal(sessionsIn(events).get('codex'), 'usable-session',
+              JSON.stringify({ withCursor, starts, finishes, replyId }));
+          }
+        }
+      }
+    }
+  }
+});
+
+test("reply snapshots guard accepted session changes and allow subsequent turns", () => {
+  const sent = (replyId, sessionCursor) => ({ t: 'reply.sent', agent: 'codex', replyId, sessionCursor });
+  const answered = (replyId, sessionId) => ({ t: 'reply.answered', agent: 'codex', replyId, sessionId });
+  for (const delayedSend of [false, true]) {
+    const events = [sent('first', 0)];
+    if (!delayedSend) events.push(sent('stale', 0));
+    events.push(answered('first', 'usable-session'));
+    if (delayedSend) events.push(sent('stale', 0));
+    events.push(answered('stale', 'wrong-session'));
+    assert.equal(sessionsIn(events).get('codex'), 'usable-session');
+    events.push(sent('next', events.length), answered('next', 'next-session'));
+    assert.equal(sessionsIn(events).get('codex'), 'next-session');
+  }
+  for (const newerSession of [null, 'new-review']) {
+    const events = [sent('old', 0), sent('new', 0), answered('new', 'reply-session'),
+      { t: 'agent.report', agent: 'codex', sessionId: newerSession }, answered('old', 'stale-session')];
+    assert.equal(sessionsIn(events).get('codex'), newerSession ?? undefined);
+  }
+});
+
+test("a reply snapshot cannot overwrite a review recorded before reply.sent", () => {
+  for (const sessionId of ['session-b', null]) {
+    const events = [
+      { t: 'agent.report', agent: 'codex', sessionId: 'session-a' },
+      { t: 'agent.report', agent: 'codex', sessionId },
+      { t: 'reply.sent', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a', sessionCursor: 1 },
+      { t: 'reply.answered', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a' },
+    ];
+    assert.equal(sessionsIn(events).get('codex'), sessionId ?? undefined);
+  }
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: null },
+    { t: 'agent.report', agent: 'other', sessionId: 'other-session' },
+    { t: 'reply.sent', agent: 'codex', replyId: 'fresh', sessionCursor: 1 },
+    { t: 'reply.answered', agent: 'codex', replyId: 'fresh', sessionId: 'new-session' },
+  ];
+  assert.equal(sessionsIn(events).get('codex'), 'new-session', 'an unrelated reviewer must not invalidate this snapshot');
+});
+
+test("automatic replies retain their session-selection snapshot across a concurrent review", async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const argv = [process.execPath, '-e', "console.log('NO NEW FINDINGS')"];
+  const agent = { name: 'fixture', argv, resume: { supported: true, argv: [...argv, '{{sessionId}}'] } };
+  await appendEvent(dir, { t: 'finding.raised', id: 'A', agent: agent.name, round: 1, claim: 'claim' });
+  await appendEvent(dir, { t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'checked' });
+  await appendEvent(dir, { t: 'agent.report', agent: agent.name, sessionId: 'old-session' });
+  const snapshot = await readEvents(dir);
+  await appendEvent(dir, { t: 'agent.report', agent: agent.name, sessionId: 'new-session' });
+  await replyRound({ dir, pool: [agent], cfg: { stopToken: 'NO NEW FINDINGS' }, worktree: dir,
+    sha: 'abc', round: 1, findings: await findingsIn(dir), sessions: sessionsIn(snapshot), sessionCursor: snapshot.length });
+  assert.equal(sessionsIn(await readEvents(dir)).get(agent.name), 'new-session');
 });
 
 test("an abandoned launch ends at its own round, not at the present moment", async () => {

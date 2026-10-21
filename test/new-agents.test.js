@@ -208,6 +208,14 @@ for (const spec of cases) test(`${spec.name}: installed discovery, literal invoc
     assert.ok(!call.args.includes('--resume'));
     assert.match(call.args[call.args.indexOf('--session-id')+1],/^[0-9a-f-]{36}$/);
     assert.ok(call.args.some(a=>a.includes('original finding context')));
+    const fallbackSession = call.args[call.args.indexOf('--session-id')+1];
+    for (let turn=0; turn<2; turn++) {
+      reply=command(['reply','--dir',worktree,'--run',slug,'--jury',spec.name]);
+      assert.equal(reply.status,0,reply.stderr);
+      call=JSON.parse(await readFile(path.join(worktree,'call.json')));
+      assert.ok(call.args.includes('--resume'), 'later replies must resume the session established by the fallback reply');
+      assert.equal(call.args[call.args.indexOf('--resume')+1],fallbackSession);
+    }
   }
   await script(clean+'process.exit(2);'); const failed = await invoke(agent); assert.equal(failed.ok,false); assert.equal(failed.verdict,'error'); assert.match(failed.report,/exited 2/);
   await script('setInterval(()=>{},1000);');

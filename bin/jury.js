@@ -8,6 +8,7 @@
 import { commandHelp } from "../lib/help.js";
 import { parseArgs } from "node:util";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { prepareGroup, groupContext, groupHead, reviewUrls, groupId, groupReady, pushRetained, findingPr, assertGroupCheckout } from "../lib/review-group.js";
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
@@ -868,9 +869,10 @@ async function cmdAgent(argv) {
     // concede or push back.
     const after = await findingsIn(dir);
     const finalHead = group ? await groupHead(group.targets) : await describe(worktree, values.trunk);
+    const replyEvents = await readEvents(dir);
     const answers = await replyRound({
       dir, pool, cfg, worktree, sha: finalHead.sha, context: group ? groupContext(group.targets) : "", targets: group?.targets, round, findings: after, judge: judge.name,
-      sessions: sessionsIn(await readEvents(dir)),
+      sessions: sessionsIn(replyEvents), sessionCursor: replyEvents.length,
       dryRun: values["dry-run"],
       // Prefixed like the launch line: without a name this printed a bare
       // "node (in worktree)" with nothing saying whose reply it was.
@@ -1159,7 +1161,8 @@ async function cmdReply(argv) {
 
     if (values["dry-run"]) return;
 
-    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, sessionId, promptFile: file, text, who: judge });
+    const replyId = randomUUID();
+    await appendEvent(dir, { t: "reply.sent", agent: a.name, replyId, sha, resumed: resumable, sessionId, sessionCursor: events.length, promptFile: file, text, who: judge });
     const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree, sessionId }).argv };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);
@@ -1171,6 +1174,8 @@ async function cmdReply(argv) {
     await writeArtifact(dir, replyRaw, r.raw ?? "");
     await appendEvent(dir, {
       t: "reply.answered", agent: a.name, verdict: r.verdict, seconds: r.seconds, report: r.report,
+      replyId,
+      sessionId: r.sessionId ?? (resumable ? sessionId : null),
       ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
     });
     console.log(`\n${"─".repeat(64)}\n${a.name} answered (${r.seconds}s)\n${"─".repeat(64)}\n${r.report}`);
