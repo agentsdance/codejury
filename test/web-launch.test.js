@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -11,10 +11,28 @@ import { waitForOpenReceipt } from "./helpers/open-receipt.js";
 import { writeRun } from "../lib/store.js";
 
 const exec = promisify(execFile);
+
+// Observe the CLI-to-listener handoff without replacing real socket behavior.
+async function listenProbe(root) {
+  const file = path.join(root, "listen-attempts.jsonl");
+  const module = path.join(root, "listen-probe.cjs");
+  await writeFile(module, `
+const { appendFileSync } = require("node:fs");
+const { Server } = require("node:net");
+const listen = Server.prototype.listen;
+Server.prototype.listen = function (...args) {
+  appendFileSync(${JSON.stringify(file)}, JSON.stringify(args[0]) + "\\n");
+  return Reflect.apply(listen, this, args);
+};
+`);
+  return { module, firstPort: async () => JSON.parse((await readFile(file, "utf8")).split("\n")[0]) };
+}
+
 for (const automaticPort of [false, true]) {
 test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : "a fallback"} port`, { timeout: 30000, skip: process.platform === "win32" }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "jury-web-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
+  const listening = await listenProbe(root);
   const repo = path.join(root, "repo");
   const bin = path.join(root, "bin");
   await mkdir(repo); await mkdir(bin);
@@ -39,7 +57,7 @@ test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : 
     t.after(() => new Promise(resolve => occupied.close(resolve)));
     port = occupied.address().port;
   }
-  const child = spawn(process.execPath, [process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "review", "--dir", repo,
+  const child = spawn(process.execPath, ["--require", listening.module, process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "review", "--dir", repo,
     "--trunk", "main", "--rounds", "1", "--dry-run", "--agents", "claude", "--port", String(port)],
     { cwd: repo, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
@@ -49,6 +67,7 @@ test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : 
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); await exited; });
   const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
+  assert.equal(await listening.firstPort(), port, "the CLI must pass the requested port unchanged to the listener");
   const url = new URL(opened.url);
   if (automaticPort) assert.ok(Number(url.port) > 0, "browser URL must use the OS-assigned port");
   // Neighbors may also be occupied. Exact retry order is tested without sockets.
@@ -89,6 +108,7 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fall
   const { appendEvent, readEvents } = await import("../lib/store.js");
   const root = await mkdtemp(path.join(tmpdir(), "jury-saved-console-"));
   t.after(() => rm(root, { recursive: true, force: true }));
+  const listening = await listenProbe(root);
   const dir = path.join(root, "runs", "saved");
   const target = { id: "#1", state: "converged" };
   await appendEvent(dir, { t: "target", target });
@@ -103,7 +123,7 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fall
     t.after(() => new Promise(resolve => reserved.close(resolve)));
     port = reserved.address().port;
   }
-  const child = spawn(process.execPath, [process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only",
+  const child = spawn(process.execPath, ["--require", listening.module, process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only",
     "--dir", root, "--run", "saved", "--port", String(port)],
     { env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
   let output = ""; child.stderr.on("data", b => output += b);
@@ -111,6 +131,7 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fall
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill(); await exited; });
   const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
+  assert.equal(await listening.firstPort(), port, "the CLI must pass the requested port unchanged to the listener");
   const openedPort = Number(new URL(opened.url).port);
   assert.ok(openedPort > 0, "browser URL must use the listening port");
   if (!automaticPort) assert.ok(openedPort > port && openedPort <= port + 20,
