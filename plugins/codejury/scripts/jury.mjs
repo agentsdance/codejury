@@ -18,8 +18,13 @@ function installed() {
     return metadata.name === '@agentsdance/codejury' && metadata.version === version && existsSync(entry);
   } catch { return false; }
 }
-if (!installed()) {
-  if (existsSync(install)) throw new Error(`Incomplete CLI cache at ${install}; move it aside and retry.`);
+let ready = installed();
+if (!ready && existsSync(install)) {
+  // A concurrent launcher may have published a complete cache after our miss.
+  ready = installed();
+  if (!ready) throw new Error(`Incomplete CLI cache at ${install}; move it aside and retry.`);
+}
+if (!ready) {
   mkdirSync(cache, { recursive: true });
   const staging = mkdtempSync(path.join(cache, '.install-'));
   try {

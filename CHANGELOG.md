@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse a plugin CLI cache published by a concurrent launcher during startup,
+  instead of incorrectly reporting that completed installation as incomplete.
 - Preserve multiline reasoning and evidence from settled findings in subsequent
   review prompts instead of dropping their continuation lines.
 - Skip saved snapshots with invalid top-level containers and report the affected
