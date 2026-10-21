@@ -4,18 +4,18 @@
   "role": "main",
   "promptDelivery": "argv",
   "cwd": "worktree",
-  "argv": ["codex", "exec", "{{modelArgs}}", "--sandbox", "read-only", "--skip-git-repo-check", "{{promptText}}"],
-  "judgeArgv": ["codex", "exec", "{{modelArgs}}", "--sandbox", "workspace-write", "--skip-git-repo-check", "{{promptText}}"],
+  "argv": ["codex", "exec", "{{modelArgs}}", "--sandbox", "read-only", "--skip-git-repo-check", "--json", "{{promptText}}"],
+  "judgeArgv": ["codex", "exec", "{{modelArgs}}", "--sandbox", "workspace-write", "--skip-git-repo-check", "--json", "{{promptText}}"],
   "sandbox": "sandbox",
   "sandboxNote": "reviews run under --sandbox read-only; judging uses workspace-write",
   "resume": {
     "supported": true,
-    "argv": ["codex", "exec", "--sandbox", "read-only", "resume", "{{modelArgs}}", "{{sessionId}}", "{{promptText}}"],
-    "judgeArgv": ["codex", "exec", "--sandbox", "workspace-write", "resume", "{{modelArgs}}", "{{sessionId}}", "{{promptText}}"],
-    "idFrom": "session[ _-]?id[:=]?\\s*([0-9a-f-]{8,})"
+    "argv": ["codex", "exec", "--sandbox", "read-only", "resume", "{{modelArgs}}", "--json", "{{sessionId}}", "{{promptText}}"],
+    "judgeArgv": ["codex", "exec", "--sandbox", "workspace-write", "resume", "{{modelArgs}}", "--json", "{{sessionId}}", "{{promptText}}"],
+    "idFromEvent": { "type": "thread.started", "field": "thread_id" }
   },
   "modelArgs": ["--model", "{{model}}"],
-  "report": "tail",
+  "report": "codex-json",
   "expectSeconds": 1100,
   "install": "npm install -g @openai/codex",
   "docs": "https://developers.openai.com/codex/cli"

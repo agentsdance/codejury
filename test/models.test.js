@@ -91,7 +91,12 @@ test("the model reaches the process on first runs, resumed rounds, judging and r
   const dir = await scratch(t, "jury-model-run-");
   const log = path.join(dir, "calls.jsonl");
   const exe = path.join(dir, "fake-agent");
-  await writeFile(exe, `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: process.argv.slice(2), grok: process.env.GROK_MODEL ?? null }) + "\\n");\nconsole.log("session id: 0123abcd-0000");\nconsole.log("NO NEW FINDINGS");\n`);
+  await writeFile(exe, `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: process.argv.slice(2), grok: process.env.GROK_MODEL ?? null }) + "\\n");
+if (process.argv.includes('--json')) {
+  for (const event of [{type:'thread.started',thread_id:'0123abcd-0000'},{type:'turn.started'},
+    {type:'item.completed',item:{type:'agent_message',text:'NO NEW FINDINGS'}},{type:'turn.completed'}]) console.log(JSON.stringify(event));
+} else { console.log('session id: 0123abcd-0000'); console.log('NO NEW FINDINGS'); }
+`);
   await chmod(exe, 0o755);
   const swap = argv => [exe, ...argv.slice(1)];
   const codex = { ...byName.get("codex"), model: "gpt-x" };
@@ -105,14 +110,14 @@ test("the model reaches the process on first runs, resumed rounds, judging and r
   assert.ok((await runAgent({ ...grok, model: "grok-4.3", argv: swap(grok.argv) }, opts)).ok);
   const calls = (await readFile(log, "utf8")).trim().split("\n").map(l => JSON.parse(l));
   assert.deepEqual(calls[0].argv.slice(0, 3), ["exec", "--model", "gpt-x"]);
-  assert.deepEqual(calls[1].argv.slice(0, 7), ["exec", "--sandbox", "read-only", "resume", "--model", "gpt-x", "0123abcd-0000"]);
+  assert.deepEqual(calls[1].argv.slice(0, 8), ["exec", "--sandbox", "read-only", "resume", "--model", "gpt-x", "--json", "0123abcd-0000"]);
   assert.deepEqual(calls[2].argv.slice(0, 4), ["exec", "--model", "gpt-x", "--sandbox"]);
   assert.ok(!calls[3].argv.includes("--model"));
   assert.ok(!calls[3].argv.some(a => a.includes("{{")));
   assert.equal(calls[4].grok, "grok-4.3");
 
   const reply = replyArgv(codex, { promptText: "verdicts", worktree: dir, sessionId: "abc-123" });
-  assert.deepEqual(reply.argv.slice(0, 8), ["codex", "exec", "--sandbox", "read-only", "resume", "--model", "gpt-x", "abc-123"]);
+  assert.deepEqual(reply.argv.slice(0, 9), ["codex", "exec", "--sandbox", "read-only", "resume", "--model", "gpt-x", "--json", "abc-123"]);
   const fresh = replyArgv({ ...codex, model: undefined }, { promptText: "verdicts", worktree: dir });
   assert.ok(!fresh.argv.some(a => a.includes("{{modelArgs}}") || a === "--model"));
 });

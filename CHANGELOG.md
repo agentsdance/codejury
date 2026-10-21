@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Read Codex session IDs from JSON thread metadata, so a UUID quoted in review
+  prose cannot redirect later replies. Parse completed assistant responses and
+  retain readable streamed text while preserving the raw event transcript.
 - Synchronize timeout-test diagnostics before advancing the deadline, including
   a busy reviewer that cannot run a signal handler during the shortened grace.
 - Rebuild a saved run snapshot when concurrent commands append newer events

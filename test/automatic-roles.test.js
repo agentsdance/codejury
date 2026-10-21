@@ -65,9 +65,13 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(path.join(dir, 'calls.jsonl'))}, JSON.stringify({ name: require('node:path').basename(process.argv[1]), args }) + '\\n');
 const prompt = args.find(a => a.includes('A code reviewer raised this finding'));
-if (prompt) console.log(JSON.stringify({ reproduced: null, verdict: 'rejected', reason: 'fixture disproved', test: null }));
-else if (!fs.existsSync('.reviewed')) { fs.writeFileSync('.reviewed', 'yes'); console.log('FINDING: fixture claim\\nWHERE: a.txt:1\\nNeeds checking'); }
-else console.log('NO NEW FINDINGS');
+let report;
+if (prompt) report = JSON.stringify({ reproduced: null, verdict: 'rejected', reason: 'fixture disproved', test: null });
+else if (!fs.existsSync('.reviewed')) { fs.writeFileSync('.reviewed', 'yes'); report = 'FINDING: fixture claim\\nWHERE: a.txt:1\\nNeeds checking'; }
+else report = 'NO NEW FINDINGS';
+if (args.includes('--json')) {
+  for (const event of [{type:'turn.started'},{type:'item.completed',item:{type:'agent_message',text:report}},{type:'turn.completed'}]) console.log(JSON.stringify(event));
+} else console.log(report);
 `;
   for (const name of installed) await writeFile(path.join(bin, name), script, { mode: 0o755 });
   const preload = path.join(dir, 'random.mjs');

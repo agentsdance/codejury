@@ -30,10 +30,12 @@ let n = Number(fs.existsSync('.reviews') ? fs.readFileSync('.reviews', 'utf8') :
 if (!judging && !replying) fs.writeFileSync('.reviews', String(++n));
 const session = judging ? 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' : 'bbbbbbbb-bbbb-bbbb-bbbb-' + String(n).padStart(12, '0');
 fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify({ name: require('node:path').basename(process.argv[1]), args, judging, replying, session }) + '\\n');
-console.log('session id: ' + session);
-if (judging) { console.log('JUDGE_PRIVATE_SESSION_CONTEXT'); console.log(JSON.stringify({ reproduced: null, verdict: 'rejected', reason: 'Public verdict only', test: null })); }
-else if (replying) console.log('NO NEW FINDINGS');
-else console.log('FINDING: claim ' + n + ' A\\nWHERE: a.txt:1\\nFirst concern\\n\\nFINDING: claim ' + n + ' B\\nWHERE: a.txt:2\\nSecond concern');
+const report = judging ? 'JUDGE_PRIVATE_SESSION_CONTEXT\\n' + JSON.stringify({ reproduced: null, verdict: 'rejected', reason: 'Public verdict only', test: null })
+  : replying ? 'NO NEW FINDINGS' : 'FINDING: claim ' + n + ' A\\nWHERE: a.txt:1\\nFirst concern\\n\\nFINDING: claim ' + n + ' B\\nWHERE: a.txt:2\\nSecond concern';
+if (args.includes('--json')) {
+  for (const event of [{type:'thread.started',thread_id:session},{type:'turn.started'},
+    {type:'item.completed',item:{type:'agent_message',text:report}},{type:'turn.completed'}]) console.log(JSON.stringify(event));
+} else { console.log('session id: ' + session); console.log(report); }
 `;
   for (const name of ['codex', 'claude', 'grok']) await writeFile(path.join(bin, name), script, { mode: 0o755 });
   const env = { ...process.env, PATH: bin, HOME: home, USERPROFILE: home, GIT_CONFIG_GLOBAL: path.join(root, 'absent'), GIT_CONFIG_NOSYSTEM: '1' };
