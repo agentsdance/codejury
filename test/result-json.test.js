@@ -24,13 +24,13 @@ test('structured parse errors retain a fresh session id for the next reply',asyn
  assert.equal(exposed.sessionId,'exposed-session');
 });
 
-test('nonzero agents retain an assigned session id for the next reply',async()=>{
+test('nonzero agents do not establish an assigned session id',async()=>{
  const options={worktree:process.cwd(),prompt:'review',stopToken:'NO NEW FINDINGS',timeoutSeconds:1};
  const resume={supported:true,argv:[process.execPath,'-e','', '{{sessionId}}']};
  const assigned=await runAgent({name:'assigned',newSession:true,resume,
   argv:[process.execPath,'-e','process.exit(2)', '{{sessionId}}']},options);
  assert.equal(assigned.ok,false);
- assert.match(assigned.sessionId,/^[0-9a-f-]{36}$/);
+ assert.equal(assigned.sessionId,null,'a failed command cannot prove that its generated ID was persisted');
 });
 
 test('launch failures do not establish newly assigned sessions',async()=>{
