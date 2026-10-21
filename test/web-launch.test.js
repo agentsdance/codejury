@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { waitForOpenReceipt } from "./helpers/open-receipt.js";
+import { cleanupStack } from "./helpers/cleanup-stack.js";
 import { writeRun } from "../lib/store.js";
 
 const exec = promisify(execFile);
@@ -31,7 +32,8 @@ Server.prototype.listen = function (...args) {
 for (const automaticPort of [false, true]) {
 test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : "a fallback"} port`, { timeout: 30000, skip: process.platform === "win32" }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "jury-web-test-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const cleanup = cleanupStack(t);
+  cleanup(() => rm(root, { recursive: true, force: true }));
   const listening = await listenProbe(root);
   const repo = path.join(root, "repo");
   const bin = path.join(root, "bin");
@@ -54,7 +56,7 @@ test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : 
   if (!automaticPort) {
     const occupied = net.createServer();
     occupied.listen(0, "127.0.0.1"); await once(occupied, "listening");
-    t.after(() => new Promise(resolve => occupied.close(resolve)));
+    cleanup(() => new Promise(resolve => occupied.close(resolve)));
     port = occupied.address().port;
   }
   const child = spawn(process.execPath, ["--require", listening.module, process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "review", "--dir", repo,
@@ -64,7 +66,7 @@ test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : 
   child.stdout.on("data", b => { output += b; });
   child.stderr.on("data", b => { output += b; });
   const exited = once(child, "exit");
-  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); await exited; });
+  cleanup(async () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); await exited; });
   const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
   assert.equal(await listening.firstPort(), port, "the CLI must pass the requested port unchanged to the listener");
@@ -107,7 +109,8 @@ for (const automaticPort of [false, true]) {
 test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fallback"} port without starting a review`, { timeout: 15000, skip: process.platform === "win32" }, async t => {
   const { appendEvent, readEvents } = await import("../lib/store.js");
   const root = await mkdtemp(path.join(tmpdir(), "jury-saved-console-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const cleanup = cleanupStack(t);
+  cleanup(() => rm(root, { recursive: true, force: true }));
   const listening = await listenProbe(root);
   const dir = path.join(root, "runs", "saved");
   const target = { id: "#1", state: "converged" };
@@ -120,7 +123,7 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fall
   let port = 0;
   if (!automaticPort) {
     const reserved = net.createServer(); reserved.listen(0, "127.0.0.1"); await once(reserved, "listening");
-    t.after(() => new Promise(resolve => reserved.close(resolve)));
+    cleanup(() => new Promise(resolve => reserved.close(resolve)));
     port = reserved.address().port;
   }
   const child = spawn(process.execPath, ["--require", listening.module, process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only",
@@ -128,7 +131,7 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fall
     { env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
   let output = ""; child.stderr.on("data", b => output += b);
   const exited = once(child, "exit");
-  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill(); await exited; });
+  cleanup(async () => { if (child.exitCode === null && child.signalCode === null) child.kill(); await exited; });
   const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
   assert.equal(await listening.firstPort(), port, "the CLI must pass the requested port unchanged to the listener");

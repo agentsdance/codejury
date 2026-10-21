@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Stop console fixture processes before deleting their files, and complete all
+  registered teardown actions even if one fails, so cleanup errors do not leave
+  web-launch package tests waiting on a surviving console.
 - Retain reviewer session IDs established during replies, so later standalone and
   automatic replies resume that conversation after a fresh-session fallback.
   Preserve known IDs across process and parsing failures, avoid retaining newly
