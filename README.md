@@ -114,10 +114,11 @@ claude plugin install codejury@codejury
 In a session, `/codejury:review <pr-url>` runs `jury review` (or `npx @agentsdance/codejury`
 when `jury` is not installed) with `--web=true` and, unless you pass `--push`, `--push=false`.
 Claude shares the web console link, summarizes the findings and verdicts when the review ends,
-and leaves the console running. Pass `--web=false` to disable it. With no URL it reviews the
-current branch. The plugin also ships the `multi-agent-code-review` skill for running the review
-loop by hand. Agent CLIs are
-still installed and authenticated separately. `--push=false` disables pushing; it does not make
+and leaves the console running. Pass `--web=false` to disable it. With no URL it reviews the current
+branch's committed changes against its base. General local-directory review, including uncommitted
+changes or an entire-directory audit, is not implemented. The plugin also ships the
+`multi-agent-code-review` skill for running the review loop by hand. Agent CLIs are still installed
+and authenticated separately. `--push=false` disables pushing; it does not make
 the review read-only. For retained local fixes, review your own checkout without a PR URL.
 See the [plugin guide](plugin/README.md) for prerequisites, updates, and local installation checks.
 

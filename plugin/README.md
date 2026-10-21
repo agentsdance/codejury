@@ -18,10 +18,15 @@ Start a new Claude Code session after installing, then run:
 /codejury:review https://github.com/owner/repo/pull/123
 ```
 
-The first example reviews the current branch using your saved settings; no PR or MR is required.
-The second reviews a specific PR. Both open the web console and display its link in Claude Code.
+The first example reviews the current branch's committed changes against its base branch using
+your saved settings; no PR or MR is required for that branch comparison. The second reviews a
+specific PR. Both open the web console and display its link in Claude Code.
 You can also pass multiple related PR URLs, use `--dir` to select a checkout, or pass other
 `jury review` flags. To override your saved agent choices, add `--reviewer claude --judge codex`.
+
+General local-directory review is not implemented: `--dir` selects a Git checkout, and the review
+compares committed changes against the base. It does not select staged, unstaged, or untracked
+changes, or audit the entire directory. A branch matching its base has no changes to review.
 
 You need Node.js 20.10 or newer, npm, Git, and installed, authenticated agent CLIs. GitHub PR URLs
 also need an authenticated `gh` CLI. The plugin uses an installed `jury`, or

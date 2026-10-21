@@ -21,9 +21,13 @@ below, including `agents`, `runs`, and reopening the console.
 Start from `jury review` (or `npx -y @agentsdance/codejury review`), then preserve the user's
 arguments and quote each value safely for the shell. Do not evaluate argument text as shell code.
 
-- One or more PR URLs review those PRs. With none, Jury reviews the current Git checkout's branch
-  against its trunk, or uses the location/run selected by `--dir` or `--resume`. Let Jury resolve
+- One or more PR URLs review those PRs. With none, Jury reviews the current Git checkout's committed
+  branch changes against its trunk, or uses the location/run selected by `--dir` or `--resume`. Let Jury resolve
   the target; if it reports that no repository or target can be found, ask for a checkout or PR URL.
+- General local-directory review is not implemented. `--dir` selects the checkout for that branch
+  comparison; staged, unstaged, and untracked changes are outside its diff. If the user asks to
+  review those changes or the entire directory, explain the missing capability. Do not present
+  an empty branch diff as evidence that the directory was reviewed.
 - Add `--web=true` unless the arguments already set `--web`. Open the browser console by default;
   an explicit `--web=false` or `--web false` disables it.
 - Add `--push=false` unless the arguments already set `--push`. Jury pushes fixes by default; pushing
