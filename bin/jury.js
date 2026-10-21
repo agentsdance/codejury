@@ -517,7 +517,7 @@ async function cmdAgent(argv) {
   if (group) resolvedCheckoutCleanup = group.cleanup;
   const resolved = !group && values.pr
     ? await resolvePrCheckout(values.pr, {
-      allowPush: values.push, root: requestedWorktree, dir: resolveFrom,
+      allowPush: values.push, root: requestedWorktree, dir: resolveFrom, trunk: values.trunk,
     })
     : null;
   const worktree = group?.worktree ?? resolved?.worktree ?? requestedWorktree;
