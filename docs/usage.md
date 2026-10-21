@@ -105,3 +105,11 @@ role/enabled settings take precedence over automatic selection for new runs.
 Explicit CLI role overrides on resume use the normal selection rules. Outside the
 automatic one-CLI fallback, the judge cannot review its own work. Zero or more than
 two installed CLIs retain the existing configured/default selection behavior.
+
+### Local review base branch
+
+Pass a bare branch name such as `--trunk master`, not `origin/master` or a full
+Git ref. Its `refs/remotes/origin/<branch>` tracking ref must be available and
+share history with HEAD; fetch the base branch before reviewing if needed.
+Jury validates this before launching agents. Review prompts use Git’s triple-dot
+diff to compare HEAD to the merge base, and fail if that base becomes unavailable.

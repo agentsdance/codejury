@@ -7,7 +7,7 @@ updated SETTLED list.
 
 Review the current HEAD of this worktree. It is a {{language}} change to {{component, one line}}.
 
-Run `git diff $(git merge-base HEAD origin/{{trunk}}) HEAD` to see the change. Do NOT diff against
+Run `git diff 'refs/remotes/origin/{{trunk}}...HEAD' --` to see the change. Do NOT diff against
 origin/{{trunk}}'s tip — the trunk has moved since the branch point and unrelated commits will appear
 inverted. The change should touch exactly {{n}} files: {{paths}}.
 

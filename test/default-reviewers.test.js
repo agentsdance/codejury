@@ -117,6 +117,7 @@ test("a review without --jury uses the saved default reviewers", async t => {
   await writeFile(path.join(repo, "a.txt"), "one\n");
   g("add", "-A");
   g("commit", "-qm", "base");
+  g("update-ref", "refs/remotes/origin/master", "HEAD");
   g("checkout", "-q", "-b", "feature");
   await writeFile(path.join(repo, "a.txt"), "two\n");
   g("commit", "-qam", "change");

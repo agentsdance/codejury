@@ -181,6 +181,7 @@ test("jury agents model saves, lists, refuses and resets, and a review records t
   const g = (...a) => execFileSync("git", ["-C", repo, ...a], { env });
   g("init", "-q", "-b", "master");
   g("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base");
+  g("update-ref", "refs/remotes/origin/master", "HEAD");
   g("checkout", "-q", "-b", "feature");
   g("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "change");
   const review = (...extra) => spawnSync(process.execPath, [cli, "review", "--dir", repo, "--trunk", "master",

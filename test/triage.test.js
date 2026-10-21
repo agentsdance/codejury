@@ -138,6 +138,7 @@ test("the triage path executes end to end without an undefined name", async () =
     await run("git", ["add", "-A"], { cwd: dir });
     await run("git", ["commit", "-qm", "init"], { cwd: dir });
     await run("git", ["branch", "-q", "master"], { cwd: dir });
+    await run("git", ["update-ref", "refs/remotes/origin/master", "HEAD"], { cwd: dir });
 
     // A reviewer that raises one finding, and a main agent that rejects it.
     // Both are `node -e`, so no real agent is spawned and the test is fast.

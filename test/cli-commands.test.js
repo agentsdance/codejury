@@ -105,6 +105,7 @@ test('review and agent/bare-flag aliases run subprocess reviewers and persist co
   const git = (...args) => execFileSync('git', args, { cwd, env, stdio: 'pipe' });
   git('init', '-q', '-b', 'master');
   git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', 'commit', '--allow-empty', '-qm', 'base');
+  git("update-ref", "refs/remotes/origin/master", "HEAD");
   git('checkout', '-qb', 'feature');
   await writeFile(path.join(cwd, 'jury.config.json'), JSON.stringify({ agents: [
     ...DEFAULTS.agents.map(a => ({ name: a.name, enabled: false })),

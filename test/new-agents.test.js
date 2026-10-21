@@ -178,7 +178,8 @@ for (const spec of cases) test(`${spec.name}: installed discovery, literal invoc
   assert.equal((await loadConfig(worktree,{globalFile:path.join(dir,'absent')})).main?.name,spec.name);
   await rm(path.join(worktree,'jury.config.json'));
   const git = args => execFileSync('git', args, { cwd: worktree, env, stdio: 'ignore' });
-  git(['init', '-q', '-b', 'master']); git(['-c','user.name=Fixture','-c','user.email=fixture@example.com','commit','--allow-empty','-qm','base']);git(['checkout','-qb','feature']);
+  git(['init', '-q', '-b', 'master']); git(['-c','user.name=Fixture','-c','user.email=fixture@example.com','commit','--allow-empty','-qm','base']);
+  git(["update-ref", "refs/remotes/origin/master", "HEAD"]);git(['checkout','-qb','feature']);
   // Keep one mock judge and this actual built-in registry entry. Never launch another installed agent.
   await writeFile(path.join(worktree,'jury.config.json'),JSON.stringify({agents:[...DEFAULTS.agents.filter(a=>a.name!==spec.name).map(({name})=>({name,enabled:false})),{name:'fixture-judge',role:'main',argv:[process.execPath,'-e',"console.log('NO NEW FINDINGS')"]}]}));
   for (const flag of ['--reviewer','--jury']) {

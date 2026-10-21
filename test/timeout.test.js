@@ -383,6 +383,7 @@ test("CLI saves a timeout, stops its heartbeat, and retains the other reviewer's
   await writeFile(path.join(repo, "a.txt"), "before\n");
   await git("add", "a.txt");
   await git("commit", "-qm", "base");
+  await git("update-ref", "refs/remotes/origin/master", "HEAD");
   await git("checkout", "-qb", "feature");
   await writeFile(path.join(repo, "a.txt"), "after\n");
   await git("commit", "-qam", "change");

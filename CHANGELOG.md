@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reject invalid or unavailable trunk branches before launching review agents.
+  Generated reviewer and judge diff commands now fail closed when the base ref
+  cannot be resolved instead of silently omitting committed changes.
+
 ## 0.8.2-rc.1 — 2026-10-20
 
 - Stop reviewers after a fixed ten-minute deadline, even while they emit output.

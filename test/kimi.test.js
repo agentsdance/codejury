@@ -188,6 +188,7 @@ test("through the CLI: listed opt-in, run when named, and replied to in its reco
   const git = (args) => execFileSync("git", args, { cwd: worktree, env, stdio: "ignore" });
   git(["init", "-q", "-b", "master"]);
   git(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "--allow-empty", "-qm", "base"]);
+  git(["update-ref", "refs/remotes/origin/master", "HEAD"]);
   git(["checkout", "-qb", "feature"]);
   // Keep one mock judge and this actual built-in registry entry. Never launch another installed agent.
   await writeFile(path.join(worktree, "jury.config.json"), JSON.stringify({ agents: [
