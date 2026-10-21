@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, readdir, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, symlink, writeFile, readFile, readdir, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -72,6 +72,31 @@ test('invalid trunk is rejected before checking agent installation', async t => 
   );
 });
 
+test('invalid trunk is rejected before automatic role discovery probes agents', async t => {
+  const { dir } = await fixture(t);
+  const bin = path.join(dir, 'bin');
+  const home = path.join(dir, 'home');
+  const marker = path.join(dir, 'probes.txt');
+  await mkdir(bin); await mkdir(home);
+  const { stdout: gitPath } = await exec('which', ['git']);
+  await symlink(gitPath.trim(), path.join(bin, 'git'));
+  await writeFile(path.join(bin, 'which'), `#!${process.execPath}
+require('node:fs').appendFileSync(${JSON.stringify(marker)}, process.argv.slice(2).join(' ') + '\\n');
+process.exit(1);
+`, { mode: 0o755 });
+  // An isolated PATH/home exercises automatic discovery without real providers
+  // or a personal default judge suppressing it.
+  const env = { ...process.env, PATH: bin, HOME: home, USERPROFILE: home,
+    GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+  const review = trunk => exec(process.execPath, [cli, 'review', '--dir', dir,
+    '--trunk', trunk, '--web=false', '--push=false'], { cwd: dir, env });
+  await assert.rejects(review('missing'), error => error.code === 1 && /invalid trunk/.test(error.stderr));
+  await assert.rejects(access(marker), { code: 'ENOENT' });
+  // A valid trunk reaches the probe, proving the missing marker is meaningful.
+  await assert.rejects(review('master'), error => error.code === 1);
+  assert.match(await readFile(marker, 'utf8'), /codex/);
+});
+
 test('a related-PR invalid trunk removes its unrecorded workspace before checking agent installation', async t => {
   const fixture = await groupFixture(t);
   const primary = fixture.members[0];
@@ -91,6 +116,24 @@ test('a related-PR invalid trunk removes its unrecorded workspace before checkin
   assert.match(result.stderr, /invalid trunk/);
   assert.doesNotMatch(result.stderr, /not installed/);
   assert.deepEqual(await readdir(path.join(fixture.state, 'checkouts')), []);
+});
+
+test('invalid trunk on resume preserves recorded group workspaces and local fixes', async t => {
+  const fixture = await groupFixture(t);
+  const reviewed = await fixture.review(['--push=false']);
+  assert.equal(reviewed.code, 0, reviewed.stderr);
+  const { run, slug } = await fixture.saved();
+  const member = run.target.targets[1];
+  const head = await fixture.git(member.worktree, 'rev-parse', 'HEAD');
+  const receipts = await fixture.receipts();
+  await fixture.git(member.worktree, 'update-ref', '-d', `refs/remotes/origin/${member.trunk}`);
+  const resumed = await fixture.review(['--resume', slug]);
+  assert.equal(resumed.code, 1);
+  assert.match(resumed.stderr, /invalid trunk/);
+  assert.equal(await fixture.git(member.worktree, 'rev-parse', 'HEAD'), head);
+  assert.equal(await readFile(path.join(member.worktree, 'contract.txt'), 'utf8'), 'v3\n');
+  await assert.rejects(access(path.join(run.target.workspace, '.jury-lock')), { code: 'ENOENT' });
+  assert.deepEqual(await fixture.receipts(), receipts, 'no agents run after invalid resume validation');
 });
 
 test('bare nested branch names are not normalized or confused with local refs', async t => {
