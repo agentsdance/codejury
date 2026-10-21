@@ -59,6 +59,18 @@ test('invalid trunk fails before probing agents or publishing a run', async t =>
   await assert.rejects(access(marker));
 });
 
+test('invalid trunk is rejected before checking agent installation', async t => {
+  const { dir } = await fixture(t);
+  await writeFile(path.join(dir, 'jury.config.json'), JSON.stringify({ agents: [
+    { name: 'judge', role: 'main', argv: ['jury-deliberately-missing-agent'] },
+    { name: 'reviewer', role: 'reviewer', argv: [process.execPath, '-e', "console.log('NO NEW FINDINGS')"], report: 'whole' },
+  ] }));
+  await assert.rejects(
+    exec(process.execPath, [cli, 'review', '--dir', dir, '--trunk', 'missing', '--judge', 'judge', '--reviewer', 'reviewer', '--web=false', '--push=false'], { cwd: dir }),
+    error => error.code === 1 && /invalid trunk/.test(error.stderr) && !/not installed/.test(error.stderr),
+  );
+});
+
 test('bare nested branch names are not normalized or confused with local refs', async t => {
   const { dir, git } = await fixture(t);
   for (const trunk of ['origin/topic', "topic'quote"]) {
