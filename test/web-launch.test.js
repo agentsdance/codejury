@@ -50,7 +50,8 @@ test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : 
   const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
   const url = new URL(opened.url);
-  assert.notEqual(Number(url.port), port);
+  if (automaticPort) assert.ok(Number(url.port) > 0, "browser URL must use the OS-assigned port");
+  else assert.equal(Number(url.port), port + 1, "an occupied port must fall back to the next port");
   const slug = url.searchParams.get("run");
   assert.ok(slug);
   assert.notEqual(slug, "old-review");
@@ -82,7 +83,7 @@ test("current run is published before the console server starts", async (t) => {
 });
 
 for (const automaticPort of [false, true]) {
-test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a requested"} port without starting a review`, { timeout: 15000, skip: process.platform === "win32" }, async t => {
+test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fallback"} port without starting a review`, { timeout: 15000, skip: process.platform === "win32" }, async t => {
   const { appendEvent, readEvents } = await import("../lib/store.js");
   const root = await mkdtemp(path.join(tmpdir(), "jury-saved-console-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -97,7 +98,8 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a requ
   let port = 0;
   if (!automaticPort) {
     const reserved = net.createServer(); reserved.listen(0, "127.0.0.1"); await once(reserved, "listening");
-    port = reserved.address().port; await new Promise(resolve => reserved.close(resolve));
+    t.after(() => new Promise(resolve => reserved.close(resolve)));
+    port = reserved.address().port;
   }
   const child = spawn(process.execPath, [process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only",
     "--dir", root, "--run", "saved", "--port", String(port)],
@@ -109,7 +111,7 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a requ
   assert.ok(opened, output);
   const openedPort = Number(new URL(opened.url).port);
   assert.ok(openedPort > 0, "browser URL must use the listening port");
-  if (!automaticPort) assert.equal(openedPort, port, "browser URL must preserve the requested available port");
+  if (!automaticPort) assert.equal(openedPort, port + 1, "an occupied port must fall back to the next port");
   assert.equal(new URL(opened.url).searchParams.get("run"), "saved");
   const response = await fetch(new URL("/api/run", opened.url));
   assert.equal(response.status, 200);
