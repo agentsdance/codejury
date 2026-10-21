@@ -22,3 +22,22 @@ test('structured parse errors retain a fresh session id for the next reply',asyn
  assert.equal(exposed.ok,false);
  assert.equal(exposed.sessionId,'exposed-session');
 });
+
+test('nonzero agents retain an assigned session id for the next reply',async()=>{
+ const options={worktree:process.cwd(),prompt:'review',stopToken:'NO NEW FINDINGS',timeoutSeconds:1};
+ const resume={supported:true,argv:[process.execPath,'-e','', '{{sessionId}}']};
+ const assigned=await runAgent({name:'assigned',newSession:true,resume,
+  argv:[process.execPath,'-e','process.exit(2)', '{{sessionId}}']},options);
+ assert.equal(assigned.ok,false);
+ assert.match(assigned.sessionId,/^[0-9a-f-]{36}$/);
+});
+
+test('timed out agents retain an exposed session id for the next reply',async()=>{
+ const options={worktree:process.cwd(),prompt:'review',stopToken:'NO NEW FINDINGS',timeoutSeconds:0.1};
+ const resume={supported:true,argv:[process.execPath,'-e','', '{{sessionId}}']};
+ const exposed=await runAgent({name:'exposed',resume:{...resume,idFrom:'session: (\\S+)'},
+  argv:[process.execPath,'-e',"console.log('session: exposed-session'); setInterval(()=>{},1000)"]},options);
+ assert.equal(exposed.ok,false);
+ assert.equal(exposed.timedOut,true);
+ assert.equal(exposed.sessionId,'exposed-session');
+});
