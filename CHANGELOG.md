@@ -4,6 +4,8 @@
 
 - Retain reviewer session IDs established during replies, so later standalone and
   automatic replies resume that conversation after a fresh-session fallback.
+  Preserve IDs on structured-output parsing errors and prevent stale replies from
+  replacing sessions established by newer reviews.
 - Preserve standalone `jury reply` prompts in the saved conversation, so judge
   messages remain readable alongside each reviewer's answer.
 - Return a nonzero exit status when a standalone `jury reply` reviewer fails,

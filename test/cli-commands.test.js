@@ -209,9 +209,10 @@ test('a late standalone reply cannot replace a newer review session', async t =>
     resume: { supported: true, argv: [process.execPath, '-e', script, gate, '{{sessionId}}'] },
   });
   await appendEvent(dir, { t: 'agent.report', agent: 'other', sessionId: 'session-a' });
+  const sessionCursor = (await readEvents(dir)).length;
 
   const child = spawn(process.execPath, [cli, 'reply', '--dir', cwd, '--run', 'reply-fixture'], {
-    cwd, env, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd, env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000,
   });
   let stdout = '';
   let stderr = '';
@@ -222,17 +223,24 @@ test('a late standalone reply cannot replace a newer review session', async t =>
     child.on('close', status => resolve({ status, stdout, stderr }));
   });
 
-  const deadline = Date.now() + 5000;
-  while (!(await readEvents(dir)).some(e => e.t === 'reply.sent' && e.agent === 'other')) {
-    if (Date.now() > deadline) assert.fail('standalone reply did not start');
-    await new Promise(resolve => setTimeout(resolve, 10));
+  let result;
+  try {
+    const deadline = Date.now() + 5000;
+    while (!(await readEvents(dir)).some(e => e.t === 'reply.sent' && e.agent === 'other')) {
+      if (Date.now() > deadline) assert.fail('standalone reply did not start');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    await appendEvent(dir, { t: 'agent.report', agent: 'other', sessionId: 'session-b' });
+  } finally {
+    // Release the fake reviewer even if an assertion fails before the race.
+    await writeFile(gate, 'continue');
+    result = await completed;
   }
-  await appendEvent(dir, { t: 'agent.report', agent: 'other', sessionId: 'session-b' });
-  await writeFile(gate, 'continue');
-  const result = await completed;
   assert.equal(result.status, 0, JSON.stringify(result));
 
-  assert.equal(sessionsIn(await readEvents(dir)).get('other'), 'session-b');
+  const events = await readEvents(dir);
+  assert.equal(events.find(e => e.t === 'reply.sent' && e.agent === 'other').sessionCursor, sessionCursor);
+  assert.equal(sessionsIn(events).get('other'), 'session-b');
 });
 
 test('reply dry-run prepares prompts without launching a failing executable', async t => {

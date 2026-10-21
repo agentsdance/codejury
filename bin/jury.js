@@ -869,9 +869,10 @@ async function cmdAgent(argv) {
     // concede or push back.
     const after = await findingsIn(dir);
     const finalHead = group ? await groupHead(group.targets) : await describe(worktree, values.trunk);
+    const replyEvents = await readEvents(dir);
     const answers = await replyRound({
       dir, pool, cfg, worktree, sha: finalHead.sha, context: group ? groupContext(group.targets) : "", targets: group?.targets, round, findings: after, judge: judge.name,
-      sessions: sessionsIn(await readEvents(dir)),
+      sessions: sessionsIn(replyEvents), sessionCursor: replyEvents.length,
       dryRun: values["dry-run"],
       // Prefixed like the launch line: without a name this printed a bare
       // "node (in worktree)" with nothing saying whose reply it was.
@@ -1161,7 +1162,7 @@ async function cmdReply(argv) {
     if (values["dry-run"]) return;
 
     const replyId = randomUUID();
-    await appendEvent(dir, { t: "reply.sent", agent: a.name, replyId, sha, resumed: resumable, sessionId, promptFile: file, text, who: judge });
+    await appendEvent(dir, { t: "reply.sent", agent: a.name, replyId, sha, resumed: resumable, sessionId, sessionCursor: events.length, promptFile: file, text, who: judge });
     const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree, sessionId }).argv };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);

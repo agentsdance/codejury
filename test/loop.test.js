@@ -290,6 +290,40 @@ test("an older in-flight reply cannot replace a newer review session", () => {
   assert.equal(sessionsIn(events).get('codex'), 'session-b');
 });
 
+test("a reply snapshot cannot overwrite a review recorded before reply.sent", () => {
+  for (const sessionId of ['session-b', null]) {
+    const events = [
+      { t: 'agent.report', agent: 'codex', sessionId: 'session-a' },
+      { t: 'agent.report', agent: 'codex', sessionId },
+      { t: 'reply.sent', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a', sessionCursor: 1 },
+      { t: 'reply.answered', agent: 'codex', replyId: 'old-reply', sessionId: 'session-a' },
+    ];
+    assert.equal(sessionsIn(events).get('codex'), sessionId ?? undefined);
+  }
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: null },
+    { t: 'agent.report', agent: 'other', sessionId: 'other-session' },
+    { t: 'reply.sent', agent: 'codex', replyId: 'fresh', sessionCursor: 1 },
+    { t: 'reply.answered', agent: 'codex', replyId: 'fresh', sessionId: 'new-session' },
+  ];
+  assert.equal(sessionsIn(events).get('codex'), 'new-session', 'an unrelated reviewer must not invalidate this snapshot');
+});
+
+test("automatic replies retain their session-selection snapshot across a concurrent review", async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const argv = [process.execPath, '-e', "console.log('NO NEW FINDINGS')"];
+  const agent = { name: 'fixture', argv, resume: { supported: true, argv: [...argv, '{{sessionId}}'] } };
+  await appendEvent(dir, { t: 'finding.raised', id: 'A', agent: agent.name, round: 1, claim: 'claim' });
+  await appendEvent(dir, { t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'checked' });
+  await appendEvent(dir, { t: 'agent.report', agent: agent.name, sessionId: 'old-session' });
+  const snapshot = await readEvents(dir);
+  await appendEvent(dir, { t: 'agent.report', agent: agent.name, sessionId: 'new-session' });
+  await replyRound({ dir, pool: [agent], cfg: { stopToken: 'NO NEW FINDINGS' }, worktree: dir,
+    sha: 'abc', round: 1, findings: await findingsIn(dir), sessions: sessionsIn(snapshot), sessionCursor: snapshot.length });
+  assert.equal(sessionsIn(await readEvents(dir)).get(agent.name), 'new-session');
+});
+
 test("an abandoned launch ends at its own round, not at the present moment", async () => {
   const { foldEvents } = await import("../lib/store.js");
   // Round 1 is killed mid-flight; rounds 2 and 3 run later. Running round 1's

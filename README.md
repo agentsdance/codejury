@@ -70,6 +70,8 @@ Each sent reply is saved with its text so the console can replay the judge's mes
 alongside the reviewer's answer.
 If a reply starts a fresh session because no review session ID was available, Jury
 saves the new ID for later replies. A newer review replaces that reply session.
+Replies that finish after a newer review keep their answers in the log but cannot
+replace the newer review's session, including replies prepared from an older snapshot.
 
 Separate sessions do not provide model diversity or guarantee independent judgment or
 review quality. Prefer distinct agents when independent perspectives matter. Default reviewer pools still exclude the judge; automatic one-CLI fallback is unchanged.
