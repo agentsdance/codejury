@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip saved snapshots with invalid top-level containers and report the affected
+  field, so one malformed run cannot break listing valid neighboring reviews.
 - Show distinct console attempt labels for repeated related-PR reviews, including
   older runs whose names end with a group workspace suffix.
 - Accept a Codex review that completes after a recovered connection error, while
