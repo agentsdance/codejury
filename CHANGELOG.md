@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve standalone `jury reply` prompts in the saved conversation, so judge
+  messages remain readable alongside each reviewer's answer.
 - Return a nonzero exit status when a standalone `jury reply` reviewer fails,
   after saving all replies and their diagnostics, including successful peers.
 - Preserve Unicode in live reviewer output, saved findings, and failure diagnostics

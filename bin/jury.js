@@ -1159,7 +1159,7 @@ async function cmdReply(argv) {
 
     if (values["dry-run"]) return;
 
-    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, sessionId, promptFile: file, who: judge });
+    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, sessionId, promptFile: file, text, who: judge });
     const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree, sessionId }).argv };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);

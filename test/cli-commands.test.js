@@ -10,6 +10,7 @@ const cli = process.env.JURY_TEST_CLI ?? new URL('../bin/jury.js', import.meta.u
 const packageRoot = path.dirname(path.dirname(cli));
 const { DEFAULTS } = await import(pathToFileURL(path.join(packageRoot, 'lib/config.js')));
 const { appendEvent, readEvents, writeRun, foldEvents } = await import(pathToFileURL(path.join(packageRoot, 'lib/store.js')));
+const { conversation } = await import(pathToFileURL(path.join(packageRoot, 'lib/loop.js')));
 
 async function fixture(t) {
   const home = await mkdtemp(path.join(tmpdir(), 'jury-commands-'));
@@ -174,6 +175,29 @@ test('reply succeeds when a reviewer answers with remaining findings', async t =
   reply();
   const answers = (await readEvents(dir)).filter(e => e.t === 'reply.answered');
   assert.equal(answers.find(e => e.agent === 'other').verdict, 'found');
+});
+
+test('reply preserves each judge prompt in the saved conversation', async t => {
+  const { dir, reply } = await replyFixture(t, {
+    argv: [process.execPath, '-e', "console.log('NO NEW FINDINGS')"],
+  });
+  reply();
+  const events = await readEvents(dir);
+  const sent = events.filter(e => e.t === 'reply.sent');
+  assert.equal(sent.length, 2);
+  const threads = conversation(events);
+  for (const agent of ['good', 'other']) {
+    const prompt = await readFile(path.join(dir, `reply.${agent}.md`), 'utf8');
+    assert.match(prompt, new RegExp(`${agent} claim`));
+    assert.doesNotMatch(prompt, new RegExp(`${agent === 'good' ? 'other' : 'good'} claim`));
+    assert.equal(sent.find(e => e.agent === agent).text, prompt, 'persist the prompt actually sent to this reviewer');
+    const turns = threads.find(thread => thread.agent === agent).turns;
+    const replies = turns.filter(turn => turn.kind === 'reply');
+    assert.equal(replies.length, 1);
+    assert.equal(replies[0].who, 'fixture-judge');
+    assert.equal(replies[0].text, prompt, 'a replay must show the judge reply rather than an empty turn');
+    assert.match(turns.find(turn => turn.kind === 'answer').text, /NO NEW FINDINGS/);
+  }
 });
 
 test('reply dry-run prepares prompts without launching a failing executable', async t => {
