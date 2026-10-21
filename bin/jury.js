@@ -8,6 +8,7 @@
 import { commandHelp } from "../lib/help.js";
 import { parseArgs } from "node:util";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { prepareGroup, groupContext, groupHead, reviewUrls, groupId, groupReady, pushRetained, findingPr, assertGroupCheckout } from "../lib/review-group.js";
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
@@ -1159,7 +1160,8 @@ async function cmdReply(argv) {
 
     if (values["dry-run"]) return;
 
-    await appendEvent(dir, { t: "reply.sent", agent: a.name, sha, resumed: resumable, sessionId, promptFile: file, text, who: judge });
+    const replyId = randomUUID();
+    await appendEvent(dir, { t: "reply.sent", agent: a.name, replyId, sha, resumed: resumable, sessionId, promptFile: file, text, who: judge });
     const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree, sessionId }).argv };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);
@@ -1171,6 +1173,7 @@ async function cmdReply(argv) {
     await writeArtifact(dir, replyRaw, r.raw ?? "");
     await appendEvent(dir, {
       t: "reply.answered", agent: a.name, verdict: r.verdict, seconds: r.seconds, report: r.report,
+      replyId,
       sessionId: r.sessionId ?? (resumable ? sessionId : null),
       ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
     });
