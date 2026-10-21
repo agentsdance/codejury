@@ -290,6 +290,19 @@ test("an older in-flight reply cannot replace a newer review session", () => {
   assert.equal(sessionsIn(events).get('codex'), 'session-b');
 });
 
+test("an older concurrent reply cannot erase or replace a newer reply session", () => {
+  for (const staleSessionId of [null, 'wrong-session']) {
+    const events = [
+      { t: 'reply.sent', agent: 'codex', replyId: 'slow-reply', sessionCursor: 0 },
+      { t: 'reply.sent', agent: 'codex', replyId: 'fast-reply', sessionCursor: 0 },
+      { t: 'reply.answered', agent: 'codex', replyId: 'fast-reply', sessionId: 'usable-session' },
+      { t: 'reply.answered', agent: 'codex', replyId: 'slow-reply', sessionId: staleSessionId },
+    ];
+
+    assert.equal(sessionsIn(events).get('codex'), 'usable-session');
+  }
+});
+
 test("a reply snapshot cannot overwrite a review recorded before reply.sent", () => {
   for (const sessionId of ['session-b', null]) {
     const events = [
