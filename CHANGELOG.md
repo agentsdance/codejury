@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accept a Codex review that completes after a recovered connection error, while
+  retaining retry diagnostics and rejecting failed, incomplete or stale reports.
 - Keep fresh reviews in separate run directories even when started at the same
   instant, so fast or concurrent invocations cannot merge their histories.
   Explicit resume continues to use the selected run, including older names.
