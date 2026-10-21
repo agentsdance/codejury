@@ -21,7 +21,7 @@
       "onboardingSkill": "./skills/codejury-setup/SKILL.md",
       "interface": {
         "displayName": "CodeJury",
-        "shortDescription": "Independent AI pull request review",
+        "shortDescription": "AI pull request review",
         "longDescription": "Review pull requests supplied by URL with independent coding agents and a judge that investigates findings, applies fixes, and asks reviewers to check again. Set up the CLI, run or resume a PR review, and inspect saved findings and conversations. A new review requires a PR link; arbitrary local files and folders are not supported plugin review targets. PR reviews use a local checkout. Desktop only: requires Node.js 20.10+, npm, Git, and separately installed and authenticated coding-agent CLIs. GitHub PRs also require GitHub CLI. This plugin uses CodeJury CLI 0.8.2-rc.1 (a release candidate), downloaded from npm on first use. Reviews can edit files and create commits; pushes are disabled unless requested. Code and prompts are processed by your selected agents and their providers, subject to their terms and usage charges. CodeJury keeps review records locally and operates no hosted review service. The included console screenshot shows a real prior review; results vary by repository and agent.",
         "developerName": "ZHOU ZHENGXI",
         "category": "Developer Tools",
