@@ -449,6 +449,10 @@ test("offline GitLab default discovery rejects unusable or unrelated caches", as
     { label: "direct origin/HEAD is not a symbolic default", direct: true },
     { label: "origin belongs to another repository", ref: "refs/remotes/origin/main",
       origin: "https://git.example.com/other/widgets.git" },
+    { label: "origin belongs to another port", ref: "refs/remotes/origin/main",
+      origin: "https://git.example.com:8443/acme/widgets.git",
+      url: "https://git.example.com:9443/acme/widgets/-/merge_requests/198",
+      rejectsCheckout: true },
     { label: "reachable remote has no advertised default", ref: "refs/remotes/origin/main",
       online: true },
   ]) {
@@ -464,10 +468,15 @@ test("offline GitLab default discovery rejects unusable or unrelated caches", as
         }
         return run(command, args, options);
       };
-      const resolved = await resolvePrCheckout(
-        "https://git.example.com/acme/widgets/-/merge_requests/198",
+      const resolve = () => resolvePrCheckout(
+        fixture.url || "https://git.example.com/acme/widgets/-/merge_requests/198",
         { allowPush: false, exec, dir: caller, root },
       );
+      if (fixture.rejectsCheckout) {
+        await assert.rejects(resolve(), /could not resolve .* merge request !198/);
+        return;
+      }
+      const resolved = await resolve();
       t.after(resolved.cleanup);
       assert.equal(resolved.trunk, "");
       await assert.rejects(assertTrunk(resolved.worktree, resolved.trunk), /trunk/);
