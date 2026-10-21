@@ -5,7 +5,7 @@
 - Retain reviewer session IDs established during replies, so later standalone and
   automatic replies resume that conversation after a fresh-session fallback.
   Preserve known IDs across process and parsing failures, avoid retaining newly
-  assigned IDs when an executable cannot launch, and prevent stale replies from
+  assigned IDs after execution or parsing failures, and prevent stale replies from
   replacing sessions established by newer reviews or concurrent replies.
 - Preserve standalone `jury reply` prompts in the saved conversation, so judge
   messages remain readable alongside each reviewer's answer.
