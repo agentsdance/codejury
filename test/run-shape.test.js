@@ -60,6 +60,15 @@ test('minimal legacy runs and unknown metadata remain readable without rewriting
   assert.equal(await readFile(file, 'utf8'), before);
 });
 
+test('saved slug cannot override the run directory identity', async t => {
+  const { base, save } = await fixture(t);
+  await save('directory-slug', { ...valid(), slug: {} });
+  const { runs, skipped } = await listRuns(base);
+  assert.deepEqual(skipped, []);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].slug, 'directory-slug');
+});
+
 test('jury runs displays a valid review alongside a malformed snapshot', async t => {
   const { root, save } = await fixture(t);
   await save('good', valid());
