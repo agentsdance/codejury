@@ -303,6 +303,19 @@ test("an older concurrent reply cannot erase or replace a newer reply session", 
   }
 });
 
+test("a delayed older reply send cannot suppress a newer snapshot's reply session", () => {
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: 'old-review-session' },
+    { t: 'agent.report', agent: 'codex', sessionId: null },
+    { t: 'reply.sent', agent: 'codex', replyId: 'newer-snapshot-reply', sessionCursor: 2 },
+    { t: 'reply.sent', agent: 'codex', replyId: 'delayed-older-reply', sessionCursor: 1 },
+    { t: 'reply.answered', agent: 'codex', replyId: 'newer-snapshot-reply', sessionId: 'new-reply-session' },
+    { t: 'reply.answered', agent: 'codex', replyId: 'delayed-older-reply', sessionId: 'old-review-session' },
+  ];
+
+  assert.equal(sessionsIn(events).get('codex'), 'new-reply-session');
+});
+
 test("a reply snapshot cannot overwrite a review recorded before reply.sent", () => {
   for (const sessionId of ['session-b', null]) {
     const events = [
