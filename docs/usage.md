@@ -116,3 +116,11 @@ The roles are saved for `reply` and `review --resume`. Same-agent sessions do no
 provide model diversity or guarantee independent judgment. Default reviewer pools
 still exclude the judge. Zero or more than two installed CLIs retain the existing
 configured/default selection behavior when roles are not explicitly selected.
+
+### Local review base branch
+
+Pass a bare branch name such as `--trunk master`, not `origin/master` or a full
+Git ref. Its `refs/remotes/origin/<branch>` tracking ref must be available and
+share history with HEAD; fetch the base branch before reviewing if needed.
+Jury validates this before launching agents. Review prompts use Git’s triple-dot
+diff to compare HEAD to the merge base, and fail if that base becomes unavailable.

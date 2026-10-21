@@ -17,6 +17,7 @@ import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveG
 import { runAgent, probe, supportsModel } from "../lib/agents.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
+import { assertTrunk } from "../lib/trunk.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, writeRun, readEvents, foldEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
@@ -516,7 +517,7 @@ async function cmdAgent(argv) {
   if (group) resolvedCheckoutCleanup = group.cleanup;
   const resolved = !group && values.pr
     ? await resolvePrCheckout(values.pr, {
-      allowPush: values.push, root: requestedWorktree, dir: resolveFrom,
+      allowPush: values.push, root: requestedWorktree, dir: resolveFrom, trunk: values.trunk,
     })
     : null;
   const worktree = group?.worktree ?? resolved?.worktree ?? requestedWorktree;
@@ -535,6 +536,19 @@ async function cmdAgent(argv) {
   const trunkGiven = Boolean(values.trunk);
   const trunk = values.trunk ?? group?.targets[0].trunk ?? resolved?.trunk ?? (await defaultTrunk(worktree));
   values.trunk = trunk;
+  if (group) {
+    try {
+      for (const t of group.targets) await assertTrunk(t.worktree, t.trunk);
+    } catch (error) {
+      // A new group is not resumable until its workspace has been recorded.
+      // Do not strand complete clones when validation fails before that point.
+      if (group.discard) {
+        resolvedCheckoutCleanup = null;
+        await group.discard();
+      }
+      throw error;
+    }
+  } else await assertTrunk(worktree, trunk);
   const pr = group ? { title: group.targets.map(t => t.title || t.url).join(" + "), summary: "" } : resolved ?? await prDetails(values.pr, worktree);
 
   // The next round has to review NEW code or it is not a loop, so pushing is

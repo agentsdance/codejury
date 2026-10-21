@@ -42,7 +42,9 @@ else console.log('FINDING: claim ' + n + ' A\\nWHERE: a.txt:1\\nFirst concern\\n
   await git('config', 'user.name', 'Fixture'); await git('config', 'user.email', 'fixture@example.com');
   await writeFile(path.join(repo, 'a.txt'), 'before\n');
   await writeFile(path.join(repo, '.gitignore'), '.reviews\nruns/\n');
-  await git('add', '.'); await git('commit', '-qm', 'base'); await git('checkout', '-qb', 'feature');
+  await git('add', '.'); await git('commit', '-qm', 'base');
+  await git('update-ref', 'refs/remotes/origin/master', 'HEAD');
+  await git('checkout', '-qb', 'feature');
   await writeFile(path.join(repo, 'a.txt'), 'after\n'); await git('commit', '-qam', 'change');
   const invoke = args => exec(process.execPath, [cli, ...args], { cwd: repo, env });
   const args = ['review', '--dir', repo, '--trunk', 'master', '--rounds', '1', '--web=false', '--push=false'];

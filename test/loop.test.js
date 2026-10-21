@@ -483,6 +483,7 @@ test("a clean round does not converge while an earlier finding is still open", a
   await writeFile(path.join(repo, "a.txt"), "one\n");
   await g("add", "-A");
   await g("commit", "-qm", "base");
+  await g("update-ref", "refs/remotes/origin/master", "HEAD");
   await g("checkout", "-q", "-b", "feature");
   await writeFile(path.join(repo, "a.txt"), "two\n");
   await g("commit", "-qam", "change");
@@ -541,6 +542,7 @@ test("--judge selects one judge, excludes it from reviewers, and records the cho
   await writeFile(path.join(repo, "a.txt"), "one\n");
   await g("add", "-A");
   await g("commit", "-qm", "base");
+  await g("update-ref", "refs/remotes/origin/master", "HEAD");
   await g("checkout", "-q", "-b", "feature");
   await writeFile(path.join(repo, "a.txt"), "two\n");
   await g("commit", "-qam", "change");
@@ -596,6 +598,7 @@ test("an explicitly requested configured reviewer is actually launched", async (
   await writeFile(path.join(repo, "a.txt"), "one\n");
   await g("add", "-A");
   await g("commit", "-qm", "base");
+  await g("update-ref", "refs/remotes/origin/master", "HEAD");
   await g("checkout", "-q", "-b", "feature");
   await writeFile(path.join(repo, "a.txt"), "two\n");
   await g("commit", "-qam", "change");
