@@ -1698,9 +1698,14 @@ function runFromParam(runs) {
 }
 
 function runsFromPayload(live) {
-  if (live?.target) return [live];
-  if (Array.isArray(live?.targets)) return live.targets;
-  return live ? [live] : [];
+  const runs = live?.target ? [live]
+    : Array.isArray(live?.targets) ? live.targets
+    : live ? [live] : [];
+  // Older snapshots may omit the timeline containers. They remain readable at
+  // the store boundary, so give the renderer the empty arrays it expects.
+  return runs.map(run => run && typeof run === "object"
+    ? { marks: [], lanes: [], ...run }
+    : run);
 }
 
 // Back and forward move between PRs rather than leaving the console.

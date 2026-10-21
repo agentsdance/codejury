@@ -18,3 +18,18 @@ for (const kind of ['empty', 'populated', 'envelope']) {
     await expect(page).toHaveURL(/\?run=timeline$/);
   });
 }
+
+test('saved-run polling renders a minimal legacy snapshot', async ({ page, consoleURL }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/run', route => route.fulfill({ json: {
+    target: { id: '#1', title: 'Legacy saved review' },
+    rounds: [],
+    exchanges: [],
+    slug: 'timeline',
+  } }));
+  await page.goto(consoleURL);
+  await expect(page.locator('#t-title')).toHaveText('Legacy saved review');
+  await expect(page.locator('#tl .lane')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

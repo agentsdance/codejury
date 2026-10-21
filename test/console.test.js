@@ -57,11 +57,14 @@ test("single-run metadata cannot masquerade as the multi-run response envelope",
   const fn = source.match(/function runsFromPayload\(live\) \{[\s\S]*?\n\}/)?.[0];
   assert.ok(fn, "web/index.html must distinguish a run from the response envelope");
   const runsFromPayload = new Function(`${fn}; return runsFromPayload;`)();
+  const normalized = run => ({ marks: [], lanes: [], ...run });
   const saved = { slug: "saved", target: { id: "#1" }, rounds: [], targets: [] };
-  assert.deepEqual(runsFromPayload(saved), [saved]);
+  assert.deepEqual(runsFromPayload(saved), [normalized(saved)]);
   const substitute = { slug: "substitute", target: { id: "#2" }, rounds: [] };
-  assert.deepEqual(runsFromPayload({ ...saved, targets: [substitute] }), [{ ...saved, targets: [substitute] }]);
-  assert.deepEqual(runsFromPayload({ targets: [saved] }), [saved]);
+  assert.deepEqual(runsFromPayload({ ...saved, targets: [substitute] }), [normalized({ ...saved, targets: [substitute] })]);
+  assert.deepEqual(runsFromPayload({ targets: [saved] }), [normalized(saved)]);
+  const legacy = { slug: "legacy", target: { id: "#3" }, rounds: [], exchanges: [] };
+  assert.deepEqual(runsFromPayload(legacy), [{ ...legacy, marks: [], lanes: [] }]);
 });
 
 /** The console is a single self-contained page, so its render helpers are
