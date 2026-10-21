@@ -1,88 +1,46 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
-const launcher = fileURLToPath(new URL('../plugins/codejury/scripts/jury.mjs', import.meta.url));
+const root = fileURLToPath(new URL("..", import.meta.url));
+const json = file => JSON.parse(readFileSync(path.join(root, file), "utf8"));
 
-test('plugin launcher installs into Windows cache paths containing spaces', () => {
-  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'codejury-plugin-')));
-  try {
-    const cache = path.join(root, 'Jane Doe', '.cache', 'codejury', 'plugin-cli');
-    const cwd = path.join(root, 'repository with spaces');
-    const bin = path.join(root, 'bin');
-    mkdirSync(cwd);
-    mkdirSync(bin);
-    const fixture = path.join(bin, 'npm.cjs');
-    writeFileSync(fixture, `#!${process.execPath}
-      const assert = require('node:assert/strict');
-      const fs = require('node:fs');
-      const path = require('node:path');
-      const args = process.argv.slice(2);
-      assert.equal(args[0], 'install');
-      assert.equal(args[1], '--prefix');
-      assert.equal(path.resolve(args[2]), process.cwd(), 'npm received a split cache path: ' + JSON.stringify(args));
-      assert.deepEqual(args.slice(3), ['--no-save', '--package-lock=false', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org', '@agentsdance/codejury@0.8.2-rc.1']);
-      const pkg = path.join(path.resolve(args[2]), 'node_modules', '@agentsdance', 'codejury');
-      fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
-      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.8.2-rc.1', type: 'module' }));
-      fs.writeFileSync(path.join(pkg, 'bin', 'jury.js'), 'console.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) }));');
-    `);
-    const preload = path.join(root, 'windows.mjs');
-    const env = { ...process.env, CODEJURY_PLUGIN_CACHE: cache, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
-    const nodeArgs = [];
-    if (process.platform === 'win32') {
-      writeFileSync(path.join(bin, 'npm.cmd'), `@"${process.execPath}" "${fixture}" %*\r\n`);
-    } else {
-      writeFileSync(path.join(bin, 'npm.cmd'), readFileSync(fixture), { mode: 0o755 });
-      // Exercise the Windows launcher branch with a real shell on other hosts.
-      // Both shells split an unquoted prefix at spaces; Windows uses cmd.exe above.
-      writeFileSync(preload, "Object.defineProperty(process, 'platform', { value: 'win32' });\nprocess.env.comspec = '/bin/sh';\n");
-      nodeArgs.push('--import', pathToFileURL(preload).href);
-    }
-    const result = spawnSync(process.execPath, [...nodeArgs, launcher, 'version'], { cwd, env, encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), { cwd: realpathSync(cwd), argv: ['version'] });
-    const metadata = JSON.parse(readFileSync(path.join(cache, '0.8.2-rc.1', 'node_modules', '@agentsdance', 'codejury', 'package.json'), 'utf8'));
-    assert.equal(metadata.version, '0.8.2-rc.1');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+test("the marketplace lists the plugin under the same name as its manifest", () => {
+  const market = json(".claude-plugin/marketplace.json");
+  assert.equal(market.name, "codejury");
+  assert.ok(market.owner?.name);
+  const [entry] = market.plugins;
+  assert.equal(market.plugins.length, 1);
+  assert.match(entry.source, /^\.\/[^.]/);
+  const manifest = json(path.join(entry.source, ".claude-plugin/plugin.json"));
+  assert.equal(entry.name, manifest.name);
+  assert.equal(manifest.license, json("package.json").license);
+  // Unpinned on purpose: installs follow the repository instead of a version to keep in sync.
+  assert.equal(manifest.version, undefined);
+  // A plugin bin/ goes on PATH and blocks claude.ai installs; the repository's bin/ must stay outside.
+  assert.ok(!existsSync(path.join(root, entry.source, "bin")));
 });
 
-test('plugin launcher preserves cwd, literal arguments, and exit status without using a shadowed jury', () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'codejury-plugin-'));
-  try {
-    const pkg = path.join(root, 'cache', '0.8.2-rc.1', 'node_modules', '@agentsdance', 'codejury');
-    const cwd = path.join(root, 'repository with spaces');
-    const shadow = path.join(root, 'bin');
-    mkdirSync(path.join(pkg, 'bin'), { recursive: true });
-    mkdirSync(cwd);
-    mkdirSync(shadow);
-    writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.8.2-rc.1', type: 'module' }));
-    writeFileSync(path.join(pkg, 'bin', 'jury.js'), 'console.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) })); process.exitCode = 7;');
-    writeFileSync(path.join(shadow, 'jury'), '#!/bin/sh\nexit 99\n', { mode: 0o755 });
-    const args = ['review', '--summary', 'literal $(touch unwanted) `echo bad` ; & "text"'];
-    const result = spawnSync(process.execPath, [launcher, ...args], {
-      cwd, env: { ...process.env, CODEJURY_PLUGIN_CACHE: path.join(root, 'cache'), PATH: shadow }, encoding: 'utf8',
-    });
-    assert.equal(result.status, 7, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), { cwd: realpathSync(cwd), argv: args });
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test('plugin launcher rejects an incomplete cache without replacing user files', () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'codejury-plugin-'));
-  try {
-    const install = path.join(root, '0.8.2-rc.1');
-    mkdirSync(install);
-    writeFileSync(path.join(install, 'keep.txt'), 'preserve');
-    const result = spawnSync(process.execPath, [launcher, 'version'], {
-      env: { ...process.env, CODEJURY_PLUGIN_CACHE: root }, encoding: 'utf8',
-    });
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /Incomplete CLI cache/);
-    assert.equal(readFileSync(path.join(install, 'keep.txt'), 'utf8'), 'preserve');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+test("every plugin skill has a name and description, and the review skill uses real flags", () => {
+  const skills = path.join(root, "plugin/skills");
+  const names = readdirSync(skills).sort();
+  assert.deepEqual(names, ["multi-agent-code-review", "review"]);
+  for (const name of names) {
+    const text = readFileSync(path.join(skills, name, "SKILL.md"), "utf8");
+    const front = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1];
+    assert.ok(front, `${name}: frontmatter`);
+    assert.match(front, new RegExp(`^name: ${name}$`, "m"));
+    assert.match(front, /^description: \S/m);
+    // Installed plugins are copied without the rest of the repository.
+    assert.doesNotMatch(text, /`(DESIGN\.md|config\.example\.yaml|prompts\/[\w-]+\.md)`/, `${name}: repository-relative path`);
+  }
+  const review = readFileSync(path.join(skills, "review/SKILL.md"), "utf8");
+  assert.match(review, /^disable-model-invocation: true$/m);
+  const help = execFileSync(process.execPath, [path.join(root, "bin/jury.js"), "help", "review"], { encoding: "utf8" });
+  for (const flag of review.match(/--[a-z][\w-]*/g)) assert.ok(help.includes(`${flag} `), `jury review has no ${flag}`);
+  assert.equal(json("package.json").name, "@agentsdance/codejury");
+  assert.match(review, /npx -y @agentsdance\/codejury/);
 });

@@ -7,6 +7,13 @@
   the published `0.8.2-rc.1` CLI and preserves unpushed single-PR fixes in a
   persistent checkout. Plugin 0.1.1 includes public privacy and terms pages,
   a live console link, and Windows path handling fixes.
+- Code Jury is now a Claude Code plugin: `claude plugin marketplace add agentsdance/codejury`, then
+  `claude plugin install codejury@codejury`. `/codejury:review <pr-url>` runs a review from a Claude
+  Code session with the web console enabled and its link shown by default, without pushing unless
+  asked. A PR URL is required; Claude asks for it if omitted. Pass `--web=false` to disable the console.
+  The review-loop skill moved from `skill/SKILL.md` to `plugin/skills/multi-agent-code-review/SKILL.md`.
+  The manual guidance now uses the current
+  agent configuration and exact review session IDs (#115).
 - Resolve offline local GitLab reviews from the caller's valid cached remote default
   when available, instead of requiring a redundant `--trunk` override.
 - Reject invalid or unavailable trunk branches before launching review agents.

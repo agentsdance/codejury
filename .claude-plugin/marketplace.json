@@ -1,0 +1,15 @@
+{
+  "name": "codejury",
+  "description": "Code Jury: independent AI code reviewers and one judge, from inside Claude Code.",
+  "owner": {
+    "name": "agentsdance",
+    "url": "https://github.com/agentsdance"
+  },
+  "plugins": [
+    {
+      "name": "codejury",
+      "source": "./plugin",
+      "description": "Run a Code Jury review of a pull request, and the multi-agent review loop skill."
+    }
+  ]
+}
