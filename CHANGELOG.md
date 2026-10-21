@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Print and open the actual console port when `--port 0` requests an OS-assigned
+  port, instead of sending the browser to the unusable port zero.
 - Resolve offline local GitLab reviews from the caller's valid cached remote default
   when available, instead of requiring a redundant `--trunk` override.
 - Reject invalid or unavailable trunk branches before launching review agents.

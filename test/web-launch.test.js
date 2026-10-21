@@ -11,7 +11,8 @@ import { waitForOpenReceipt } from "./helpers/open-receipt.js";
 import { writeRun } from "../lib/store.js";
 
 const exec = promisify(execFile);
-test("default web opens a URL selecting the current run, even on a fallback port", { timeout: 30000, skip: process.platform === "win32" }, async (t) => {
+for (const automaticPort of [false, true]) {
+test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : "a fallback"} port`, { timeout: 30000, skip: process.platform === "win32" }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "jury-web-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const repo = path.join(root, "repo");
@@ -31,10 +32,13 @@ test("default web opens a URL selecting the current run, even on a fallback port
   // Capture the actual browser-open request and its first API response.
   const opener = `#!${process.execPath}\nconst fs = require('node:fs');\nfetch(new URL('/api/run', process.argv[2])).then(r => r.json()).then(payload => fs.writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({url: process.argv[2], payload})));\n`;
   await writeFile(path.join(bin, process.platform === "darwin" ? "open" : "xdg-open"), opener, { mode: 0o755 });
-  const occupied = net.createServer();
-  occupied.listen(0, "127.0.0.1"); await once(occupied, "listening");
-  t.after(() => new Promise(resolve => occupied.close(resolve)));
-  const port = occupied.address().port;
+  let port = 0;
+  if (!automaticPort) {
+    const occupied = net.createServer();
+    occupied.listen(0, "127.0.0.1"); await once(occupied, "listening");
+    t.after(() => new Promise(resolve => occupied.close(resolve)));
+    port = occupied.address().port;
+  }
   const child = spawn(process.execPath, [process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "review", "--dir", repo,
     "--trunk", "main", "--rounds", "1", "--dry-run", "--agents", "claude", "--port", String(port)],
     { cwd: repo, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
@@ -58,6 +62,7 @@ test("default web opens a URL selecting the current run, even on a fallback port
   assert.equal(runs.find(r => r.slug === slug).target.judge, "codex");
   assert.ok(output.includes(opened.url));
 });
+}
 
 test("current run is published before the console server starts", async (t) => {
   const { startReviewConsole } = await import("../lib/review-console.js");
@@ -76,7 +81,8 @@ test("current run is published before the console server starts", async (t) => {
   assert.equal(url, "http://127.0.0.1:3081/?run=current-review");
 });
 
-test("web-only opens a saved run without starting a review", { timeout: 15000, skip: process.platform === "win32" }, async t => {
+for (const automaticPort of [false, true]) {
+test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a requested"} port without starting a review`, { timeout: 15000, skip: process.platform === "win32" }, async t => {
   const { appendEvent, readEvents } = await import("../lib/store.js");
   const root = await mkdtemp(path.join(tmpdir(), "jury-saved-console-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -88,8 +94,11 @@ test("web-only opens a saved run without starting a review", { timeout: 15000, s
   const receipt = path.join(root, "opened.json");
   await writeFile(path.join(bin, process.platform === "darwin" ? "open" : "xdg-open"),
     `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({url:process.argv[2]}));\n`, { mode: 0o755 });
-  const reserved = net.createServer(); reserved.listen(0, "127.0.0.1"); await once(reserved, "listening");
-  const port = reserved.address().port; await new Promise(resolve => reserved.close(resolve));
+  let port = 0;
+  if (!automaticPort) {
+    const reserved = net.createServer(); reserved.listen(0, "127.0.0.1"); await once(reserved, "listening");
+    port = reserved.address().port; await new Promise(resolve => reserved.close(resolve));
+  }
   const child = spawn(process.execPath, [process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only",
     "--dir", root, "--run", "saved", "--port", String(port)],
     { env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
@@ -98,6 +107,7 @@ test("web-only opens a saved run without starting a review", { timeout: 15000, s
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill(); await exited; });
   const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
+  assert.ok(Number(new URL(opened.url).port) > 0, "browser URL must use the listening port");
   assert.equal(new URL(opened.url).searchParams.get("run"), "saved");
   const response = await fetch(new URL("/api/run", opened.url));
   assert.equal(response.status, 200);
@@ -105,3 +115,4 @@ test("web-only opens a saved run without starting a review", { timeout: 15000, s
   assert.ok((payload.targets ?? [payload]).some(r => r.slug === "saved"));
   assert.equal((await readEvents(dir)).length, 1, "viewing must not append a round or launch agents");
 });
+}

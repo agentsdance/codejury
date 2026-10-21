@@ -35,6 +35,10 @@ Closing or reloading the console page releases that connection's live-stream
 watcher and timers, including while its initial event log is loading. The review
 continues independently of the browser connection.
 
+Use `--port 0` with a review or `--web-only` to let the OS choose an available
+console port. Jury prints and opens the URL with that assigned port. A requested
+nonzero port still falls back to the next available port when it is busy.
+
 ## Resume and limits
 
 ```sh
