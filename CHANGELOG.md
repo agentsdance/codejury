@@ -5,7 +5,8 @@
 - Code Jury is now a Claude Code plugin: `claude plugin marketplace add agentsdance/codejury`, then
   `claude plugin install codejury@codejury`. `/codejury:review <pr-url>` runs a review from a Claude
   Code session without pushing unless asked, and the review-loop skill moved from `skill/SKILL.md`
-  to `plugin/skills/multi-agent-code-review/SKILL.md` (#115).
+  to `plugin/skills/multi-agent-code-review/SKILL.md`. The manual guidance now uses the current
+  agent configuration and exact review session IDs (#115).
 
 ## 0.8.2-rc.1 — 2026-10-20
 

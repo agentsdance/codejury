@@ -10,34 +10,44 @@ and report — never let one edit files.
 
 The CLI owns the mechanics; you own the judgement. See [DESIGN.md](https://github.com/agentsdance/codejury/blob/master/DESIGN.md) for the split.
 
+For the automated loop, use `/codejury:review`; the configured judge owns its fixes. The guidance
+below is for explicitly requested manual review and triage. Do not edit a checkout while an
+automated Jury run is using it. In CLI examples, substitute `npx -y @agentsdance/codejury` for
+`jury` if it is not installed, and keep the same `--dir` and `--run` when working with saved findings.
+
 ## The loop
 
 ```
 round N
-  ├─ worktree at the pushed HEAD
+  ├─ worktree at the commit being reviewed
   ├─ launch every reviewer in parallel, in the background
   ├─ triage each finding: reproduce → fix → prove the test fails without the fix
   ├─ reply to every finding, including rejections
-  ├─ verify, amend, push
+  ├─ verify, commit, push if authorized
   ├─ append what was settled to the prompt
-  └─ stop iff every reviewer emitted the stop token on the SAME commit
+  └─ stop iff every reviewer succeeded and emitted the stop token on the SAME commit
 ```
 
 ## Running reviewers
 
-Cut a detached worktree at the pushed commit so reviewers see what a human reviewer would:
+Resolve the selected branch or PR head to `REVIEW_SHA`, then cut a detached worktree at that exact
+commit. After local fixes, review their new commit even when pushing is disabled:
 
 ```bash
-git worktree add "$WT" origin/<branch> --detach
+git worktree add "$WT" "$REVIEW_SHA" --detach
 ```
 
-Launch concurrently and in the background — the slowest sets the round's wall clock. Agent
-invocations are configuration ([config.example.yaml](https://github.com/agentsdance/codejury/blob/master/config.example.yaml)); only three things vary:
+Launch concurrently and in the background — the slowest sets the round's wall clock. Use the
+current [agent definitions](https://github.com/agentsdance/codejury/tree/master/lib/agents) and
+[configuration guide](https://github.com/agentsdance/codejury/blob/master/docs/configuration.md),
+with overrides in `jury.config.json`
+([example](https://github.com/agentsdance/codejury/blob/master/jury.config.example.json)):
 
 - **prompt delivery** — argv (`codex`) vs a file flag (`droid -f`)
 - **cwd** — process cwd (`codex`) vs an explicit `--cwd` flag (`droid`)
-- **resume** — `codex exec resume --last` keeps context; droid's text output carries no session id, so
-  a follow-up must be a fresh run with its prior findings quoted back
+- **resume** — retain each reviewer's exact session id and pass it to that agent's configured
+  resume command. Never select the most recent session: it may belong to another task. If there is
+  no usable session id, start fresh with only that reviewer's prior findings quoted back.
 
 ## The prompt
 
@@ -102,8 +112,9 @@ agreement stops being evidence. `jury reply` redacts the other agents' names out
 for you, so writing "agy raised this too" in a `--reason` is safe — but do not rely on it as licence
 to quote another thread.
 
-Delivery follows `resume.supported`: codex resumes the session that already holds its review, so it
-gets your verdicts alone; agy starts fresh every run, so its own findings are quoted back to it.
+Delivery follows `resume.supported` and the recorded session id. Codex, Claude, Droid and
+Antigravity support resuming their own conversations. Without a usable session id, start a fresh
+conversation and quote only that reviewer's findings back to it.
 
 Rejections need evidence, not authority. One was settled by writing a three-line throwaway test and
 pasting the panic.
@@ -121,6 +132,7 @@ that is a design decision, not a fact, and the loop should stop arguing.
 - **Mock frameworks may not re-apply inside a loop.** Build the mock once outside it.
 - **A verbose agent's stdout contains the prompt**, so grepping the whole stream for the stop token
   matches the instruction that asked for it. Parse the final report block.
+- **A failed reviewer is not a sign-off**, even if its partial output includes the stop token.
 - **Reviewers recycle suggestions when they have nothing left.** A verbatim repeat of a prior cosmetic
   note is a decent convergence signal.
 

@@ -93,7 +93,9 @@ In a session, `/codejury:review <pr-url>` runs `jury review` (or `npx @agentsdan
 when `jury` is not installed) with `--web=false` and, unless you pass `--push`, `--push=false`, then
 summarizes the findings and verdicts. With no URL it reviews the current branch. The plugin also
 ships the `multi-agent-code-review` skill for running the review loop by hand. Agent CLIs are
-still installed and authenticated separately.
+still installed and authenticated separately. `--push=false` keeps fixes and commits local; it
+does not make the review read-only. See the [plugin guide](plugin/README.md) for prerequisites,
+updates, and local installation checks.
 
 ## Screenshots
 
