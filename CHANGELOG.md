@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Resolve offline local GitLab reviews from the caller's valid cached remote default
+  when available, instead of requiring a redundant `--trunk` override.
 - Reject invalid or unavailable trunk branches before launching review agents.
   Generated reviewer and judge diff commands now fail closed when the base ref
   cannot be resolved instead of silently omitting committed changes.

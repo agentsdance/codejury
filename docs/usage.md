@@ -66,6 +66,12 @@ MR descriptions are unavailable and the resolver uses the remote default branch 
 Use URL mode only for MRs targeting that branch. If the source branch is ambiguous or on a fork,
 check it out yourself and run `jury --dir /path/to/checkout --trunk <target-branch>`.
 
+For an offline local MR review with `--push=false`, Jury can use the caller's cached
+`origin/HEAD` when default-branch discovery cannot reach the remote. The caller's
+origin must match the MR repository and the cached default must resolve to a commit.
+Without that cache, pass `--trunk <target-branch>` with its cached origin tracking ref.
+Jury never infers the default from the branch currently checked out in the caller.
+
 Related PRs may mix GitHub and GitLab-style URLs. Two PRs sharing a source branch are rejected.
 
 ## Common problems
