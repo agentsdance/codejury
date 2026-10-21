@@ -1697,6 +1697,12 @@ function runFromParam(runs) {
   return runs.find((r) => r.slug === want) ?? null;
 }
 
+function runsFromPayload(live) {
+  if (live?.target) return [live];
+  if (Array.isArray(live?.targets)) return live.targets;
+  return live ? [live] : [];
+}
+
 // Back and forward move between PRs rather than leaving the console.
 addEventListener("popstate", () => {
   const pick = runFromParam(ALL);
@@ -1735,7 +1741,7 @@ async function poll({ first = false } = {}) {
 
   let live;
   try { live = JSON.parse(payload); } catch { return true; }
-  const runs = Array.isArray(live?.targets) ? live.targets : live ? [live] : [];
+  const runs = runsFromPayload(live);
   const usable = runs.filter((x) => x && x.target && Array.isArray(x.rounds));
   if (!usable.length) return true;
 

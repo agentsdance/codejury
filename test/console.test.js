@@ -52,6 +52,18 @@ test("legacy related-PR labels distinguish separate workspaces within one minute
   }
 });
 
+test("single-run metadata cannot masquerade as the multi-run response envelope", async () => {
+  const source = await readFile(path.join(root, "web", "index.html"), "utf8");
+  const fn = source.match(/function runsFromPayload\(live\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, "web/index.html must distinguish a run from the response envelope");
+  const runsFromPayload = new Function(`${fn}; return runsFromPayload;`)();
+  const saved = { slug: "saved", target: { id: "#1" }, rounds: [], targets: [] };
+  assert.deepEqual(runsFromPayload(saved), [saved]);
+  const substitute = { slug: "substitute", target: { id: "#2" }, rounds: [] };
+  assert.deepEqual(runsFromPayload({ ...saved, targets: [substitute] }), [{ ...saved, targets: [substitute] }]);
+  assert.deepEqual(runsFromPayload({ targets: [saved] }), [saved]);
+});
+
 /** The console is a single self-contained page, so its render helpers are
  *  lifted out of the <script> block rather than imported. Only the pure ones
  *  come across: the rest reaches for `document` the moment it is evaluated. */
