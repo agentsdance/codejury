@@ -66,6 +66,8 @@ roles still see the same working tree and the workflow's settled findings.
 `jury review --resume <slug>` restores the saved roles; `jury reply --run <slug>`
 routes replies to the saved reviewer session, never the judge session. Use the same
 `--dir` and target arguments as the original run. Other reviewers can be included in the reviewer list.
+Each sent reply is saved with its text so the console can replay the judge's message
+alongside the reviewer's answer.
 
 Separate sessions do not provide model diversity or guarantee independent judgment or
 review quality. Prefer distinct agents when independent perspectives matter. Default reviewer pools still exclude the judge; automatic one-CLI fallback is unchanged.
