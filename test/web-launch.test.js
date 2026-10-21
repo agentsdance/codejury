@@ -107,7 +107,9 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a requ
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill(); await exited; });
   const opened = await waitForOpenReceipt(receipt);
   assert.ok(opened, output);
-  assert.ok(Number(new URL(opened.url).port) > 0, "browser URL must use the listening port");
+  const openedPort = Number(new URL(opened.url).port);
+  assert.ok(openedPort > 0, "browser URL must use the listening port");
+  if (!automaticPort) assert.equal(openedPort, port, "browser URL must preserve the requested available port");
   assert.equal(new URL(opened.url).searchParams.get("run"), "saved");
   const response = await fetch(new URL("/api/run", opened.url));
   assert.equal(response.status, 200);
