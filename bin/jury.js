@@ -1171,6 +1171,7 @@ async function cmdReply(argv) {
     await writeArtifact(dir, replyRaw, r.raw ?? "");
     await appendEvent(dir, {
       t: "reply.answered", agent: a.name, verdict: r.verdict, seconds: r.seconds, report: r.report,
+      sessionId: r.sessionId ?? (resumable ? sessionId : null),
       ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
     });
     console.log(`\n${"─".repeat(64)}\n${a.name} answered (${r.seconds}s)\n${"─".repeat(64)}\n${r.report}`);

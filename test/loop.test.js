@@ -1,13 +1,13 @@
 // The autonomous loop: what makes it terminate, and what it shows while it runs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { appendEvent, readEvents, readArtifact } from "../lib/store.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record, currentJudge } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, conversation, refreshSettled, record, currentJudge, sessionsIn, replyRound } from "../lib/loop.js";
 import { findingsIn } from "../lib/findings.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "jury-loop-"));
@@ -240,6 +240,43 @@ test("a reviewer that could not run is never counted as agreement", async () => 
   assert.equal(out[0].failed, true);
   assert.equal(out[0].clean, false, "a reviewer that never ran agreed to nothing");
   await rm(dir, { recursive: true, force: true });
+});
+
+test("automatic replies persist a discovered session and keep it when resumed output omits the ID", async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const calls = path.join(dir, 'calls.jsonl');
+  const output = 'session: reply-session\nNO NEW FINDINGS';
+  const script = `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(1))+'\\n'); console.log(process.argv[1] === 'fresh' ? ${JSON.stringify(output)} : 'NO NEW FINDINGS');`;
+  const agent = { name: 'fixture', argv: [process.execPath, '-e', script, 'fresh'],
+    resume: { supported: true, argv: [process.execPath, '-e', script, 'resume', '{{sessionId}}'], idFrom: 'session: (\\S+)' } };
+  await appendEvent(dir, { t: 'finding.raised', id: 'A', agent: agent.name, round: 1, claim: 'claim' });
+  await appendEvent(dir, { t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'checked' });
+  for (let round = 1; round <= 3; round++) {
+    const answers = await replyRound({ dir, pool: [agent], cfg: { stopToken: 'NO NEW FINDINGS' }, worktree: dir,
+      sha: 'abc', round, findings: await findingsIn(dir), sessions: sessionsIn(await readEvents(dir)) });
+    assert.equal(answers[0].clean, true);
+    assert.equal(sessionsIn(await readEvents(dir)).get(agent.name), 'reply-session');
+  }
+  assert.deepEqual((await readFile(calls, 'utf8')).trim().split('\n').map(JSON.parse),
+    [['fresh'], ['resume', 'reply-session'], ['resume', 'reply-session']]);
+});
+
+test("reply session folding preserves legacy IDs and keeps judge and newer review sessions separate", () => {
+  const events = [
+    { t: 'agent.report', agent: 'codex', sessionId: 'review' },
+    { t: 'reply.answered', agent: 'codex' },
+    { t: 'judge.session', agent: 'codex', sessionId: 'private-judge' },
+  ];
+  assert.equal(sessionsIn(events).get('codex'), 'review');
+  events.push({ t: 'reply.answered', agent: 'codex', sessionId: 'reply' });
+  events.push({ t: 'reply.answered', agent: 'other', sessionId: 'other-reply' });
+  assert.equal(sessionsIn(events).get('codex'), 'reply');
+  events.push({ t: 'agent.report', agent: 'codex', sessionId: 'new-review' });
+  assert.equal(sessionsIn(events).get('codex'), 'new-review');
+  events.push({ t: 'reply.answered', agent: 'codex', sessionId: null });
+  assert.equal(sessionsIn(events).has('codex'), false);
+  assert.equal(sessionsIn(events).get('other'), 'other-reply');
 });
 
 test("an abandoned launch ends at its own round, not at the present moment", async () => {

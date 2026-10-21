@@ -68,6 +68,8 @@ routes replies to the saved reviewer session, never the judge session. Use the s
 `--dir` and target arguments as the original run. Other reviewers can be included in the reviewer list.
 Each sent reply is saved with its text so the console can replay the judge's message
 alongside the reviewer's answer.
+If a reply starts a fresh session because no review session ID was available, Jury
+saves the new ID for later replies. A newer review replaces that reply session.
 
 Separate sessions do not provide model diversity or guarantee independent judgment or
 review quality. Prefer distinct agents when independent perspectives matter. Default reviewer pools still exclude the judge; automatic one-CLI fallback is unchanged.
