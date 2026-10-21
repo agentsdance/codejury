@@ -217,7 +217,10 @@ test("a merge request already in the caller's repository resolves without the he
   assert.equal(resolved.sha, head);
   // The whole point: a host that pruned refs/merge-requests/195/head cannot
   // break a review whose commits are already on this machine.
-  assert.ok(!calls.some((c) => c.args.startsWith("fetch")));
+  assert.ok(!calls.some((c) =>
+    c.cwd === resolved.worktree && c.args.startsWith("fetch") && c.args.includes("refs/merge-requests/")));
+  assert.ok(calls.some((c) =>
+    c.cwd === resolved.worktree && c.args.includes("refs/heads/main:refs/remotes/origin/main")));
   assert.ok(calls.some((c) => c.args.includes("clone --quiet --no-checkout /repos/widgets")));
   // Cloning from disk leaves origin pointing at a filesystem path; pushing
   // there would never reach the real remote.
@@ -226,7 +229,7 @@ test("a merge request already in the caller's repository resolves without the he
   assert.ok(resolved.worktree.startsWith("/home/dev/.jury/checkouts/"));
 });
 
-test("a local merge request checkout fetches its discovered trunk ref", async (t) => {
+test("a local merge request checkout refreshes its discovered trunk ref", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "jury-local-mr-trunk-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const remote = path.join(root, "remote.git");
@@ -240,13 +243,19 @@ test("a local merge request checkout fetches its discovered trunk ref", async (t
   await writeFile(path.join(seed, "a.txt"), "base\n");
   await git(seed, "add", "a.txt");
   await git(seed, "commit", "-qm", "base");
+  await git(seed, "push", "-q", remote, "main");
+  await run("git", ["clone", "-q", remote, caller]);
+  await writeFile(path.join(seed, "trunk-only.txt"), "new trunk work\n");
+  await git(seed, "add", "trunk-only.txt");
+  await git(seed, "commit", "-qm", "advance main");
+  const { stdout: trunkHead } = await git(seed, "rev-parse", "HEAD");
+  await git(seed, "push", "-q", remote, "main");
   await git(seed, "checkout", "-qb", "feature");
   await writeFile(path.join(seed, "a.txt"), "feature\n");
   await git(seed, "commit", "-qam", "feature");
-  await git(seed, "push", "-q", remote, "main", "feature");
-  await run("git", ["clone", "-q", "--single-branch", "--branch", "feature", remote, caller]);
-  const { stdout: head } = await git(caller, "rev-parse", "HEAD");
-  await git(caller, "update-ref", "refs/merge-requests/195/head", head.trim());
+  await git(seed, "push", "-q", remote, "feature");
+  const { stdout: featureHead } = await git(seed, "rev-parse", "HEAD");
+  await git(remote, "update-ref", "refs/merge-requests/195/head", featureHead.trim());
   await git(caller, "remote", "set-url", "origin", "https://git.example.com/acme/widgets.git");
 
   const exec = (command, args, options) => {
@@ -263,6 +272,14 @@ test("a local merge request checkout fetches its discovered trunk ref", async (t
 
   assert.equal(resolved.trunk, "main");
   await assertTrunk(resolved.worktree, resolved.trunk);
+  const { stdout: hydratedTrunk } = await git(
+    resolved.worktree, "rev-parse", "refs/remotes/origin/main",
+  );
+  assert.equal(hydratedTrunk.trim(), trunkHead.trim());
+  const { stdout: diff } = await git(
+    resolved.worktree, "diff", "refs/remotes/origin/main...HEAD", "--",
+  );
+  assert.doesNotMatch(diff, /trunk-only|new trunk work/);
 });
 
 test("a local repository for a different project is never reviewed under this request's name", async () => {
