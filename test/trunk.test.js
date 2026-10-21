@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm, access } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, readdir, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -9,6 +9,7 @@ import { buildPrompt } from '../lib/prompt.js';
 import { triagePrompt } from '../lib/triage.js';
 import { groupContext } from '../lib/review-group.js';
 import { assertTrunk, diffCommand } from '../lib/trunk.js';
+import { groupFixture } from './helpers/group-fixture.js';
 const exec = promisify(execFile);
 const cli = process.env.JURY_TEST_CLI ?? new URL('../bin/jury.js', import.meta.url).pathname;
 async function fixture(t) {
@@ -69,6 +70,27 @@ test('invalid trunk is rejected before checking agent installation', async t => 
     exec(process.execPath, [cli, 'review', '--dir', dir, '--trunk', 'missing', '--judge', 'judge', '--reviewer', 'reviewer', '--web=false', '--push=false'], { cwd: dir }),
     error => error.code === 1 && /invalid trunk/.test(error.stderr) && !/not installed/.test(error.stderr),
   );
+});
+
+test('a related-PR invalid trunk removes its unrecorded workspace before checking agent installation', async t => {
+  const fixture = await groupFixture(t);
+  const primary = fixture.members[0];
+  const configPath = path.join(primary.repo, 'jury.config.json');
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  config.agents.find(agent => agent.name === 'codex').argv = ['jury-deliberately-missing-agent'];
+  await writeFile(configPath, JSON.stringify(config));
+  await fixture.git(primary.repo, 'commit', '-qam', 'missing judge');
+  await fixture.git(primary.repo, 'push', primary.remote, primary.branch);
+  primary.sha = await fixture.git(primary.repo, 'rev-parse', 'HEAD');
+  await fixture.git(primary.remote, 'update-ref', 'refs/pull/7/head', primary.sha);
+  fixture.members[1].base = 'missing';
+  await writeFile(path.join(fixture.root, 'members.json'), JSON.stringify(fixture.members));
+
+  const result = await fixture.review(['--push=false']);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid trunk/);
+  assert.doesNotMatch(result.stderr, /not installed/);
+  assert.deepEqual(await readdir(path.join(fixture.state, 'checkouts')), []);
 });
 
 test('bare nested branch names are not normalized or confused with local refs', async t => {

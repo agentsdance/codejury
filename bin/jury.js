@@ -537,7 +537,17 @@ async function cmdAgent(argv) {
   const trunk = values.trunk ?? group?.targets[0].trunk ?? resolved?.trunk ?? (await defaultTrunk(worktree));
   values.trunk = trunk;
   if (group) {
-    for (const t of group.targets) await assertTrunk(t.worktree, t.trunk);
+    try {
+      for (const t of group.targets) await assertTrunk(t.worktree, t.trunk);
+    } catch (error) {
+      // A new group is not resumable until its workspace has been recorded.
+      // Do not strand complete clones when validation fails before that point.
+      if (group.discard) {
+        resolvedCheckoutCleanup = null;
+        await group.discard();
+      }
+      throw error;
+    }
   } else await assertTrunk(worktree, trunk);
   const pr = group ? { title: group.targets.map(t => t.title || t.url).join(" + "), summary: "" } : resolved ?? await prDetails(values.pr, worktree);
 

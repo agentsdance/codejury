@@ -11,6 +11,7 @@ import {
   repositoryFromRemote,
   resolvePrCheckout,
 } from "../lib/repository.js";
+import { assertTrunk } from "../lib/trunk.js";
 
 const run = promisify(execFile);
 
@@ -223,6 +224,45 @@ test("a merge request already in the caller's repository resolves without the he
   assert.ok(calls.some((c) =>
     c.args === "remote set-url origin https://git.example.com/acme/platform/widgets.git"));
   assert.ok(resolved.worktree.startsWith("/home/dev/.jury/checkouts/"));
+});
+
+test("a local merge request checkout fetches its discovered trunk ref", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "jury-local-mr-trunk-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const remote = path.join(root, "remote.git");
+  const seed = path.join(root, "seed");
+  const caller = path.join(root, "caller");
+  await run("git", ["init", "--bare", "-q", "-b", "main", remote]);
+  await run("git", ["init", "-q", "-b", "main", seed]);
+  const git = (dir, ...args) => run("git", ["-C", dir, ...args]);
+  await git(seed, "config", "user.email", "t@example.com");
+  await git(seed, "config", "user.name", "t");
+  await writeFile(path.join(seed, "a.txt"), "base\n");
+  await git(seed, "add", "a.txt");
+  await git(seed, "commit", "-qm", "base");
+  await git(seed, "checkout", "-qb", "feature");
+  await writeFile(path.join(seed, "a.txt"), "feature\n");
+  await git(seed, "commit", "-qam", "feature");
+  await git(seed, "push", "-q", remote, "main", "feature");
+  await run("git", ["clone", "-q", "--single-branch", "--branch", "feature", remote, caller]);
+  const { stdout: head } = await git(caller, "rev-parse", "HEAD");
+  await git(caller, "update-ref", "refs/merge-requests/195/head", head.trim());
+  await git(caller, "remote", "set-url", "origin", "https://git.example.com/acme/widgets.git");
+
+  const exec = (command, args, options) => {
+    const rewritten = command === "git" && (args.includes("fetch") || args.includes("ls-remote"))
+      ? args.map((arg) => arg === "origin" ? remote : arg)
+      : args;
+    return run(command, rewritten, options);
+  };
+  const resolved = await resolvePrCheckout(
+    "https://git.example.com/acme/widgets/-/merge_requests/195",
+    { allowPush: false, exec, dir: caller, root },
+  );
+  t.after(resolved.cleanup);
+
+  assert.equal(resolved.trunk, "main");
+  await assertTrunk(resolved.worktree, resolved.trunk);
 });
 
 test("a local repository for a different project is never reviewed under this request's name", async () => {
