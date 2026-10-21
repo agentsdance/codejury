@@ -52,6 +52,63 @@ test('Codex selects final assistant text and rejects failed, empty or unfinished
   assert.throws(() => extractReport('NO NEW FINDINGS', 'codex-json'), /Invalid Codex JSON/);
 });
 
+// Synthetic equivalent of an observed CLI stream: a reconnect error was
+// followed by more tool work, a final finding, turn.completed and exit 0.
+// Provider IDs, tool output and report text are fixture data, not a transcript.
+const reconnect = { type: 'error', message: 'Reconnecting... 1/5 (exceeded retry limit, last status: 429 Too Many Requests)' };
+const recoveredFinding = 'FINDING: [P2] A completed review must survive a recovered connection error\nWHERE: fixture.js:1\nThe final finding is still actionable.';
+const recovered = [
+  { type: 'thread.started', thread_id: providerId },
+  { type: 'turn.started' }, reconnect,
+  message('I will check the affected path.'),
+  { type: 'item.started', item: { id: 'tool', type: 'command_execution' } },
+  { type: 'item.completed', item: { id: 'tool', type: 'command_execution', aggregated_output: 'fixture output' } },
+  message(recoveredFinding), { type: 'turn.completed' },
+];
+
+test('Codex retains a completed finding after a recovered reconnect error', async () => {
+  const result = await runAgent(fake(recovered), options);
+  assert.equal(result.ok, true, result.report);
+  assert.equal(result.verdict, 'found');
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.report, recoveredFinding);
+  assert.equal(result.sessionId, providerId);
+  assert.equal(result.raw, lines(recovered), 'retain the diagnostic in the raw artifact');
+});
+
+test('Codex recognizes recovery from later completion rather than error wording', () => {
+  const events = [{ type: 'turn.started' }, reconnect,
+    { type: 'error', message: 'Temporary stream interruption' },
+    message('NO NEW FINDINGS'), { type: 'turn.completed' }];
+  assert.equal(extractReport(lines(events), 'codex-json'), 'NO NEW FINDINGS');
+});
+
+test('Codex does not reuse a report preceding an unrecovered error', () => {
+  for (const tail of [[], [{ type: 'turn.completed' }], [message('NO NEW FINDINGS')],
+    [message(''), { type: 'turn.completed' }],
+    [{ type: 'item.completed', item: { type: 'command_execution', aggregated_output: 'NO NEW FINDINGS' } }, { type: 'turn.completed' }],
+  ]) {
+    assert.throws(() => extractReport(lines([...completed('NO NEW FINDINGS'), reconnect, ...tail]), 'codex-json'), /Codex failed: Reconnecting/);
+  }
+});
+
+test('Codex rejects terminal failures and malformed output even after apparent recovery', () => {
+  const failed = { type: 'turn.failed', error: { message: 'terminal failure' } };
+  for (const events of [[...recovered, failed], [failed, ...recovered]]) {
+    assert.throws(() => extractReport(lines(events), 'codex-json'), /Codex failed: terminal failure/);
+  }
+  assert.throws(() => extractReport(lines(recovered) + 'broken JSON\n', 'codex-json'), /Invalid Codex JSON/);
+});
+
+test('Codex still rejects a nonzero process exit after a recovered stream', async () => {
+  const result = await runAgent(fake(recovered, prose, 2), options);
+  assert.equal(result.ok, false);
+  assert.equal(result.verdict, 'error');
+  assert.match(result.report, /exited 2/);
+  assert.equal(result.sessionId, providerId);
+  assert.equal(result.raw, lines(recovered));
+});
+
 test('Codex keeps only known or provider-established IDs after failures', async () => {
   const events = [{ type: 'thread.started', thread_id: providerId }];
   const failed = await runAgent(fake([...events, ...completed(prose)], prose, 2), options);
