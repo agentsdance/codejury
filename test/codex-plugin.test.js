@@ -86,3 +86,67 @@ test('plugin launcher rejects an incomplete cache without replacing user files',
     assert.equal(readFileSync(path.join(install, 'keep.txt'), 'utf8'), 'preserve');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('plugin launcher reuses a cache published after its initial miss', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'codejury-cache-race-'));
+  try {
+    const cache = path.join(root, 'cache');
+    const bin = path.join(root, 'bin');
+    const calls = path.join(root, 'npm-calls');
+    const peerResult = path.join(root, 'peer.json');
+    const metadata = path.join(cache, '0.8.2-rc.1', 'node_modules', '@agentsdance', 'codejury', 'package.json');
+    mkdirSync(bin);
+    const fixture = path.join(bin, 'npm.cjs');
+    writeFileSync(fixture, `#!${process.execPath}
+      const fs = require('node:fs'), path = require('node:path');
+      fs.appendFileSync(${JSON.stringify(calls)}, 'install\\n');
+      const pkg = path.join(process.cwd(), 'node_modules', '@agentsdance', 'codejury');
+      fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.8.2-rc.1', type: 'module' }));
+      fs.writeFileSync(path.join(pkg, 'bin', 'jury.js'), 'console.log("cached fixture CLI");');
+    `);
+    if (process.platform === 'win32') {
+      writeFileSync(path.join(bin, 'npm.cmd'), `@"${process.execPath}" "${fixture}" %*\r\n`);
+    } else {
+      writeFileSync(path.join(bin, 'npm'), readFileSync(fixture), { mode: 0o755 });
+    }
+    const preload = path.join(root, 'interleave.mjs');
+    // Finish a second real launcher between the first launcher's failed read
+    // and its directory check. This reproduces the interleaving without sleeps.
+    writeFileSync(preload, `
+      import fs from 'node:fs';
+      import { spawnSync } from 'node:child_process';
+      import { syncBuiltinESMExports } from 'node:module';
+      const original = fs.readFileSync;
+      let fired = false;
+      fs.readFileSync = function(file, ...args) {
+        try { return original.call(this, file, ...args); }
+        catch (error) {
+          if (!fired && file === ${JSON.stringify(metadata)} && error.code === 'ENOENT') {
+            fired = true;
+            const result = spawnSync(process.execPath, [${JSON.stringify(launcher)}, 'version'], {
+              env: process.env, encoding: 'utf8', timeout: 10000,
+            });
+            fs.writeFileSync(${JSON.stringify(peerResult)}, JSON.stringify({ status: result.status, stdout: result.stdout, stderr: result.stderr }));
+            if (result.error) throw result.error;
+            if (result.status !== 0) throw new Error('peer launcher failed');
+          }
+          throw error;
+        }
+      };
+      syncBuiltinESMExports();
+    `);
+    const result = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, launcher, 'version'], {
+      env: { ...process.env, CODEJURY_PLUGIN_CACHE: cache, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+      encoding: 'utf8', timeout: 20000,
+    });
+    assert.ifError(result.error);
+    const peer = JSON.parse(readFileSync(peerResult, 'utf8'));
+    assert.equal(peer.status, 0, peer.stderr);
+    assert.equal(peer.stdout.trim(), 'cached fixture CLI');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'cached fixture CLI');
+    assert.equal(readFileSync(calls, 'utf8'), 'install\n', 'the completed cache must be reused without another installation');
+    assert.equal(JSON.parse(readFileSync(metadata, 'utf8')).version, '0.8.2-rc.1');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
