@@ -316,6 +316,47 @@ test("a delayed older reply send cannot suppress a newer snapshot's reply sessio
   assert.equal(sessionsIn(events).get('codex'), 'new-reply-session');
 });
 
+test("concurrent replies retain a usable session despite abandoned or no-ID replies", () => {
+  for (const withCursor of [false, true]) {
+    const sent = replyId => ({ t: 'reply.sent', agent: 'codex', replyId,
+      ...(withCursor ? { sessionCursor: 0 } : {}) });
+    const answered = replyId => ({ t: 'reply.answered', agent: 'codex', replyId,
+      sessionId: replyId === 'valid' ? 'usable-session' : null });
+    for (const starts of [['valid', 'failed'], ['failed', 'valid']]) {
+      for (const finishes of [['valid', 'failed'], ['failed', 'valid'], ['valid']]) {
+        const events = starts.map(sent);
+        for (const replyId of finishes) {
+          events.push(answered(replyId));
+          if (events.some(e => e.t === 'reply.answered' && e.replyId === 'valid')) {
+            assert.equal(sessionsIn(events).get('codex'), 'usable-session',
+              JSON.stringify({ withCursor, starts, finishes, replyId }));
+          }
+        }
+      }
+    }
+  }
+});
+
+test("reply snapshots guard accepted session changes and allow subsequent turns", () => {
+  const sent = (replyId, sessionCursor) => ({ t: 'reply.sent', agent: 'codex', replyId, sessionCursor });
+  const answered = (replyId, sessionId) => ({ t: 'reply.answered', agent: 'codex', replyId, sessionId });
+  for (const delayedSend of [false, true]) {
+    const events = [sent('first', 0)];
+    if (!delayedSend) events.push(sent('stale', 0));
+    events.push(answered('first', 'usable-session'));
+    if (delayedSend) events.push(sent('stale', 0));
+    events.push(answered('stale', 'wrong-session'));
+    assert.equal(sessionsIn(events).get('codex'), 'usable-session');
+    events.push(sent('next', events.length), answered('next', 'next-session'));
+    assert.equal(sessionsIn(events).get('codex'), 'next-session');
+  }
+  for (const newerSession of [null, 'new-review']) {
+    const events = [sent('old', 0), sent('new', 0), answered('new', 'reply-session'),
+      { t: 'agent.report', agent: 'codex', sessionId: newerSession }, answered('old', 'stale-session')];
+    assert.equal(sessionsIn(events).get('codex'), newerSession ?? undefined);
+  }
+});
+
 test("a reply snapshot cannot overwrite a review recorded before reply.sent", () => {
   for (const sessionId of ['session-b', null]) {
     const events = [
