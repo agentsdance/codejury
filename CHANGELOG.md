@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Support a saved `--language` preference for reviewer findings, judge explanations,
+  replies and code-fix summaries, including language switches on resumed runs (#124).
+
 ## 0.9.0 — 2026-10-22
 
 - Publish the stable CLI with the changes from `0.8.2-rc.1` and the additions below.

@@ -190,6 +190,36 @@ test("a reviewer's rebuttal is not the same words as the reply it was cut from",
   await rm(dir, { recursive: true, force: true });
 });
 
+for (const { label, language, claim, report, contested } of [
+  { label: "中文反驳", language: "zh-CN", claim: "缺少权限检查", report: "我仍然不同意：缺少权限检查的问题依然存在。", contested: true },
+  { label: "中文短标题", language: "zh-CN", claim: "数值错误", report: "我仍然不同意：数值错误依然存在。", contested: true },
+  { label: "英文反驳", language: "en", claim: "Missing authorization check", report: "I still disagree: the missing authorization check still exists.", contested: true },
+  { label: "无关中文回复", language: "zh-CN", claim: "缺少权限检查", report: "请再检查一下输出格式。", contested: false },
+  { label: "停止标记", language: "zh-CN", claim: "缺少权限检查", report: "NO NEW FINDINGS", contested: false },
+]) test(`无文件路径的回复按标题重新进入 triage：${label}`, async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const agent = { name: "fixture", argv: [process.execPath, "-e", `console.log(${JSON.stringify(report)})`],
+    resume: { supported: false } };
+  for (const [id, title, loc] of [["A", claim, "auth.js:20"], ["B", "资源释放失败", "resource.js:10"]]) {
+    await appendEvent(dir, { t: "finding.raised", id, round: 1, agent: agent.name, claim: title, loc });
+    await appendEvent(dir, { t: "finding.resolved", id, verdict: "rejected", reason: "已检查" });
+  }
+  const [answer] = await replyRound({
+    dir, pool: [agent], cfg: { stopToken: "NO NEW FINDINGS" }, worktree: dir,
+    sha: "abc", round: 1, findings: await findingsIn(dir), language,
+  });
+  assert.equal(answer.failed, false);
+  assert.equal(answer.raised, 0, "反驳应关联原 finding，而不是创建新问题");
+  const events = await readEvents(dir), findings = await findingsIn(dir);
+  const turns = events.filter(e => e.t === "finding.turn");
+  assert.deepEqual(turns.map(e => e.id), contested ? ["A"] : [], "只记录回复提到的问题");
+  if (contested) assert.equal(turns[0].text, report);
+  assert.equal(findings.get("A").contested, contested, "争议标记必须从事件日志恢复");
+  assert.equal(findings.get("B").contested, false, "不得重新打开无关问题");
+  assert.deepEqual(outstanding(findings, events).map(f => f.id), contested ? ["A"] : [], "反驳必须交回 judge");
+});
+
 test("streaming chunks collapse into one live turn, and the report replaces it", async () => {
   const dir = await tmp();
   await appendEvent(dir, { t: "agent.chunk", agent: "codex", round: 1, text: "reading " });
@@ -240,6 +270,34 @@ test("a reviewer that could not run is never counted as agreement", async () => 
   assert.equal(out[0].failed, true);
   assert.equal(out[0].clean, false, "a reviewer that never ran agreed to nothing");
   await rm(dir, { recursive: true, force: true });
+});
+
+for (const { label, language, claim, nextClaim, raised } of [
+  { label: "中文不同标题", language: "zh-CN", claim: "数值错误", nextClaim: "缺少权限检查", raised: 1 },
+  { label: "英文不同标题", language: "en", claim: "Incorrect value", nextClaim: "Missing authorization check", raised: 1 },
+  { label: "中文重复标题", language: "zh-CN", claim: "缺少权限检查", nextClaim: "缺少权限检查！", raised: 0 },
+  { label: "英文重复标题", language: "en", claim: "Missing authorization check", nextClaim: "MISSING authorization check!", raised: 0 },
+]) test(`回复去重保留不同位置的新问题：${label}`, async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const report = `FINDING: ${nextClaim}\nWHERE: auth.js:20\n需要检查权限。`;
+  const agent = { name: "fixture", argv: [process.execPath, "-e", `console.log(${JSON.stringify(report)})`],
+    resume: { supported: false } };
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: agent.name, claim, loc: "value.js:1" });
+  await appendEvent(dir, { t: "finding.resolved", id: "A", verdict: "rejected", reason: "已检查" });
+
+  const [answer] = await replyRound({
+    dir, pool: [agent], cfg: { stopToken: "NO NEW FINDINGS" }, worktree: dir,
+    sha: "abc", round: 1, findings: await findingsIn(dir), language,
+  });
+  assert.equal(answer.failed, false);
+  assert.equal(answer.clean, false);
+  assert.equal(answer.raised, raised, "只有重复标题才能被过滤，不同中文标题必须保留");
+  const events = await readEvents(dir);
+  const fresh = events.filter(e => e.t === "finding.raised" && e.id !== "A");
+  assert.equal(fresh.length, raised, "新问题必须写入事件日志");
+  assert.deepEqual(outstanding(await findingsIn(dir), events).filter(f => f.id !== "A").map(f => ({ claim: f.claim, loc: f.loc })),
+    raised ? [{ claim: nextClaim, loc: "auth.js:20" }] : [], "新问题必须进入下一轮 triage");
 });
 
 test("automatic replies persist a discovered session and keep it when resumed output omits the ID", async t => {

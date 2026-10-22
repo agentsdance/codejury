@@ -17,13 +17,14 @@ import { automaticRoles, automaticReviewers } from "../lib/roles.js";
 import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, saveGlobalReviewers, defaultReviewers, savedReviewersNote, globalConfigPath, applyModelFlags, assertModelsSupported, modelsUsed, saveGlobalModel, modelProblem } from "../lib/config.js";
 import { runAgent, probe, supportsModel } from "../lib/agents.js";
 import { usageFromEvents, printUsage } from "../lib/usage.js";
+import { normalizeLanguage, languageIn } from "../lib/language.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { assertTrunk } from "../lib/trunk.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, publishEvents, readEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, judgeSessionIn, openFindings, currentJudge } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, recordReplyDisputes, record, sessionsIn, judgeSessionIn, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, parsePrUrl, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
@@ -112,6 +113,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --jury <name>              same as --reviewer
   --judge <agent>            one agent that triages and fixes                      (default: configured, auto for 1–2 installed CLIs, then codex)
   --model <agent>=<model>    this run's model for an agent, repeatable             (default: jury.config.json, then jury agents model)
+  --language <tag>           response language, e.g. en or zh-CN; saved with the run
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
   --web-only                 view saved reviews without running agents
@@ -258,6 +260,7 @@ async function commandDirectory(value) {
 async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, announceCompletion = true }) {
   const git = { sha };
   console.log(st.info(st.bold(`round ${round}`)));
+  target.language = normalizeLanguage(languageIn(await readEvents(dir)) ?? target.language);
 
   // Built before the round opens so the exact text handed to the reviewers is
   // part of the record. A verdict is only readable next to the question asked.
@@ -478,6 +481,7 @@ async function cmdAgent(argv) {
     summary: { type: "string" },
     trunk: { type: "string" },
     rounds: { type: "string", default: "10" },
+    language: { type: "string" },
     ...reviewerOptions,
     judge: { type: "string" },
     model: { type: "string", multiple: true },
@@ -486,6 +490,7 @@ async function cmdAgent(argv) {
     "dry-run": { type: "boolean", default: false },
     port: { type: "string", default: "3080" },
   });
+  const requestedLanguage = normalizeLanguage(values.language);
   if (values.judge?.includes(",")) throw new Error("--judge accepts exactly one agent, not a list");
 
   // The PR link is the argument. `--pr` still works, but a flag for the one
@@ -507,9 +512,10 @@ async function cmdAgent(argv) {
   // one ref the host may have pruned — rather than reading what is on disk —
   // is what issue #30 was.
   const resolveFrom = values.dir ? path.resolve(values.dir) : process.cwd();
-  const priorTargets = values.resume
-    ? [...await readEvents(path.join(runsDir(requestedWorktree), path.basename(values.resume)))].reverse()
-      .find(e => e.t === "target")?.target : null;
+  const priorEvents = values.resume
+    ? await readEvents(path.join(runsDir(requestedWorktree), path.basename(values.resume))) : [];
+  const priorTargets = priorEvents.findLast(e => e.t === "target")?.target;
+  const language = normalizeLanguage(requestedLanguage ?? languageIn(priorEvents));
   if (priorTargets?.targets && urls.length < 2) throw new Error("resuming a related-PR task requires all original PR URLs");
   if (urls.length > 1 && values.resume && !priorTargets?.targets) throw new Error("no related-PR task found to resume");
   if (priorTargets?.targets && !argv.some(a => a === "--push" || a.startsWith("--push="))) {
@@ -580,6 +586,7 @@ async function cmdAgent(argv) {
     trunk,
     state: "review",
     stateNote: "",
+    ...(language ? { language } : {}),
   };
   if (group) Object.assign(target, {
     targets: group.targets, workspace: group.worktree, pushEnabled: values.push, repo: "related-prs",
@@ -639,6 +646,9 @@ async function cmdAgent(argv) {
   }
   assertModelsSupported([judge, ...pool]);
   target.models = modelsUsed([judge, ...pool]);
+  if (requestedLanguage !== undefined) {
+    await appendEvent(dir, { t: "language.changed", language: requestedLanguage });
+  }
   if (!values["dry-run"]) {
     const checks = await Promise.all(pool.map(probe));
     const missing = checks.filter(a => !a.ok);
@@ -674,6 +684,7 @@ async function cmdAgent(argv) {
   console.log(st.field("judge", st.agent(judge.name)));
   console.log(st.field("juries", pool.map((a) => st.agent(a.name)).join(", ")
     + (values["dry-run"] ? st.warn("  (dry run)") : "")));
+  if (target.language) console.log(st.field("language", target.language));
   if (target.models) {
     console.log(st.field("models", Object.entries(target.models).map(([n, m]) => `${st.agent(n)} ${m}`).join(", ")));
   }
@@ -735,6 +746,9 @@ async function cmdAgent(argv) {
         return;
       }
     }
+    let findings = await findingsIn(dir);
+    const events = await readEvents(dir);
+    const todo = outstanding(findings, events);
     if (result.clean) {
       // Clean is not enough on its own. A finding left open by the previous
       // round — triage failed, the gate refused the verdict, or a reply raised
@@ -742,8 +756,8 @@ async function cmdAgent(argv) {
       // reviewers, because settled.md lists only what has a verdict. They can
       // all sign off in good faith while it sits unanswered. Fall through and
       // triage it; the round-end check below is the one that may declare
-      // convergence.
-      const open = await openFindings(dir);
+      // convergence. Saved rebuttals also need triage, subject to the same
+      // per-finding turn limit as a round that raises new findings.
       const pending = group ? await groupReady(group.targets, values.push) : null;
       if (pending || pushFailed) {
         const reason = pending ?? "a push failed";
@@ -751,7 +765,7 @@ async function cmdAgent(argv) {
         await publishRun(dir, { ...target, state: "human", stateNote: reason });
         return;
       }
-      if (!open.length) {
+      if (!todo.length) {
         console.log(st.ok(`\nREVIEW COMPLETE after ${st.count(round - first + 1, "round")}.`));
         console.log(st.muted(`Reviewed commit ${head.sha}.`));
         await publishRun(dir, {
@@ -759,12 +773,8 @@ async function cmdAgent(argv) {
         });
         return;
       }
-      console.log(st.warn(`\nevery reviewer is clean, but ${st.count(open.length, "finding")} from earlier ${open.length === 1 ? "is" : "are"} still open.`));
+      console.log(st.warn(`\nevery reviewer is clean, but ${st.count(todo.length, "finding")} from earlier ${todo.length === 1 ? "is" : "are"} still open or contested.`));
     }
-
-    let findings = await findingsIn(dir);
-    const events = await readEvents(dir);
-    const todo = outstanding(findings, events);
 
     // Nothing to answer and nobody signed off: the reviewers produced prose
     // this parser could not track. Another identical round will not fix that.
@@ -809,6 +819,7 @@ async function cmdAgent(argv) {
       try {
         v = await triageOne(judge, f, {
           worktree, trunk, context: group ? groupContext(group.targets) : "", stopToken: cfg.stopToken, dryRun: values["dry-run"],
+          language: normalizeLanguage(languageIn(await readEvents(dir)) ?? target.language),
           usageContext: { dir, round, action: "fix", findingId: f.id },
           sessionId: judgeSessionId,
           onLog: (m) => console.log(`          ${st.muted(m)}`),
@@ -884,6 +895,7 @@ async function cmdAgent(argv) {
     const replyEvents = await readEvents(dir);
     const answers = await replyRound({
       dir, pool, cfg, worktree, sha: finalHead.sha, context: group ? groupContext(group.targets) : "", targets: group?.targets, round, findings: after, judge: judge.name,
+      language: normalizeLanguage(languageIn(replyEvents) ?? target.language),
       sessions: sessionsIn(replyEvents), sessionCursor: replyEvents.length,
       dryRun: values["dry-run"],
       // Prefixed like the launch line: without a name this printed a bare
@@ -901,17 +913,14 @@ async function cmdAgent(argv) {
       console.log(`${st.dim("reply")}    ${st.agent(a.agent.padEnd(8))} ${a.failed ? st.bad(what) : a.clean ? st.ok(what) : st.warn(what)}`);
     }
 
-    // Convergence is three things, and the first one was missing: every
-    // reviewer signed off, no reviewer failed to run, AND nothing is still
-    // open. Without the last, a round that raised findings nobody triaged
-    // reported success — every thread had nothing to answer, "nothing to
-    // answer" counted as clean, and the run exited having addressed none of it.
+    // Both convergence checks use the same pending-work and turn-limit rules.
+    // A clean reply cannot resolve a dispute the judge failed to answer.
     const settled = await findingsIn(dir);
-    const stillOpen = [...settled.values()].filter((f) => f.status === "open");
+    const stillOutstanding = outstanding(settled, await readEvents(dir));
     const broke = answers.filter((a) => a.failed);
     const pending = group ? await groupReady(group.targets, values.push) : await reviewedHeadProblem(worktree, finalHead.fullSha);
     if (pending) console.log(st.warn(`Review incomplete: ${pending}.`));
-    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed && !pending && !(group && fixed)) {
+    if (answers.every((a) => a.clean) && !stillOutstanding.length && !broke.length && !pushFailed && !pending && !(group && fixed)) {
       console.log(st.ok(st.bold(`\nREVIEW COMPLETE — every reviewer approved after round ${round}.`)));
       console.log(st.muted(`Reviewed commit ${finalHead.sha}.`));
       await publishRun(dir, {
@@ -919,8 +928,8 @@ async function cmdAgent(argv) {
       });
       return;
     }
-    if (stillOpen.length) {
-      console.log(st.warn(`\n${st.count(stillOpen.length, "finding")} still open — review incomplete.`));
+    if (stillOutstanding.length) {
+      console.log(st.warn(`\n${st.count(stillOutstanding.length, "finding")} still open or contested — review incomplete.`));
     }
     if (broke.length) {
       const reason = `reviewer replies failed: ${broke.map(a => a.agent).join(", ")}`;
@@ -1139,10 +1148,12 @@ async function cmdReply(argv) {
       dir: { type: "string" },
       ...reviewerOptions,
       model: { type: "string", multiple: true },
+      language: { type: "string" },
       "dry-run": { type: "boolean", default: false },
     },
   });
 
+  const requestedLanguage = normalizeLanguage(values.language);
   const worktree = await commandDirectory(values.dir);
   const cfg = await loadConfig(worktree);
   applyModelFlags(cfg, values.model);
@@ -1153,6 +1164,7 @@ async function cmdReply(argv) {
   const { sha } = await describe(worktree, "master");
 
   const savedTarget = [...events].reverse().find(e => e.t === "target")?.target;
+  const language = normalizeLanguage(requestedLanguage ?? languageIn(events));
   const roles = savedTarget?.sameAgentRoles ?? savedTarget?.automaticRoles;
   let pool = roles ? automaticReviewers(cfg, roles, requestedReviewers(values))
     : selectReviewers(cfg, requestedReviewers(values), judge);
@@ -1165,6 +1177,10 @@ async function cmdReply(argv) {
   if (!pool.length) throw new Error("nothing to reply about — resolve some findings first");
   assertModelsSupported(pool);
 
+  if (requestedLanguage !== undefined && !values["dry-run"]) {
+    await appendEvent(dir, { t: "language.changed", language });
+  }
+  if (language) console.log(`language ${language}`);
   console.log(`judge    ${judge}`);
   console.log(`replying ${pool.map((a) => a.name).join(", ")}  (separate conversations)`);
   console.log("");
@@ -1174,7 +1190,7 @@ async function cmdReply(argv) {
     const sessionId = sessionsIn(events).get(a.name);
     const resumable = replyArgv(a, { sessionId }).resumed;
     const text = buildReply({
-      agent: a.name, thread, sha, worktree,
+      agent: a.name, thread, sha, worktree, language,
       // Without a session there is nothing carrying its review, so its own
       // findings have to travel with the reply.
       quotePrior: !resumable, stopToken: cfg.stopToken,
@@ -1209,6 +1225,7 @@ async function cmdReply(argv) {
       sessionId: r.sessionId ?? (resumable ? sessionId : null),
       ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
     });
+    await recordReplyDisputes(dir, a.name, thread, r);
     console.log(`\n${"─".repeat(64)}\n${a.name} answered (${r.seconds}s)\n${"─".repeat(64)}\n${r.report}`);
     return r;
   }));
