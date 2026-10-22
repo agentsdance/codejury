@@ -109,6 +109,10 @@ jury help review                      # complete review options
 `jury <pr-url>` is shorthand for `jury review <pr-url>`. You can also run without installing:
 `npx @agentsdance/codejury review <pr-url> --reviewer claude --push=false`.
 
+Select generated prose with `--language en` or `--language zh-CN`. Jury saves the
+preference across rounds, replies and resumed runs; pass the flag again to switch.
+See [response language](docs/usage.md#response-language) for examples.
+
 ## Codex desktop plugin
 
 The standalone plugin in [`plugins/codejury`](plugins/codejury) provides setup,

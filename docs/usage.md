@@ -154,6 +154,27 @@ share history with HEAD; fetch the base branch before reviewing if needed.
 Jury validates this before launching agents. Review prompts use Git’s triple-dot
 diff to compare HEAD to the merge base, and fail if that base becomes unavailable.
 
+## Response language
+
+Choose the language of agent-written findings, summaries, judge reasons, replies
+and code-fix explanations with a language tag such as `en` or `zh-CN`:
+
+```bash
+jury review https://github.com/owner/repo/pull/123 --language zh-CN
+jury review https://github.com/owner/repo/pull/123 --resume <slug> --language en
+jury reply --dir <worktree> --run <slug> --language zh-CN
+```
+
+The preference is saved with the run and passed to every reviewer and judge.
+Subsequent rounds, replies and resumed runs reuse it when the flag is omitted.
+Pass the flag again to switch languages, including when answering comments written
+in another language. `reply --dry-run --language en` previews that language without
+saving the change. A new run with no language option keeps the existing behavior.
+
+Tags are validated and canonicalized (`zh-cn` becomes `zh-CN`). The preference
+controls generated prose; programming syntax, identifiers, existing code conventions,
+JSON keys, verdict values and exact protocol/stop markers remain unchanged.
+
 ## Token usage
 
 The CLI and saved-run console show input, output and total tokens for every review,

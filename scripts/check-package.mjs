@@ -24,7 +24,7 @@ const exec = (label, command, args, options = {}) => {
 try {
   const [packed] = JSON.parse(exec('npm pack', npm, ['pack', '--json', '--pack-destination', temporary]));
   const files = packed.files.map(f => f.path);
-  for (const required of ['bin/jury.js', 'lib/review-group.js', 'lib/agents/kimi-reviewer.md', 'web/index.html', 'jury.config.example.json', 'LICENSE', 'README.md', 'docs/usage.md', 'docs/console-demo.html']) assert.ok(files.includes(required), `missing ${required}`);
+  for (const required of ['bin/jury.js', 'lib/review-group.js', 'lib/language.js', 'lib/agents/kimi-reviewer.md', 'web/index.html', 'jury.config.example.json', 'LICENSE', 'README.md', 'docs/usage.md', 'docs/console-demo.html']) assert.ok(files.includes(required), `missing ${required}`);
   assert.ok(!files.some(f => /(^|\/)(runs|node_modules|test|\.git)(\/|$)|(^|\/)\.(env|npmrc)$|(^|\/)jury\.config\.json$/.test(f)), 'private/development files in package');
   exec('npm install tarball', npm, ['install', '--prefix', temporary, '--ignore-scripts', '--no-audit', '--no-fund', path.join(temporary, packed.filename)]);
   // Exercise npm-created executable links through PATH, as users invoke them.
@@ -42,7 +42,7 @@ try {
   assert.match(help, /--push=false/);
   assert.match(exec('installed full help', process.execPath, [installed, 'help', '--all'], { cwd: temporary }), /jury review <pr-url>/);
   // Full related-PR path: subprocess agents, real local remotes, fixes, resume, failures.
-  exec('installed CLI regression tests', process.execPath, ['--test', 'test/prompt-context.test.js', 'test/usage.test.js', 'test/models.test.js', 'test/run-shape.test.js', 'test/run-attempt.test.js', 'test/review-head.test.js', 'test/commit-fixes.test.js', 'test/reply-template.test.js', 'test/codex-output.test.js', 'test/cli-commands.test.js', 'test/run-publication.test.js', 'test/global-judge.test.js', 'test/help.test.js', 'test/web-launch.test.js', 'test/web-launch-cleanup.test.js', 'test/review-group.test.js', 'test/reviewer-selection.test.js', 'test/automatic-roles.test.js', 'test/same-agent-roles.test.js', 'test/agy.test.js', 'test/opencode.test.js', 'test/new-agents.test.js', 'test/kimi.test.js', 'test/timeout.test.js', 'test/trunk.test.js'], {
+  exec('installed CLI regression tests', process.execPath, ['--test', 'test/prompt-context.test.js', 'test/language.test.js', 'test/usage.test.js', 'test/models.test.js', 'test/run-shape.test.js', 'test/run-attempt.test.js', 'test/review-head.test.js', 'test/commit-fixes.test.js', 'test/reply-template.test.js', 'test/codex-output.test.js', 'test/cli-commands.test.js', 'test/run-publication.test.js', 'test/global-judge.test.js', 'test/help.test.js', 'test/web-launch.test.js', 'test/web-launch-cleanup.test.js', 'test/review-group.test.js', 'test/reviewer-selection.test.js', 'test/automatic-roles.test.js', 'test/same-agent-roles.test.js', 'test/agy.test.js', 'test/opencode.test.js', 'test/new-agents.test.js', 'test/kimi.test.js', 'test/timeout.test.js', 'test/trunk.test.js'], {
     cwd: root, env: { ...isolated.env, JURY_TEST_CLI: installed }, maxBuffer: 8e6,
   });
   console.log(`Verified installed @agentsdance/codejury@${version}: ${files.length} files, CLI commands/subcommands, executable links, saved console, and related-PR fixes/push/resume/failure tests.`);

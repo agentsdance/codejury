@@ -17,6 +17,7 @@ import { automaticRoles, automaticReviewers } from "../lib/roles.js";
 import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, saveGlobalReviewers, defaultReviewers, savedReviewersNote, globalConfigPath, applyModelFlags, assertModelsSupported, modelsUsed, saveGlobalModel, modelProblem } from "../lib/config.js";
 import { runAgent, probe, supportsModel } from "../lib/agents.js";
 import { usageFromEvents, printUsage } from "../lib/usage.js";
+import { normalizeLanguage } from "../lib/language.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { assertTrunk } from "../lib/trunk.js";
@@ -112,6 +113,7 @@ review                           (triages, fixes, commits, and pushes automatica
   --jury <name>              same as --reviewer
   --judge <agent>            one agent that triages and fixes                      (default: configured, auto for 1–2 installed CLIs, then codex)
   --model <agent>=<model>    this run's model for an agent, repeatable             (default: jury.config.json, then jury agents model)
+  --language <tag>           response language, e.g. en or zh-CN; saved with the run
   --resume <slug>            continue an existing run instead of starting a new one
   --web <true|false>         open the console; stays up after review               (default: true)
   --web-only                 view saved reviews without running agents
@@ -478,6 +480,7 @@ async function cmdAgent(argv) {
     summary: { type: "string" },
     trunk: { type: "string" },
     rounds: { type: "string", default: "10" },
+    language: { type: "string" },
     ...reviewerOptions,
     judge: { type: "string" },
     model: { type: "string", multiple: true },
@@ -486,6 +489,7 @@ async function cmdAgent(argv) {
     "dry-run": { type: "boolean", default: false },
     port: { type: "string", default: "3080" },
   });
+  const requestedLanguage = normalizeLanguage(values.language);
   if (values.judge?.includes(",")) throw new Error("--judge accepts exactly one agent, not a list");
 
   // The PR link is the argument. `--pr` still works, but a flag for the one
@@ -510,6 +514,7 @@ async function cmdAgent(argv) {
   const priorTargets = values.resume
     ? [...await readEvents(path.join(runsDir(requestedWorktree), path.basename(values.resume)))].reverse()
       .find(e => e.t === "target")?.target : null;
+  const language = normalizeLanguage(requestedLanguage ?? priorTargets?.language);
   if (priorTargets?.targets && urls.length < 2) throw new Error("resuming a related-PR task requires all original PR URLs");
   if (urls.length > 1 && values.resume && !priorTargets?.targets) throw new Error("no related-PR task found to resume");
   if (priorTargets?.targets && !argv.some(a => a === "--push" || a.startsWith("--push="))) {
@@ -580,6 +585,7 @@ async function cmdAgent(argv) {
     trunk,
     state: "review",
     stateNote: "",
+    ...(language ? { language } : {}),
   };
   if (group) Object.assign(target, {
     targets: group.targets, workspace: group.worktree, pushEnabled: values.push, repo: "related-prs",
@@ -674,6 +680,7 @@ async function cmdAgent(argv) {
   console.log(st.field("judge", st.agent(judge.name)));
   console.log(st.field("juries", pool.map((a) => st.agent(a.name)).join(", ")
     + (values["dry-run"] ? st.warn("  (dry run)") : "")));
+  if (target.language) console.log(st.field("language", target.language));
   if (target.models) {
     console.log(st.field("models", Object.entries(target.models).map(([n, m]) => `${st.agent(n)} ${m}`).join(", ")));
   }
@@ -809,6 +816,7 @@ async function cmdAgent(argv) {
       try {
         v = await triageOne(judge, f, {
           worktree, trunk, context: group ? groupContext(group.targets) : "", stopToken: cfg.stopToken, dryRun: values["dry-run"],
+          language: target.language,
           usageContext: { dir, round, action: "fix", findingId: f.id },
           sessionId: judgeSessionId,
           onLog: (m) => console.log(`          ${st.muted(m)}`),
@@ -884,6 +892,7 @@ async function cmdAgent(argv) {
     const replyEvents = await readEvents(dir);
     const answers = await replyRound({
       dir, pool, cfg, worktree, sha: finalHead.sha, context: group ? groupContext(group.targets) : "", targets: group?.targets, round, findings: after, judge: judge.name,
+      language: target.language,
       sessions: sessionsIn(replyEvents), sessionCursor: replyEvents.length,
       dryRun: values["dry-run"],
       // Prefixed like the launch line: without a name this printed a bare
@@ -1139,10 +1148,12 @@ async function cmdReply(argv) {
       dir: { type: "string" },
       ...reviewerOptions,
       model: { type: "string", multiple: true },
+      language: { type: "string" },
       "dry-run": { type: "boolean", default: false },
     },
   });
 
+  const requestedLanguage = normalizeLanguage(values.language);
   const worktree = await commandDirectory(values.dir);
   const cfg = await loadConfig(worktree);
   applyModelFlags(cfg, values.model);
@@ -1153,6 +1164,7 @@ async function cmdReply(argv) {
   const { sha } = await describe(worktree, "master");
 
   const savedTarget = [...events].reverse().find(e => e.t === "target")?.target;
+  const language = normalizeLanguage(requestedLanguage ?? savedTarget?.language);
   const roles = savedTarget?.sameAgentRoles ?? savedTarget?.automaticRoles;
   let pool = roles ? automaticReviewers(cfg, roles, requestedReviewers(values))
     : selectReviewers(cfg, requestedReviewers(values), judge);
@@ -1165,6 +1177,10 @@ async function cmdReply(argv) {
   if (!pool.length) throw new Error("nothing to reply about — resolve some findings first");
   assertModelsSupported(pool);
 
+  if (requestedLanguage !== undefined && !values["dry-run"]) {
+    await appendEvent(dir, { t: "target", target: { ...savedTarget, language } });
+  }
+  if (language) console.log(`language ${language}`);
   console.log(`judge    ${judge}`);
   console.log(`replying ${pool.map((a) => a.name).join(", ")}  (separate conversations)`);
   console.log("");
@@ -1174,7 +1190,7 @@ async function cmdReply(argv) {
     const sessionId = sessionsIn(events).get(a.name);
     const resumable = replyArgv(a, { sessionId }).resumed;
     const text = buildReply({
-      agent: a.name, thread, sha, worktree,
+      agent: a.name, thread, sha, worktree, language,
       // Without a session there is nothing carrying its review, so its own
       // findings have to travel with the reply.
       quotePrior: !resumable, stopToken: cfg.stopToken,

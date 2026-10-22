@@ -83,6 +83,8 @@
 - Record reported token usage for each review, judge/fix turn and reply, with round,
   model and run totals in the CLI and console. Preserve usage from failures, retries
   and interruptions; missing counts remain unavailable and totals are marked partial (#123).
+- Support a saved `--language` preference for reviewer findings, judge explanations,
+  replies and code-fix summaries, including language switches on resumed runs (#124).
 
 
 ## 0.8.2-rc.1 — 2026-10-20
