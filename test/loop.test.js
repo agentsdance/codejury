@@ -190,6 +190,36 @@ test("a reviewer's rebuttal is not the same words as the reply it was cut from",
   await rm(dir, { recursive: true, force: true });
 });
 
+for (const { label, language, claim, report, contested } of [
+  { label: "中文反驳", language: "zh-CN", claim: "缺少权限检查", report: "我仍然不同意：缺少权限检查的问题依然存在。", contested: true },
+  { label: "中文短标题", language: "zh-CN", claim: "数值错误", report: "我仍然不同意：数值错误依然存在。", contested: true },
+  { label: "英文反驳", language: "en", claim: "Missing authorization check", report: "I still disagree: the missing authorization check still exists.", contested: true },
+  { label: "无关中文回复", language: "zh-CN", claim: "缺少权限检查", report: "请再检查一下输出格式。", contested: false },
+  { label: "停止标记", language: "zh-CN", claim: "缺少权限检查", report: "NO NEW FINDINGS", contested: false },
+]) test(`无文件路径的回复按标题重新进入 triage：${label}`, async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const agent = { name: "fixture", argv: [process.execPath, "-e", `console.log(${JSON.stringify(report)})`],
+    resume: { supported: false } };
+  for (const [id, title, loc] of [["A", claim, "auth.js:20"], ["B", "资源释放失败", "resource.js:10"]]) {
+    await appendEvent(dir, { t: "finding.raised", id, round: 1, agent: agent.name, claim: title, loc });
+    await appendEvent(dir, { t: "finding.resolved", id, verdict: "rejected", reason: "已检查" });
+  }
+  const [answer] = await replyRound({
+    dir, pool: [agent], cfg: { stopToken: "NO NEW FINDINGS" }, worktree: dir,
+    sha: "abc", round: 1, findings: await findingsIn(dir), language,
+  });
+  assert.equal(answer.failed, false);
+  assert.equal(answer.raised, 0, "反驳应关联原 finding，而不是创建新问题");
+  const events = await readEvents(dir), findings = await findingsIn(dir);
+  const turns = events.filter(e => e.t === "finding.turn");
+  assert.deepEqual(turns.map(e => e.id), contested ? ["A"] : [], "只记录回复提到的问题");
+  if (contested) assert.equal(turns[0].text, report);
+  assert.equal(findings.get("A").contested, contested, "争议标记必须从事件日志恢复");
+  assert.equal(findings.get("B").contested, false, "不得重新打开无关问题");
+  assert.deepEqual(outstanding(findings, events).map(f => f.id), contested ? ["A"] : [], "反驳必须交回 judge");
+});
+
 test("streaming chunks collapse into one live turn, and the report replaces it", async () => {
   const dir = await tmp();
   await appendEvent(dir, { t: "agent.chunk", agent: "codex", round: 1, text: "reading " });
