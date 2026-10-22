@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Commit judge-created files even when Git's `status.showUntrackedFiles` setting
+  hides them, so a new-file-only fix reaches the commit reported as reviewed.
 - Keep a single-checkout review incomplete when HEAD changes while reviewers
   or their replies are running, instead of reporting approval for an obsolete commit.
 - Reuse a plugin CLI cache published by a concurrent launcher during startup,

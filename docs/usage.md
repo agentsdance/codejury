@@ -61,6 +61,9 @@ For single-checkout reviews, Jury checks that HEAD still matches the commit used
 for the review or reviewer replies before reporting completion. If another process
 commits during that phase, the run remains incomplete with `HEAD changed during review`;
 inspect the new commit and run the review again. This check does not lock the checkout.
+When committing judge fixes, Jury includes new files even if Git's
+`status.showUntrackedFiles` display setting hides them. Ignore rules still apply,
+and Jury does not change the saved Git setting.
 Reviewer execution failures exit nonzero with `--web=false`. With the console enabled, it stays
 available for inspection until Ctrl-C.
 
