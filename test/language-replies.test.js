@@ -14,10 +14,16 @@ const {replyRound, outstanding} = await load('loop.js');
 const {languageIn} = await load('language.js');
 const {triagePrompt} = await load('triage.js');
 
-async function reply(t, claim, report, language = 'zh-CN') {
+async function reply(t, claim, report, language = 'zh-CN', format = 'whole') {
   const dir = await mkdtemp(path.join(tmpdir(), 'jury-language-reply-'));
   t.after(() => rm(dir, {recursive: true, force: true}));
-  const agent = {name: 'fixture', argv: [process.execPath, '-e', `console.log(${JSON.stringify(report)})`]};
+  const output = format === 'codex-json' ? [
+    {type: 'turn.started'}, {type: 'item.completed', item: {type: 'agent_message', text: report}},
+    {type: 'turn.completed'},
+  ].map(event => JSON.stringify(event)).join('\n') : format === 'result-json'
+    ? JSON.stringify({type: 'result', subtype: 'success', is_error: false, result: report}) : report;
+  const agent = {name: 'fixture', report: format,
+    argv: [process.execPath, '-e', `console.log(${JSON.stringify(output)})`]};
   await appendEvent(dir, {t: 'finding.raised', id: 'A', agent: agent.name, round: 1, claim, loc: 'value.js:1'});
   await appendEvent(dir, {t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'Checked'});
   const [answer] = await replyRound({dir, pool: [agent], cfg: {stopToken: 'NO NEW FINDINGS'},
@@ -160,6 +166,27 @@ test('a three-space indented live dispute remains active', async t => {
   assert.equal(events.filter(e => e.t === 'finding.turn').length, 1);
   assert.equal(findings.get('A').contested, true);
 });
+
+for (const format of ['codex-json', 'result-json']) for (const eol of ['\n', '\r\n']) for (const fence of ['```', '~~~']) {
+  test(`fenced dispute examples remain quoted with ${format}, ${JSON.stringify(eol)} and ${fence}`, async t => {
+    const quoted = ['Earlier example:', `${fence}text`, 'DISPUTE: A',
+      'This quoted objection is withdrawn.', fence].join(eol);
+    const clean = await reply(t, '[P2] Missing authorization validation',
+      `${quoted}${eol}I agree with the resolution.${eol}NO NEW FINDINGS`, 'zh-CN', format);
+    assert.equal(clean.answer.clean, true);
+    assert.deepEqual(clean.events.filter(e => e.t === 'finding.turn'), []);
+    assert.equal(clean.findings.get('A').contested, false);
+
+    const explanation = ['DISPUTE: A', 'The alternate route still fails.', '',
+      'Reproduction:', '1. Request the alternate route.', 'Observed: the incorrect response.'].join(eol);
+    const active = await reply(t, '[P2] Missing authorization validation',
+      `${quoted}${eol}${explanation}${eol}`, 'zh-CN', format);
+    assert.equal(active.answer.clean, false);
+    assert.deepEqual(active.findings.get('A').rebuttals, [explanation],
+      'only the live section reaches the judge, preserving its original line endings');
+    assert.deepEqual(active.events.filter(e => e.t === 'finding.turn').map(e => e.text), [explanation]);
+  });
+}
 
 test('complete unmarked rebuttals retain late reproduction evidence for the judge', async t => {
   const report = ['Missing authorization remains unfixed.', '', 'Reproduction:',

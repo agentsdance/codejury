@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Recognize quoted dispute examples in JSON replies with CRLF line endings,
+  avoiding false reopened findings and preserving the correct rebuttal evidence.
 - Support a saved `--language` preference for reviewer findings, judge explanations,
   replies and code-fix summaries, including language switches on resumed runs (#124).
 
