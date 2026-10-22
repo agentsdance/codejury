@@ -1191,12 +1191,13 @@ async function cmdReply(argv) {
     const replyId = randomUUID();
     await appendEvent(dir, { t: "reply.sent", agent: a.name, replyId, sha, resumed: resumable, sessionId, sessionCursor: events.length, promptFile: file, text, who: judge });
     // Leave prompt text for runAgent so literal {{...}} content is not expanded twice.
-    const spec = { ...a, argv: replyArgv(a, { worktree, sessionId }).argv };
+    const argv = replyArgv(a, { worktree, sessionId }).argv;
+    const spec = { ...a, argv, resume: { ...a.resume, argv } };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);
     const r = await runAgent(spec, {
-      worktree, prompt: text, stopToken: cfg.stopToken, onLog: (m) => console.log(`  ${m}`),
-      usageContext: { dir, action: "reply", round: Math.max(0, ...events.filter(e => e.t === "round.start").map(e => e.n)) || null },
+      worktree, prompt: text, stopToken: cfg.stopToken, sessionId: resumable ? sessionId : null, onLog: (m) => console.log(`  ${m}`),
+      usageContext: { dir, action: "reply", replyId, round: Math.max(0, ...events.filter(e => e.t === "round.start").map(e => e.n)) || null },
       onChunk: (chunk) => sink.write(chunk),
     });
     await sink.close();

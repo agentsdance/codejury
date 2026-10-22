@@ -19,8 +19,9 @@ const literal = 'Keep {{unknown}}, {{promptText}}, {{promptFile}}, {{worktree}},
 
 for (const mode of ['automatic', 'standalone']) {
   for (const delivery of ['argv', 'file']) {
-    for (const resumed of [false, true]) {
-      test(`${mode} ${delivery} reply preserves literal templates in a ${resumed ? 'resumed' : 'fresh'} session`, { timeout: 15000 }, async t => {
+    for (const sessionMode of ['fresh', 'resumed', 'unsupported']) {
+      const resumed = sessionMode === 'resumed';
+      test(`${mode} ${delivery} reply preserves literal templates with ${sessionMode} resume`, { timeout: 15000 }, async t => {
         const temp = await mkdtemp(path.join(tmpdir(), 'jury-reply-template-'));
         const isolated = testEnvironment();
         t.after(() => { isolated.dispose(); return rm(temp, { recursive: true, force: true }); });
@@ -36,12 +37,13 @@ for (const mode of ['automatic', 'standalone']) {
           console.log('NO NEW FINDINGS');
         `);
         const argv = [process.execPath, capture, 'fresh', '{{modelArgs}}', '--worktree', '{{worktree}}', '--content', delivery === 'file' ? '{{promptFile}}' : '{{promptText}}'];
+        if (mode === 'automatic') argv.push('--sha', '{{sha}}');
         const agent = { name: 'fixture-reviewer', role: 'reviewer', cwd: 'worktree', report: 'whole', promptDelivery: delivery,
           model: 'fixture-model', modelArgs: ['--model', '{{model}}'], argv,
-          resume: { supported: true, argv: [process.execPath, capture, 'resume', '--session', '{{sessionId}}', ...argv.slice(3)] } };
+          resume: { supported: sessionMode !== 'unsupported', argv: [process.execPath, capture, 'resume', '--session', '{{sessionId}}', ...argv.slice(3)] } };
         const dir = path.join(worktree, 'runs', 'reply-fixture');
         await appendEvent(dir, { t: 'target', target: { repo: 'fixture', id: '#1', judge: 'fixture-judge' } });
-        if (resumed) await appendEvent(dir, { t: 'agent.report', agent: agent.name, round: 1, sessionId: 'provider-session' });
+        if (sessionMode !== 'fresh') await appendEvent(dir, { t: 'agent.report', agent: agent.name, round: 1, sessionId: 'provider-session' });
         await appendEvent(dir, { t: 'finding.raised', id: 'A', agent: agent.name, round: 1, claim: 'Literal content', loc: 'template.js:1', body: literal });
         await appendEvent(dir, { t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: literal });
         if (mode === 'automatic') {
@@ -68,9 +70,11 @@ for (const mode of ['automatic', 'standalone']) {
         assert.equal(sent.resumed, resumed);
         if (resumed) assert.equal(call.args[call.args.indexOf('--session') + 1], 'provider-session');
         assert.equal(call.args[call.args.indexOf('--worktree') + 1], worktree);
+        if (mode === 'automatic') assert.equal(call.args[call.args.indexOf('--sha') + 1], 'abc123');
         assert.equal(call.args[call.args.indexOf('--model') + 1], 'fixture-model');
         assert.equal(call.args.filter(arg => arg === '--model').length, 1);
         assert.equal(events.find(e => e.t === 'reply.answered').verdict, 'clean');
+        if (sessionMode === 'unsupported') assert.notEqual(events.find(e => e.t === 'reply.answered').sessionId, 'provider-session');
         if (mode === 'standalone') assert.equal(await readFile(path.join(dir, `reply.${agent.name}.md`), 'utf8'), sent.text);
       });
     }

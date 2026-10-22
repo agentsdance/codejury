@@ -40,3 +40,40 @@ for(const theme of ['light','dark']) test(`token breakdown remains readable in $
  }
  expect(errors).toEqual([]);
 });
+
+for(const theme of ['light','dark']) test(`live usage updates preserve expansion, scroll and focus in ${theme}`, async ({page,consoleURL})=>{
+ await page.emulateMedia({colorScheme:theme});
+ await page.setViewportSize({width:390,height:844});
+ const payload=total=>({...foldEvents([...events,{t:'usage.snapshot',id:'one',agent:'codex',action:'review',round:1,status:'completed',records:[{...record,input:total-140,total:total-120}]}]),slug:'timeline'});
+ let live=payload(240);
+ await page.route('**/api/run',route=>route.fulfill({json:live}));
+ await page.goto(consoleURL);
+ const section=page.locator('#usage-sec'), details=section.locator('details');
+ await expect(section.locator('.usage-total')).toHaveText('240 tokens · partial');
+ await details.locator('summary').click();
+ const scroller=details.locator('.usage-scroll');
+ await scroller.focus();
+ await scroller.evaluate(el=>{el.scrollLeft=90});
+ const scroll=await scroller.evaluate(el=>el.scrollLeft);
+ expect(scroll).toBeGreaterThan(0);
+ live=payload(360);
+ // Wait for the real three-second polling interval to publish changed data.
+ await expect(section.locator('.usage-total')).toHaveText('360 tokens · partial',{timeout:10000});
+ await expect(details).toHaveAttribute('open','');
+ await expect(details.locator('table')).toBeVisible();
+ await expect(scroller).toBeFocused();
+ expect(await scroller.evaluate(el=>el.scrollLeft)).toBe(scroll);
+ await details.locator('summary').focus();
+ live=payload(480);
+ await page.evaluate(()=>poll());
+ await expect(section.locator('.usage-total')).toHaveText('480 tokens · partial');
+ await expect(details.locator('summary')).toBeFocused();
+ expect(await scroller.evaluate(el=>el.scrollLeft)).toBe(scroll);
+ live={...payload(600),slug:'another-run'};
+ await page.evaluate(()=>poll());
+ await expect(section.locator('.usage-total')).toHaveText('600 tokens · partial');
+ await expect(details.locator('table')).toBeHidden();
+ await expect(details.locator('summary')).not.toBeFocused();
+ await details.locator('summary').click();
+ expect(await scroller.evaluate(el=>el.scrollLeft)).toBe(0);
+});

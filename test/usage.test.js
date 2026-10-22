@@ -7,12 +7,16 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { once } from 'node:events';
+import { testEnvironment } from '../scripts/test-environment.mjs';
 const exec = promisify(execFile);
 const cli = process.env.JURY_TEST_CLI ?? fileURLToPath(new URL('../bin/jury.js', import.meta.url));
 const root = path.dirname(path.dirname(cli));
 const { usageDecoder, usageFromEvents, summarizeUsage } = await import(pathToFileURL(path.join(root, 'lib/usage.js')));
 const { runAgent } = await import(pathToFileURL(path.join(root, 'lib/agents.js')));
-const { readEvents, readRun, publishEvents } = await import(pathToFileURL(path.join(root, 'lib/store.js')));
+const { appendEvent, readEvents, readRun, publishEvents } = await import(pathToFileURL(path.join(root, 'lib/store.js')));
+const { DEFAULTS } = await import(pathToFileURL(path.join(root, 'lib/config.js')));
+const { findingsIn } = await import(pathToFileURL(path.join(root, 'lib/findings.js')));
+const { replyRound, sessionsIn } = await import(pathToFileURL(path.join(root, 'lib/loop.js')));
 const codex = { name: 'codex', report: 'codex-json' };
 const complete = (input=100, output=20) => ({ type: 'turn.completed', usage: { input_tokens: input, output_tokens: output, cached_input_tokens: 80, cache_write_input_tokens: 10 } });
 const lines = events => events.map(e=>JSON.stringify(e)).join('\n')+'\n';
@@ -183,6 +187,49 @@ test('failed invocations retain usage and retries have unique IDs', async t => {
   assert.ok(usage.invocations.every(i=>i.status==='failed'));
 });
 
+test('overlapping measured replies stay distinct in either answer order, including legacy snapshots', () => {
+  const record = {model:'fixture',modelSource:'configured',input:100,output:20,total:120,cacheRead:null,cacheWrite:null};
+  for (const correlated of [true, false]) for (const order of [['a','b'], ['b','a']]) {
+    const sent = replyId => ({t:'reply.sent',agent:'codex',replyId});
+    const snapshot = (replyId, status) => ({t:'usage.snapshot',id:`usage-${replyId}`,
+      agent:'codex',action:'reply',round:1,status,records:status === 'running' ? [] : [record],
+      ...(correlated ? {replyId} : {})});
+    const starts = [[sent('a'), snapshot('a','running'), sent('b'), snapshot('b','running')]];
+    // IDs also disambiguate launches whose first snapshots arrive later.
+    if (correlated) starts.push([sent('a'), sent('b'), snapshot('a','running'), snapshot('b','running')]);
+    for (const start of starts) {
+      const events = [{t:'round.start',n:1}, ...start, ...order.flatMap(replyId => [
+        snapshot(replyId,'completed'), snapshot(replyId,'completed'),
+        {t:'reply.answered',agent:'codex',replyId,verdict:'clean'},
+      ])];
+      const usage = usageFromEvents(events);
+      assert.equal(usage.invocations.length,2,'two measured replies must not create a phantom invocation');
+      assert.deepEqual(usage.invocations.map(i=>i.id),['usage-a','usage-b']);
+      assert.deepEqual(usage.invocations.map(i=>i.total),[120,120]);
+      for (const row of [usage,usage.rounds[0],usage.rounds[0].reply,usage.models[0]]) {
+        assert.equal(row.total,240);
+        assert.equal(row.partial,false);
+      }
+      if (correlated) assert.deepEqual(usage.invocations.map(i=>i.replyId),['a','b']);
+    }
+  }
+});
+
+test('a measured reply cannot hide an overlapping unmeasured reply', () => {
+  const usage = usageFromEvents([{t:'round.start',n:1},
+    {t:'reply.sent',agent:'codex',replyId:'unmeasured'},
+    {t:'reply.sent',agent:'codex',replyId:'measured'},
+    {t:'usage.snapshot',id:'usage-measured',agent:'codex',action:'reply',round:1,replyId:'measured',
+      status:'completed',records:[{model:null,modelSource:'unavailable',input:100,output:20,total:120}]},
+    {t:'reply.answered',agent:'codex',replyId:'unmeasured',verdict:'error'},
+    {t:'reply.answered',agent:'codex',replyId:'measured',verdict:'clean'}]);
+  assert.equal(usage.invocations.length,2);
+  assert.deepEqual(usage.invocations.map(i=>[i.replyId,i.total,i.status]),
+    [['unmeasured',null,'failed'],['measured',120,'completed']]);
+  assert.equal(usage.total,120);
+  assert.equal(usage.partial,true);
+});
+
 test('Codex resumes subtract persisted thread usage across replies and repeated judge turns', async t => {
   const dir = await scratch(t);
   const invoke = async (session, action, input, output, cacheRead, cacheWrite, failed = false) => {
@@ -244,6 +291,89 @@ test('resuming a Codex thread without a saved baseline leaves its first delta un
   assert.equal(usage.total,50);
   assert.equal(usage.partial,true);
 });
+
+for (const mode of ['automatic', 'standalone']) {
+  test(`${mode} reply without a saved Codex baseline records unavailable then only the new delta`, async t => {
+    const worktree = await scratch(t), dir = path.join(worktree, 'runs', 'old-run');
+    const isolated = testEnvironment();
+    t.after(() => isolated.dispose());
+    const fixture = path.join(worktree, 'codex.cjs');
+    await writeFile(fixture, `
+      const fs = require('node:fs');
+      const assert = require('node:assert/strict');
+      assert.equal(process.argv[2], 'resume');
+      assert.equal(process.argv[3], 'old-thread');
+      const usage = fs.existsSync('usage.json') ? JSON.parse(fs.readFileSync('usage.json', 'utf8'))
+        : {input_tokens: 1000, output_tokens: 100};
+      usage.input_tokens += 40;
+      usage.output_tokens += 10;
+      fs.writeFileSync('usage.json', JSON.stringify(usage));
+      for (const event of [{type: 'thread.started', thread_id: process.argv[3]},
+        {type: 'turn.started'},
+        {type: 'item.completed', item: {type: 'agent_message', text: 'NO NEW FINDINGS'}},
+        {type: 'turn.completed', usage}]) {
+        console.log(JSON.stringify(event));
+      }
+    `);
+    const agent = {...codex, cwd: 'worktree',
+      argv: [process.execPath, fixture, 'fresh', '{{promptText}}'],
+      resume: {supported: true, argv: [process.execPath, fixture, 'resume', '{{sessionId}}', '{{promptText}}']}};
+    // An older review saved its session but no usage snapshot.
+    for (const event of [{t: 'target', target: {judge: 'fixture-judge'}},
+      {t: 'round.start', n: 1},
+      {t: 'agent.report', agent: 'codex', round: 1, sessionId: 'old-thread'},
+      {t: 'finding.raised', id: 'A', agent: 'codex', round: 1, claim: 'Wrong value', loc: 'a.txt:1'},
+      {t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'Value is correct'}]) {
+      await appendEvent(dir, event);
+    }
+    if (mode === 'standalone') {
+      const git = (...args) => exec('git', args, {cwd: worktree, env: isolated.env});
+      await git('init', '-q', '-b', 'master');
+      await git('commit', '--allow-empty', '-qm', 'base');
+      await writeFile(path.join(worktree, 'jury.config.json'), JSON.stringify({agents: [
+        ...DEFAULTS.agents.map(a => a.name === 'codex' ? agent : {name: a.name, enabled: false}),
+        {name: 'fixture-judge', role: 'main', argv: [process.execPath]},
+      ]}));
+    }
+    const invoke = async () => {
+      if (mode === 'standalone') {
+        const result = await exec(process.execPath, [cli, 'reply', '--dir', worktree, '--run', 'old-run', '--reviewer', 'codex'],
+          {cwd: worktree, env: isolated.env});
+        return result.stdout;
+      }
+      const logs = [];
+      const answers = await replyRound({dir, pool: [agent], cfg: {stopToken: 'NO NEW FINDINGS'},
+        worktree, sha: 'abc123', round: 1, findings: await findingsIn(dir),
+        sessions: sessionsIn(await readEvents(dir)), onLog: line => logs.push(line)});
+      assert.equal(answers[0].clean, true);
+      return logs.join('\n');
+    };
+    const first = await invoke();
+    let usage = usageFromEvents(await readEvents(dir));
+    assert.equal(usage.invocations.find(i => i.action === 'reply').total, null,
+      'historical thread tokens must not be charged to the resumed reply');
+    assert.match(first, /tokens · unavailable/);
+    assert.equal(usage.partial, true);
+    const second = await invoke();
+    usage = usageFromEvents(await readEvents(dir));
+    assert.deepEqual(usage.invocations.filter(i => i.action === 'reply').map(i => i.total), [null, 50]);
+    assert.equal(usage.total, 50);
+    assert.equal(usage.partial, true);
+    assert.match(second, /tokens · 50 total · 40 input · 10 output/);
+    const events = await readEvents(dir);
+    const replies = events.filter(e => e.t === 'reply.sent');
+    assert.equal(replies.length, 2);
+    assert.notEqual(replies[0].replyId, replies[1].replyId);
+    const snapshots = events.filter(e => e.t === 'usage.snapshot');
+    assert.ok(snapshots.every(e => replies.some(reply => reply.replyId === e.replyId)),
+      'every usage snapshot must retain its caller replyId');
+    for (const reply of replies) {
+      assert.ok(snapshots.some(e => e.replyId === reply.replyId));
+      assert.ok(events.some(e => e.t === 'reply.answered' && e.replyId === reply.replyId));
+    }
+    if (mode === 'standalone') assert.deepEqual((await readRun(dir)).usage, usage);
+  });
+}
 
 test('SIGTERM preserves streamed usage and resume subtracts it after the last publication', {skip:process.platform==='win32',timeout:15000}, async t => {
   const dir=await scratch(t);

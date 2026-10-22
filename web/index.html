@@ -1138,9 +1138,19 @@ document.addEventListener("click", async (e) => {
 });
 
 function renderUsage(){
+  const container = $("usage");
+  const runKey = RUN.slug ?? JSON.stringify([RUN.target?.repo, RUN.target?.id, RUN.target?.attempt]);
+  const sameRun = container.dataset.run === runKey;
+  const previousDetails = container.querySelector("details");
+  const previousScrollers = [...container.querySelectorAll(".usage-scroll")];
+  const expanded = sameRun && previousDetails?.open;
+  const scrollPositions = sameRun ? previousScrollers.map(el => el.scrollLeft) : [];
+  const focusedScroller = sameRun ? previousScrollers.indexOf(document.activeElement) : -1;
+  const focusedSummary = sameRun && previousDetails?.querySelector("summary") === document.activeElement;
+  container.dataset.run = runKey;
   const u = RUN.usage;
   if (!u?.invocations?.length) {
-    $("usage").innerHTML = '<p class="note">Unavailable — this run has no recorded token usage.</p>';
+    container.innerHTML = '<p class="note">Unavailable — this run has no recorded token usage.</p>';
     return;
   }
   const n = value => value == null ? "unavailable" : Number(value).toLocaleString("en-US");
@@ -1153,11 +1163,17 @@ function renderUsage(){
     const label = `Round ${i.round ?? "?"} · ${i.action} · ${i.agent} · ${i.status}`;
     return [[label, i], ...(i.records ?? []).map(m=>[model({...m,agent:i.agent}), m])];
   });
-  $("usage").innerHTML = `<p class="usage-total">${n(u.total)} tokens${u.partial ? " · partial" : ""}</p>
+  container.innerHTML = `<p class="usage-total">${n(u.total)} tokens${u.partial ? " · partial" : ""}</p>
     <p class="note">${n(u.input)} input · ${n(u.output)} output. Cache reads and writes are included in input, never added twice. Unavailable counts are not zero.</p>
     ${table("By model", u.models.map(m=>[model(m),m]))}
     ${table("By round", rounds)}
     <details><summary>Each review, fix and reply (${u.invocations.length})</summary>${table("Invocations", actions)}</details>`;
+  const details = container.querySelector("details");
+  details.open = Boolean(expanded);
+  const scrollers = [...container.querySelectorAll(".usage-scroll")];
+  scrollers.forEach((el, i) => { el.scrollLeft = scrollPositions[i] ?? 0; });
+  if (focusedSummary) details.querySelector("summary").focus({ preventScroll: true });
+  else if (focusedScroller >= 0) scrollers[focusedScroller]?.focus({ preventScroll: true });
 }
 
 function render(){
