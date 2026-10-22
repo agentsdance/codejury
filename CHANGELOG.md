@@ -4,6 +4,9 @@
 
 - Recognize quoted dispute examples in JSON replies with CRLF line endings,
   avoiding false reopened findings and preserving the correct rebuttal evidence.
+- Keep agreed findings settled in mixed replies with explicit dispute IDs, and
+  stop rebuttal evidence before a separate new finding while preserving restatements
+  of the disputed finding.
 - Support a saved `--language` preference for reviewer findings, judge explanations,
   replies and code-fix summaries, including language switches on resumed runs (#124).
 
