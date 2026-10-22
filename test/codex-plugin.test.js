@@ -1,12 +1,51 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const launcher = fileURLToPath(new URL('../plugins/codejury/scripts/jury.mjs', import.meta.url));
+
+for (const windows of process.platform === 'win32' ? [true] : [false, true]) {
+  test(`plugin launcher prefers an installed CodeJury ${windows ? 'Windows shim' : 'POSIX symlink'} over downloading`, () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'codejury-global-')));
+    try {
+      const bin = path.join(root, 'global install with spaces');
+      const pkg = path.join(bin, 'node_modules', '@agentsdance', 'codejury');
+      const entry = path.join(pkg, 'bin', 'jury.js');
+      const cache = path.join(root, 'unused-cache');
+      const cwd = path.join(root, 'repository with spaces');
+      mkdirSync(path.dirname(entry), { recursive: true });
+      mkdirSync(cwd);
+      writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.8.2', type: 'module' }));
+      writeFileSync(entry, `#!${process.execPath}\nconsole.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2), version: '0.8.2' })); process.exitCode = 7;`, { mode: 0o755 });
+      const env = { ...process.env, PATH: bin, CODEJURY_PLUGIN_CACHE: cache };
+      const nodeArgs = [];
+      if (windows && process.platform !== 'win32') {
+        const preload = path.join(root, 'windows.mjs');
+        writeFileSync(preload, "Object.defineProperty(process, 'platform', { value: 'win32' });");
+        nodeArgs.push('--import', pathToFileURL(preload).href);
+      }
+      for (const command of ['jury', 'codejury']) {
+        const executable = path.join(bin, command + (windows ? '.cmd' : ''));
+        // Resolve npm's JS entrypoint without executing a Windows shell shim.
+        if (windows) writeFileSync(executable, '@exit /b 99\r\n');
+        else symlinkSync(entry, executable);
+        for (const push of ['--push=true', '--push=false']) {
+          const args = ['review', 'https://github.com/owner/repo/pull/1', push, '--summary', 'literal $(touch unwanted) `echo bad` ; & "text"'];
+          const result = spawnSync(process.execPath, [...nodeArgs, launcher, ...args], { cwd, env, encoding: 'utf8' });
+          assert.equal(result.status, 7, result.stderr);
+          assert.deepEqual(JSON.parse(result.stdout), { cwd, argv: args, version: '0.8.2' });
+          assert.equal(existsSync(cache), false, 'global CLI must run before creating or installing a fallback cache');
+          assert.equal(existsSync(path.join(cwd, 'unwanted')), false);
+        }
+        rmSync(executable);
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+}
 
 test('plugin launcher installs into Windows cache paths containing spaces', () => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'codejury-plugin-')));
@@ -32,7 +71,7 @@ test('plugin launcher installs into Windows cache paths containing spaces', () =
       fs.writeFileSync(path.join(pkg, 'bin', 'jury.js'), 'console.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) }));');
     `);
     const preload = path.join(root, 'windows.mjs');
-    const env = { ...process.env, CODEJURY_PLUGIN_CACHE: cache, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    const env = { ...process.env, CODEJURY_PLUGIN_CACHE: cache, PATH: bin };
     const nodeArgs = [];
     if (process.platform === 'win32') {
       writeFileSync(path.join(bin, 'npm.cmd'), `@"${process.execPath}" "${fixture}" %*\r\n`);
@@ -51,7 +90,7 @@ test('plugin launcher installs into Windows cache paths containing spaces', () =
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('plugin launcher preserves cwd, literal arguments, and exit status without using a shadowed jury', () => {
+test('plugin launcher falls back when jury on PATH is not a CodeJury installation', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'codejury-plugin-'));
   try {
     const pkg = path.join(root, 'cache', '0.9.0', 'node_modules', '@agentsdance', 'codejury');
@@ -79,7 +118,7 @@ test('plugin launcher rejects an incomplete cache without replacing user files',
     mkdirSync(install);
     writeFileSync(path.join(install, 'keep.txt'), 'preserve');
     const result = spawnSync(process.execPath, [launcher, 'version'], {
-      env: { ...process.env, CODEJURY_PLUGIN_CACHE: root }, encoding: 'utf8',
+      env: { ...process.env, CODEJURY_PLUGIN_CACHE: root, PATH: root }, encoding: 'utf8',
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Incomplete CLI cache/);
@@ -137,7 +176,7 @@ test('plugin launcher reuses a cache published after its initial miss', () => {
       syncBuiltinESMExports();
     `);
     const result = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, launcher, 'version'], {
-      env: { ...process.env, CODEJURY_PLUGIN_CACHE: cache, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+      env: { ...process.env, CODEJURY_PLUGIN_CACHE: cache, PATH: bin },
       encoding: 'utf8', timeout: 20000,
     });
     assert.ifError(result.error);

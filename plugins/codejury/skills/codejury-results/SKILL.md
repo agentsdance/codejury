@@ -6,10 +6,10 @@ description: List, inspect, or summarize saved CodeJury reviews and findings, or
 # Inspect saved CodeJury reviews
 
 Resolve `<plugin-root>` as two directories above this skill folder. Use
-`node "<plugin-root>/scripts/jury.mjs"` followed by command arguments. This invokes
-the exact published stable release, downloading it into
-`~/.cache/codejury/plugin-cli/` on first use. Respect an explicitly requested
-CLI version.
+`node "<plugin-root>/scripts/jury.mjs"` followed by command arguments. This uses an
+installed CodeJury CLI on PATH first, or downloads the fallback release into
+`~/.cache/codejury/plugin-cli/` if none is found. Respect an explicitly requested
+CLI version and check its help for supported flags.
 
 1. Identify the original state root. URL reviews default to `~/.jury`; use
    `--dir ""` to select it explicitly. A local-checkout review stores `runs/`
