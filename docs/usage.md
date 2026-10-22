@@ -159,6 +159,10 @@ judge/fix invocation and reply, with subtotals per round, per model and for the 
 A judge/fix turn is counted even when it rejects a finding without editing code.
 The expanded invocation table includes failures and retries. Resuming adds new
 invocations to the saved run rather than replacing earlier usage.
+Codex reports cumulative thread usage; each resumed invocation counts only the
+increase over that thread's last saved totals, including across CLI restarts.
+When resuming an older run, reviews and replies without usage snapshots remain
+unavailable in the breakdown and keep the combined totals partial.
 
 Counts come from agent output, never estimates. Codex JSON, Droid/Qwen result JSON
 and OpenCode JSON expose supported usage fields. Other output formats, including
@@ -169,9 +173,11 @@ provider or billing account is not inferred from the model name.
 
 Input includes cached input once. Cache reads and writes are also shown separately:
 Codex and Qwen already include them in input, while Droid and OpenCode report them
-separately. OpenCode reasoning is included in output. Cache counts that are absent
-remain unavailable. Partial totals add only available counts; missing invocations,
-missing input/output fields and unfinished or failed invocations mark them partial.
+separately. OpenCode reasoning is included in output. Qwen's reported total is
+preserved; thinking counted beyond input and candidate output is included in output.
+Cache counts that are absent remain unavailable. Partial totals add only available
+counts; missing invocations, missing input/output fields and unfinished or failed
+invocations mark them partial.
 Provider output can omit work from failed API requests or internal retries, so these
 counts are not a billing record. Plain text that mentions tokens is not usage data.
 
