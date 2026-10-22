@@ -94,6 +94,7 @@ for (const name of ['peer', 'peer-reviewer', 'peer-', 'peer--']) {
       `x${name}`, `${name}x`, `prefix-${name}`, `${name}-extended`, `_${name}`, `${name}_`,
       `é${name}`, `${name}中文`, `e\u0301${name}`, `${name}\u0301`,
       `${name}$reviewer`, `${name}\u200Creviewer`, `${name}\u200Dreviewer`,
+      `${name}‿reviewer`, `${name}⁀reviewer`,
       `prefix-r12-${name}-3`, `r12-${name}-3-suffix`, `r12-${name}-3x`, `r12-${name}-3_`,
     ].join(' ');
     const reason = `Preserve: ${partials}`;
