@@ -104,6 +104,15 @@ for (const name of ['peer', 'peer-reviewer', 'peer-', 'peer--']) {
   });
 }
 
+test('reply redaction case-folds ASCII reviewer names within ASCII only', () => {
+  const finding = { agent: 'fixture', status: 'rejected', claim: 'A defect',
+    reason: 'Preserve: taſK and r1-taſK-1. Redact: task, TASK, r1-task-1, and r1-TASK-1.' };
+  const reply = buildReply({ agent: 'fixture', thread: [finding], sha: 'abc', worktree: '/fixture',
+    stopToken: 'NO NEW FINDINGS', others: ['task'] });
+  assert.ok(reply.includes('Preserve: taſK and r1-taſK-1.'));
+  assert.ok(reply.includes("Redact: another reviewer, another reviewer, another reviewer's finding, and another reviewer's finding."));
+});
+
 for (const otherName of ['peer-reviewer', 'peer-']) {
   test(`standalone reply redacts accepted other reviewer ${otherName} before delivery`, async t => {
     const temp = await mkdtemp(path.join(tmpdir(), 'jury-reply-name-'));
