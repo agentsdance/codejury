@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Record reported token usage for each review, judge/fix turn and reply, with round,
+  model and run totals in the CLI and console. Preserve usage from failures, retries
+  and interruptions; missing counts remain unavailable and totals are marked partial (#123).
+
 - Stop console port fallback at 65535 and report address-in-use when the valid
   retry range is occupied, rather than crashing while trying invalid port 65536.
 - Commit judge-created files even when Git's `status.showUntrackedFiles` setting

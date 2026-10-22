@@ -151,3 +151,35 @@ Git ref. Its `refs/remotes/origin/<branch>` tracking ref must be available and
 share history with HEAD; fetch the base branch before reviewing if needed.
 Jury validates this before launching agents. Review prompts use Git’s triple-dot
 diff to compare HEAD to the merge base, and fail if that base becomes unavailable.
+
+## Token usage
+
+The CLI and saved-run console show input, output and total tokens for every review,
+judge/fix invocation and reply, with subtotals per round, per model and for the run.
+A judge/fix turn is counted even when it rejects a finding without editing code.
+The expanded invocation table includes failures and retries. Resuming adds new
+invocations to the saved run rather than replacing earlier usage.
+
+Counts come from agent output, never estimates. Codex JSON, Droid/Qwen result JSON
+and OpenCode JSON expose supported usage fields. Other output formats, including
+the current plain-text Claude integration, show `unavailable`. A configured model
+is labeled `configured`; an identity reported by the provider is labeled `reported`.
+If neither is available, the model is unknown. These are agent CLI identities; a
+provider or billing account is not inferred from the model name.
+
+Input includes cached input once. Cache reads and writes are also shown separately:
+Codex and Qwen already include them in input, while Droid and OpenCode report them
+separately. OpenCode reasoning is included in output. Cache counts that are absent
+remain unavailable. Partial totals add only available counts; missing invocations,
+missing input/output fields and unfinished or failed invocations mark them partial.
+Provider output can omit work from failed API requests or internal retries, so these
+counts are not a billing record. Plain text that mentions tokens is not usage data.
+
+Usage snapshots are saved to `events.ndjson` as output arrives and folded into
+`run.json`. The saved-run reader also recovers newer usage snapshots after an
+interruption. If a provider emits usage only at the end, termination before that
+event leaves it unavailable. A forced kill can preserve only bytes already received.
+
+Protocol references: [Codex events](https://github.com/openai/codex/blob/main/sdk/typescript/src/events.ts),
+[Droid result JSON](https://docs.factory.com/droid-exec/overview#json),
+[OpenCode token normalization](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/session.ts).

@@ -16,6 +16,7 @@ import path from "node:path";
 import { automaticRoles, automaticReviewers } from "../lib/roles.js";
 import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, saveGlobalReviewers, defaultReviewers, savedReviewersNote, globalConfigPath, applyModelFlags, assertModelsSupported, modelsUsed, saveGlobalModel, modelProblem } from "../lib/config.js";
 import { runAgent, probe, supportsModel } from "../lib/agents.js";
+import { usageFromEvents, printUsage } from "../lib/usage.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { assertTrunk } from "../lib/trunk.js";
@@ -338,6 +339,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
       try {
         r = await runAgent(a, {
           worktree, prompt, stopToken: cfg.stopToken,
+          usageContext: { dir, round, action: "review" },
           dryRun: values["dry-run"],
           onTimeout: () => clearInterval(heart),
           onLog: (m) => console.log(`  ${st.agent(a.name)} ${st.muted(m)}`),
@@ -806,6 +808,7 @@ async function cmdAgent(argv) {
       try {
         v = await triageOne(judge, f, {
           worktree, trunk, context: group ? groupContext(group.targets) : "", stopToken: cfg.stopToken, dryRun: values["dry-run"],
+          usageContext: { dir, round, action: "fix", findingId: f.id },
           sessionId: judgeSessionId,
           onLog: (m) => console.log(`          ${st.muted(m)}`),
         });
@@ -965,6 +968,7 @@ function beat(dir, agent, round, forAgent = null) {
 async function publishRun(dir, target) {
   await appendEvent(dir, { t: "target", target });
   await publishEvents(dir, { target });
+  if (["converged", "human"].includes(target.state)) printUsage(usageFromEvents(await readEvents(dir)));
 }
 
 /** A clean report or reply cannot approve a commit that arrived while it ran. */
@@ -1191,6 +1195,7 @@ async function cmdReply(argv) {
     const sink = await openArtifact(dir, replyRaw);
     const r = await runAgent(spec, {
       worktree, prompt: text, stopToken: cfg.stopToken, onLog: (m) => console.log(`  ${m}`),
+      usageContext: { dir, action: "reply", round: Math.max(0, ...events.filter(e => e.t === "round.start").map(e => e.n)) || null },
       onChunk: (chunk) => sink.write(chunk),
     });
     await sink.close();
@@ -1208,6 +1213,7 @@ async function cmdReply(argv) {
   // Preserve every answer, including successful peers, before reporting a
   // failed invocation to scripts that depend on this command's exit status.
   await republish(dir);
+  printUsage(usageFromEvents(await readEvents(dir)));
   const failed = results.filter(r => r && !r.ok).map(r => r.agent);
   if (failed.length) {
     throw new Error(`Replies failed: ${failed.join(", ")}. Check the saved reports, fix the agent issue, and retry jury reply.`);
