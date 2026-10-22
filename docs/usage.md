@@ -163,6 +163,8 @@ The expanded invocation table includes failures and retries. Resuming adds new
 invocations to the saved run rather than replacing earlier usage.
 Codex reports cumulative thread usage; each resumed invocation counts only the
 increase over that thread's last saved totals, including across CLI restarts.
+If a resumed thread has no saved baseline, that invocation's usage is unavailable;
+its reported totals establish a baseline for subsequent invocations.
 When resuming an older run, reviews and replies without usage snapshots remain
 unavailable in the breakdown and keep the combined totals partial.
 

@@ -224,6 +224,27 @@ await runAgent(${JSON.stringify({...codex,argv:[process.execPath,'-e',`process.s
   assert.equal(usage.partial,true);
 });
 
+test('resuming a Codex thread without a saved baseline leaves its first delta unavailable', async t => {
+  const dir=await scratch(t);
+  const invoke=async (input,output) => {
+    const events=lines([{type:'thread.started',thread_id:'old-thread'},complete(input,output),
+      {type:'item.completed',item:{type:'agent_message',text:'NO NEW FINDINGS'}}]);
+    const argv=[process.execPath,'-e',`process.stdout.write(${JSON.stringify(events)})`];
+    return runAgent({...codex,argv,resume:{supported:true,argv}},
+      {worktree:dir,prompt:'reply',stopToken:'NO NEW FINDINGS',sessionId:'old-thread',
+        usageContext:{dir,round:2,action:'reply'}});
+  };
+  await invoke(1000,100);
+  let usage=usageFromEvents(await readEvents(dir));
+  assert.equal(usage.invocations[0].total,null,'historical thread tokens are not this invocation consumption');
+  assert.equal(usage.partial,true);
+  await invoke(1040,110);
+  usage=usageFromEvents(await readEvents(dir));
+  assert.deepEqual(usage.invocations.map(i=>i.total),[null,50]);
+  assert.equal(usage.total,50);
+  assert.equal(usage.partial,true);
+});
+
 test('SIGTERM preserves streamed usage and resume subtracts it after the last publication', {skip:process.platform==='win32',timeout:15000}, async t => {
   const dir=await scratch(t);
   await writeFile(path.join(dir,'run.json'),JSON.stringify({target:{},rounds:[]}));
