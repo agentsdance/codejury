@@ -11,7 +11,7 @@ import { testEnvironment } from '../scripts/test-environment.mjs';
 const exec = promisify(execFile);
 const cli = process.env.JURY_TEST_CLI ?? fileURLToPath(new URL('../bin/jury.js', import.meta.url));
 const root = path.dirname(path.dirname(cli));
-const { usageDecoder, usageFromEvents, summarizeUsage } = await import(pathToFileURL(path.join(root, 'lib/usage.js')));
+const { usageDecoder, usageFromEvents, summarizeUsage, trackUsage } = await import(pathToFileURL(path.join(root, 'lib/usage.js')));
 const { runAgent } = await import(pathToFileURL(path.join(root, 'lib/agents.js')));
 const { appendEvent, readEvents, readRun, publishEvents } = await import(pathToFileURL(path.join(root, 'lib/store.js')));
 const { DEFAULTS } = await import(pathToFileURL(path.join(root, 'lib/config.js')));
@@ -80,6 +80,40 @@ test('Qwen preserves reported totals and includes separately counted thinking in
   }
   assert.equal(usage.models[0].model,'qwen-fixture');
   assert.match(logs.join('\n'),/tokens · 180 total · 100 input · 80 output/);
+});
+
+for (const format of ['array','object']) test(`Qwen saves per-model usage without adding the aggregate (${format})`, async t => {
+  const dir = await scratch(t);
+  const aggregate = {type:'result',subtype:'success',is_error:false,result:'NO NEW FINDINGS',
+    ...(format === 'object' ? {model:'model-a'} : {}),
+    usage:{input_tokens:150,output_tokens:20,total_tokens:180,cache_read_input_tokens:100}};
+  const result = {...aggregate,stats:{models:{
+    'model-a':{tokens:{prompt:100,candidates:10,thoughts:10,total:120,cached:80}},
+    'model-b':{tokens:{prompt:50,candidates:10,thoughts:0,total:60,cached:20}},
+  }}};
+  // A richer result replaces an aggregate-only snapshot; repeated results
+  // must also replace the same model rows instead of charging them twice.
+  const events = [{type:'system',model:'model-a'},aggregate,result,result];
+  const response = JSON.stringify(format === 'array' ? events : result);
+  const run = await runAgent({name:'qwen',report:'result-json',model:'configured',
+    argv:[process.execPath,'-e',`process.stdout.write(${JSON.stringify(response)})`]},
+    {worktree:dir,prompt:'review',stopToken:'NO NEW FINDINGS',usageContext:{dir,round:1,action:'review'}});
+  assert.equal(run.ok,true);
+  await publishEvents(dir);
+  const {usage} = JSON.parse(await readFile(path.join(dir,'run.json'),'utf8'));
+  assert.deepEqual(usage.models,[
+    {agent:'qwen',model:'model-a',modelSource:'reported',input:100,output:20,total:120,cacheRead:80,cacheWrite:null,partial:false},
+    {agent:'qwen',model:'model-b',modelSource:'reported',input:50,output:10,total:60,cacheRead:20,cacheWrite:null,partial:false},
+  ]);
+  assert.equal(usage.invocations.length,1);
+  assert.equal(usage.invocations[0].records.length,2);
+  for (const row of [usage,usage.invocations[0],usage.rounds[0],usage.rounds[0].review]) {
+    assert.equal(row.input,150);
+    assert.equal(row.output,30, 'include separately reported thinking');
+    assert.equal(row.total,180, 'count the model breakdown once, without the aggregate');
+    assert.equal(row.cacheRead,100);
+    assert.equal(row.partial,false);
+  }
 });
 
 test('Qwen falls back for absent or invalid totals and preserves totals with incomplete breakdowns', () => {
@@ -270,6 +304,116 @@ await runAgent(${JSON.stringify({...codex,argv:[process.execPath,'-e',`process.s
   assert.equal(usage.invocations[3].status,'failed');
   assert.equal(usage.partial,true);
 });
+
+for (const status of ['completed', 'failed', 'interrupted']) {
+  test(`a delayed ${status} Codex reply snapshot cannot roll back a newer persisted baseline`, async t => {
+    const dir = await scratch(t), sessionId = 'overlapping-thread';
+    const feed = (tracker, input, output, cacheRead, cacheWrite) => tracker.feed(lines([
+      {type:'thread.started',thread_id:sessionId}, {type:'turn.started'},
+      {type:'turn.completed',usage:{input_tokens:input,output_tokens:output,
+        cached_input_tokens:cacheRead,cache_write_input_tokens:cacheWrite}},
+    ]));
+    const review = trackUsage(codex, {dir,round:1,action:'review'});
+    t.after(() => review.finish('interrupted'));
+    feed(review,100,20,80,10);
+    review.finish('completed');
+    const first = trackUsage(codex, {dir,round:1,action:'reply',replyId:'first'}, null, sessionId);
+    t.after(() => first.finish('interrupted'));
+    feed(first,200,40,160,20);
+    const second = trackUsage(codex, {dir,round:1,action:'reply',replyId:'second'}, null, sessionId);
+    t.after(() => second.finish('interrupted'));
+    feed(second,250,50,200,25);
+    second.finish('completed');
+    // First reported 240 before second reached 300, but exits after second.
+    first.finish(status);
+    const beforeResume = await readEvents(dir);
+    assert.equal(beforeResume.at(-1).records[0].cumulative.total,240);
+    assert.equal(usageFromEvents(beforeResume).total,300);
+
+    // A fresh process must recover 300 from disk, not first's late 240 snapshot.
+    const output = lines([{type:'thread.started',thread_id:sessionId}, {type:'turn.started'},
+      {type:'item.completed',item:{type:'agent_message',text:'NO NEW FINDINGS'}},
+      {type:'turn.completed',usage:{input_tokens:300,output_tokens:60,
+        cached_input_tokens:240,cache_write_input_tokens:30}}]);
+    const argv = [process.execPath,'-e',`process.stdout.write(${JSON.stringify(output)})`];
+    const script = `import {runAgent} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/agents.js')).href)};
+await runAgent(${JSON.stringify({...codex,argv,resume:{supported:true,argv}})},
+  ${JSON.stringify({worktree:dir,prompt:'reply',stopToken:'NO NEW FINDINGS',sessionId,
+    usageContext:{dir,round:1,action:'reply',replyId:'next'}})});`;
+    await exec(process.execPath, ['--input-type=module','-e',script]);
+    await publishEvents(dir);
+    const {usage} = await readRun(dir);
+    assert.equal(usage.partial,status !== 'completed');
+    assert.equal(usage.total,360,'a late final snapshot must not charge the newer reply twice');
+    assert.deepEqual(usage.invocations.map(i=>i.total),[120,120,60,60]);
+    assert.deepEqual(usage.invocations.slice(-1).map(i=>[i.input,i.output,i.cacheRead,i.cacheWrite]),[[50,10,40,5]]);
+  });
+}
+
+for (const signal of ['SIGTERM', 'SIGKILL']) {
+  test(`an unmeasured Codex ${signal} gap invalidates the next reply baseline across processes`,
+    {skip:process.platform === 'win32',timeout:15000}, async t => {
+      const dir = await scratch(t), sessionId = 'unmeasured-thread';
+      const invoke = async (input, output, resumed = true) => {
+        const response = lines([{type:'thread.started',thread_id:sessionId}, {type:'turn.started'},
+          {type:'item.completed',item:{type:'agent_message',text:'NO NEW FINDINGS'}}, complete(input,output)]);
+        const argv = [process.execPath,'-e',`process.stdout.write(${JSON.stringify(response)})`];
+        const script = `import {runAgent} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/agents.js')).href)};
+const result = await runAgent(${JSON.stringify({...codex,argv,resume:{supported:true,argv}})},
+  ${JSON.stringify({worktree:dir,prompt:'reply',stopToken:'NO NEW FINDINGS',sessionId:resumed ? sessionId : null,
+    usageContext:{dir,round:1,action:resumed ? 'reply' : 'review'}})});
+if (!result.ok) throw new Error(result.report);`;
+        await exec(process.execPath, ['--input-type=module','-e',script]);
+      };
+      await invoke(100,20,false);
+      // The provider did work but has not emitted a usage event when Jury dies.
+      const provider = `console.log(JSON.stringify({type:'thread.started',thread_id:${JSON.stringify(sessionId)}}));
+console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'ready:' + process.pid}}));
+setInterval(()=>{},1000);`;
+      const argv = [process.execPath,'-e',provider];
+      const script = `import {runAgent} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/agents.js')).href)};
+await runAgent(${JSON.stringify({...codex,argv,resume:{supported:true,argv}})},
+  {...${JSON.stringify({worktree:dir,prompt:'reply',stopToken:'NO NEW FINDINGS',sessionId,
+    usageContext:{dir,round:1,action:'reply',replyId:'gap'}})},onChunk:text=>console.log(text)});`;
+      const child = spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe']});
+      let providerPid;
+      const reapProvider = () => {
+        if (providerPid) try { process.kill(-providerPid,'SIGKILL'); }
+        catch (error) { if (error.code !== 'ESRCH') throw error; }
+      };
+      t.after(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+        reapProvider();
+      });
+      const exited = once(child,'exit');
+      const [ready] = await once(child.stdout,'data');
+      providerPid = Number(String(ready).match(/ready:(\d+)/)?.[1]);
+      assert.ok(providerPid, 'provider must be running before interruption');
+      child.kill(signal);
+      await exited;
+      // SIGTERM runs Jury's provider cleanup; SIGKILL cannot run its handler.
+      if (signal === 'SIGKILL') reapProvider();
+      providerPid = null;
+      // The missing turn consumed 30; this turn consumed 60. Neither can be
+      // isolated from the new cumulative total of 210, so its delta is unknown.
+      await invoke(180,30);
+      let usage = usageFromEvents(await readEvents(dir));
+      assert.equal(usage.invocations[2].total,null,'90 tokens span two invocations, not just this reply');
+      assert.equal(usage.invocations[2].partial,true);
+      assert.equal(usage.invocations[2].status,'completed');
+      const gap = (await readEvents(dir)).filter(e => e.t === 'usage.snapshot' && e.replyId === 'gap');
+      assert.ok(gap.length);
+      assert.ok(gap.every(e => e.resumedSessionId === sessionId && e.records.length === 0));
+      assert.equal(gap.at(-1).status,signal === 'SIGTERM' ? 'interrupted' : 'running');
+      // This new measurement establishes a baseline again for later replies.
+      await invoke(230,40);
+      await publishEvents(dir);
+      usage = (await readRun(dir)).usage;
+      assert.deepEqual(usage.invocations.map(i=>i.total),[120,null,null,60]);
+      assert.equal(usage.total,180);
+      assert.equal(usage.partial,true);
+    });
+}
 
 test('resuming a Codex thread without a saved baseline leaves its first delta unavailable', async t => {
   const dir=await scratch(t);
