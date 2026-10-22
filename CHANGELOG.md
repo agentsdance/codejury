@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop console port fallback at 65535 and report address-in-use when the valid
+  retry range is occupied, rather than crashing while trying invalid port 65536.
 - Commit judge-created files even when Git's `status.showUntrackedFiles` setting
   hides them, so a new-file-only fix reaches the commit reported as reviewed.
 - Keep a single-checkout review incomplete when HEAD changes while reviewers

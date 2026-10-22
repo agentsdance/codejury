@@ -63,3 +63,56 @@ test(name, async t => {
   assert.equal(result.url, `http://127.0.0.1:${requested + occupiedCount}`);
 });
 }
+
+for (const [name, requested, occupiedCount, expected] of [
+  ["an available maximum port is preserved", 65535, 0, [65535]],
+  ["fallback can reach the maximum port", 65534, 1, [65534, 65535]],
+  ["an occupied maximum port rejects without exceeding the valid range", 65535, Infinity, [65535]],
+  ["fallback stops at the maximum port when the remaining ports are occupied", 65534, Infinity, [65534, 65535]],
+  ["ordinary fallback stops after twenty additional ports", 4100, Infinity, Array.from({ length: 21 }, (_, i) => 4100 + i)],
+]) {
+test(name, async t => {
+  const attempts = [], logs = [];
+  const server = new EventEmitter();
+  let lastError;
+  server.listen = (port, _host, listening) => {
+    attempts.push(port);
+    if (port > 65535 || attempts.length <= occupiedCount) {
+      lastError = Object.assign(new Error("occupied"), {
+        code: port > 65535 ? "ERR_SOCKET_BAD_PORT" : "EADDRINUSE", port,
+      });
+      queueMicrotask(() => server.emit("error", lastError));
+    } else {
+      server.boundPort = port;
+      queueMicrotask(listening);
+    }
+    return server;
+  };
+  server.address = () => ({ port: server.boundPort });
+  t.mock.method(http, "createServer", () => server);
+
+  const result = serve({ port: requested, onLog: message => logs.push(message) });
+  if (occupiedCount === Infinity) {
+    await assert.rejects(result, error => error === lastError && error.code === "EADDRINUSE");
+  } else {
+    const { port, url } = await result;
+    assert.equal(port, expected.at(-1));
+    assert.equal(url, `http://127.0.0.1:${port}`);
+  }
+  assert.deepEqual(attempts, expected);
+  assert.deepEqual(logs, expected.slice(1).map((port, i) => `port ${expected[i]} busy, trying ${port}`));
+});
+}
+
+test("non-collision listen errors reject without fallback", async t => {
+  const server = new EventEmitter(), attempts = [];
+  const denied = Object.assign(new Error("denied"), { code: "EACCES" });
+  server.listen = port => {
+    attempts.push(port);
+    queueMicrotask(() => server.emit("error", denied));
+    return server;
+  };
+  t.mock.method(http, "createServer", () => server);
+  await assert.rejects(serve({ port: 4100, onLog: () => assert.fail("must not retry") }), error => error === denied);
+  assert.deepEqual(attempts, [4100]);
+});

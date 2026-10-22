@@ -39,7 +39,9 @@ continues independently of the browser connection.
 
 Use `--port 0` with a review or `--web-only` to let the OS choose an available
 console port. Jury prints and opens the URL with that assigned port. A requested
-nonzero port still falls back to the next available port when it is busy.
+nonzero port still falls back to the next available port when it is busy, trying
+up to 20 higher ports without exceeding 65535. If that range is occupied, Jury
+reports the address-in-use error; choose another port or use `--port 0`.
 
 ## Resume and limits
 
