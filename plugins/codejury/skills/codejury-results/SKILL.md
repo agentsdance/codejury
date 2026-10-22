@@ -7,7 +7,7 @@ description: List, inspect, or summarize saved CodeJury reviews and findings, or
 
 Resolve `<plugin-root>` as two directories above this skill folder. Use
 `node "<plugin-root>/scripts/jury.mjs"` followed by command arguments. This invokes
-the exact published release candidate, downloading it into
+the exact published stable release, downloading it into
 `~/.cache/codejury/plugin-cli/` on first use. Respect an explicitly requested
 CLI version.
 

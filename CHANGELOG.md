@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Support a saved `--language` preference for reviewer findings, judge explanations,
+  replies and code-fix summaries, including language switches on resumed runs (#124).
+
+## 0.9.0 — 2026-10-22
+
+- Publish the stable CLI with the changes from `0.8.2-rc.1` and the additions below.
+- Update the Codex plugin to 0.1.2 and pin its launcher to stable CLI 0.9.0.
+
 - Resolve PR URLs whose owner, repository, or group names contain `pull` or
   `merge_requests`, keeping repository identity, request-number selection, and
   saved review labels aligned.
@@ -64,7 +72,7 @@
 - Rename the manual Claude Code plugin skill from `multi-agent-code-review` to `codejury`.
 - Add a desktop-only Codex plugin with setup, PR-link review/resume, and saved-results
   skills, a local marketplace, and a submission ZIP builder. The plugin uses
-  the published `0.8.2-rc.1` CLI and preserves unpushed single-PR fixes in a
+  the published `0.9.0` CLI and preserves unpushed single-PR fixes in a
   persistent checkout. Plugin 0.1.1 includes public privacy and terms pages,
   a live console link, and Windows path handling fixes.
 - Code Jury is now a Claude Code plugin: `claude plugin marketplace add agentsdance/codejury`, then
@@ -86,8 +94,6 @@
 - Record reported token usage for each review, judge/fix turn and reply, with round,
   model and run totals in the CLI and console. Preserve usage from failures, retries
   and interruptions; missing counts remain unavailable and totals are marked partial (#123).
-- Support a saved `--language` preference for reviewer findings, judge explanations,
-  replies and code-fix summaries, including language switches on resumed runs (#124).
 
 
 ## 0.8.2-rc.1 — 2026-10-20

@@ -23,7 +23,7 @@ original PR link from the saved run or conversation.
 
 Resolve `<plugin-root>` as two directories above this skill folder. Use
 `node "<plugin-root>/scripts/jury.mjs"` followed by the command and its arguments.
-The launcher downloads the exact published release candidate into
+The launcher downloads the exact published stable release into
 `~/.cache/codejury/plugin-cli/` on first use and invokes its absolute entrypoint,
 so a different local/global `jury` cannot shadow it. If the user requests a different
 version, use that version and inspect its help.
