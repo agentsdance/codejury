@@ -93,9 +93,11 @@ for (const name of ['peer', 'peer-reviewer', 'peer-', 'peer--']) {
     const partials = [
       `x${name}`, `${name}x`, `prefix-${name}`, `${name}-extended`, `_${name}`, `${name}_`,
       `é${name}`, `${name}中文`, `e\u0301${name}`, `${name}\u0301`,
+      `${name}²`, `${name}¼`,
       `${name}$reviewer`, `${name}\u200Creviewer`, `${name}\u200Dreviewer`,
       `${name}‿reviewer`, `${name}⁀reviewer`,
       `prefix-r12-${name}-3`, `r12-${name}-3-suffix`, `r12-${name}-3x`, `r12-${name}-3_`,
+      `r12-${name}-3²`, `r12-${name}-3¼`,
     ].join(' ');
     const reason = `Preserve: ${partials}`;
     assert.ok(build({ ...finding, reason }).includes(reason), 'do not redact part of a larger name, identifier, or Unicode word');
