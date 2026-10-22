@@ -228,3 +228,87 @@ for (const fence of ['```', '~~~']) {
     }
   });
 }
+
+for (const [language, claim, agreement, objection] of [
+  ['zh-CN', '[P2] 数值错误', '关于 B 的数值错误，我同意已经修复。', '匿名请求仍然能执行受保护操作。'],
+  ['en', '[P2] Numeric overflow', 'I agree that B: Numeric overflow is fixed.', 'Anonymous requests can still perform the protected action.'],
+]) test(`explicit dispute IDs keep mixed agreements settled: ${language}`, async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'jury-mixed-reply-'));
+  t.after(() => rm(dir, {recursive: true, force: true}));
+  const report = `DISPUTE: A\n${objection}\n\n${agreement}`;
+  const agent = {name: 'fixture', argv: [process.execPath, '-e', `console.log(${JSON.stringify(report)})`]};
+  // The agreed finding comes first so marker handling cannot depend on thread order.
+  for (const [id, title, status] of [['B', claim, 'accepted'], ['A', '[P2] Missing authorization', 'rejected']]) {
+    await appendEvent(dir, {t: 'finding.raised', id, agent: agent.name, round: 1, claim: title, loc: `${id}.js:1`});
+    await appendEvent(dir, {t: 'finding.resolved', id, verdict: status, reason: 'Checked'});
+  }
+  const [answer] = await replyRound({dir, pool: [agent], cfg: {stopToken: 'NO NEW FINDINGS'},
+    worktree: dir, sha: 'abc', round: 1, language, findings: await findingsIn(dir)});
+  assert.equal(answer.failed, false);
+  assert.equal(answer.clean, false, 'the disputed finding still needs the judge');
+  const events = await readEvents(dir), findings = await findingsIn(dir);
+  assert.deepEqual({
+    turns: events.filter(e => e.t === 'finding.turn').map(e => e.id),
+    pending: outstanding(findings, events).map(f => f.id),
+    agreed: {status: findings.get('B').status, contested: findings.get('B').contested, turns: findings.get('B').turns},
+  }, {turns: ['A'], pending: ['A'], agreed: {status: 'accepted', contested: false, turns: 0}});
+  assert.ok(findings.get('A').rebuttals[0].includes(objection));
+  assert.deepEqual(findings.get('B').rebuttals, []);
+});
+
+test('quoted dispute markers do not disable legacy title matching', async t => {
+  const report = 'Earlier example:\n```text\nDISPUTE: unknown\n```\n我仍然不同意：缺少权限检查的问题依然存在。';
+  const {events, findings} = await reply(t, '[P2] 缺少权限检查', report);
+  assert.deepEqual(events.filter(e => e.t === 'finding.turn').map(e => e.id), ['A']);
+  assert.deepEqual(outstanding(findings, events).map(f => f.id), ['A']);
+});
+
+test('complete rebuttal sections preserve code examples and repeated disputes without other findings', async t => {
+  const first = [
+    'DISPUTE: A', 'The quoted example is part of the reproduction:', '',
+    '```text', 'DISPUTE: B', '```', '',
+    'Important evidence after the example: the protected write succeeds.',
+  ].join('\n');
+  const second = 'DISPUTE: A\nAn additional request confirms the same unauthorized write.';
+  const report = `Introduction.\n\n${first}\n\nDISPUTE: B\nUnrelated dispute evidence.\n\n${second}\n\n`
+    + 'FINDING: A separate defect\nWHERE: other.js:2\nUnrelated new finding evidence.';
+  const {events, findings} = await reply(t, '[P2] Missing authorization validation', report, 'en');
+  const saved = events.find(e => e.t === 'finding.turn' && e.id === 'A').text;
+  assert.equal(saved, `${first}\n\n${second}`, 'keep all sections for the exact ID and respect live boundaries');
+  const prompt = triagePrompt({finding: findings.get('A'), trunk: 'master', stopToken: 'NO NEW FINDINGS'});
+  assert.ok(prompt.includes('Important evidence after the example: the protected write succeeds.'));
+  assert.ok(prompt.includes('An additional request confirms the same unauthorized write.'));
+  assert.ok(!prompt.includes('Unrelated dispute evidence.'));
+  assert.ok(!prompt.includes('Unrelated new finding evidence.'));
+});
+
+for (const [label, claim, loc] of [
+  ['same title and location', 'Missing authorization', 'auth.js:20'],
+  ['same location with a revised title', 'Alternate route permits anonymous writes', 'auth.js:20'],
+  ['normalized title with a different location', 'Missing authorization!', 'alternate.js:30'],
+]) test(`restated disputed findings retain evidence and stop at separate findings: ${label}`, async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'jury-restated-reply-'));
+  t.after(() => rm(dir, {recursive: true, force: true}));
+  const evidence = 'New evidence: anonymous POST to the alternate route returns 200 and changes protected data.';
+  const section = `DISPUTE: A\nFINDING: ${claim}\nWHERE: ${loc}\n${evidence}`;
+  const separate = 'FINDING: Numeric overflow\nWHERE: balance.js:8\nUnrelated new finding evidence.';
+  const report = `${section}\n\n${separate}\n\nDISPUTE: B\nUnrelated dispute evidence.`;
+  const agent = {name: 'fixture', argv: [process.execPath, '-e', `console.log(${JSON.stringify(report)})`]};
+  await appendEvent(dir, {t: 'finding.raised', id: 'A', agent: agent.name, round: 1,
+    claim: 'Missing authorization', loc: 'auth.js:20'});
+  await appendEvent(dir, {t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'Checked'});
+  const [answer] = await replyRound({dir, pool: [agent], cfg: {stopToken: 'NO NEW FINDINGS'},
+    worktree: dir, sha: 'abc', round: 1, language: 'en', findings: await findingsIn(dir)});
+  assert.equal(answer.failed, false);
+  assert.equal(answer.clean, false);
+  assert.equal(answer.raised, 1, 'only the separate finding is raised');
+  const events = await readEvents(dir), findings = await findingsIn(dir);
+  assert.deepEqual(events.filter(e => e.t === 'finding.raised' && e.id !== 'A')
+    .map(({claim, loc}) => ({claim, loc})), [{claim: 'Numeric overflow', loc: 'balance.js:8'}]);
+  assert.equal(events.find(e => e.t === 'finding.turn' && e.id === 'A').text, section);
+  assert.deepEqual(findings.get('A').rebuttals, [section]);
+  const prompt = triagePrompt({finding: findings.get('A'), trunk: 'master', language: 'en'});
+  assert.ok(prompt.includes(evidence));
+  assert.ok(!prompt.includes('Unrelated new finding evidence.'));
+  assert.ok(!prompt.includes('Unrelated dispute evidence.'));
+});
