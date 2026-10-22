@@ -20,15 +20,20 @@ const {readEvents,foldEvents} = await load('store.js');
 function assertCodePreservation(prompt) {
   assert.match(prompt,/Preserve programming syntax/);
   assert.match(prompt,/JSON keys/);
+  assert.match(prompt,/Follow repository conventions and task requirements for code comments, string\nliterals and test names; the response language does not override them\./);
   assert.match(prompt,/^Preserve [^\n.]*\bidentifiers\b/m,'必须明确要求保留标识符');
   assert.match(prompt,/^Preserve [^\n.]*\bexisting code conventions\b/m,'必须明确要求保留现有代码约定');
 }
 
-for (const [label,prompt] of [
-  ['缺少标识符约束','Preserve programming syntax, existing code conventions, JSON keys.'],
-  ['缺少代码约定约束','Preserve programming syntax, identifiers, JSON keys.'],
-  ['要求翻译标识符和改写代码约定','请翻译所有标识符，并改写现有代码约定。\nPreserve programming syntax, JSON keys.'],
-]) test(`代码保护断言拒绝无效提示词：${label}`,()=>{
+for (const [label,mutate] of [
+  ['missing identifier constraint',s=>s.replace('identifiers, ','')],
+  ['missing convention constraint',s=>s.replace('existing code conventions, ','')],
+  ['translating identifiers',s=>s.replace('Preserve programming syntax, identifiers, existing code conventions, JSON keys,',
+    'Translate identifiers and rewrite existing code conventions.\nPreserve programming syntax, JSON keys,')],
+  ['overriding code prose conventions',s=>s.replace('Follow repository conventions and task requirements for code comments, string\nliterals and test names; the response language does not override them.',
+    'Translate code comments, string literals and test names.')],
+]) test(`code preservation assertions reject invalid prompts: ${label}`,()=>{
+  const prompt=mutate(languageInstruction('zh-CN'));
   assert.throws(()=>assertCodePreservation(prompt),{code:'ERR_ASSERTION'},'无效约束必须被提示词断言捕获');
 });
 

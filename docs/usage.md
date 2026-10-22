@@ -181,6 +181,8 @@ saving the change. A new run with no language option keeps the existing behavior
 Tags are validated and canonicalized (`zh-cn` becomes `zh-CN`). The preference
 controls generated prose; programming syntax, identifiers, existing code conventions,
 JSON keys, verdict values and exact protocol/stop markers remain unchanged.
+Code comments, string literals and test names follow the repository's conventions
+and task requirements rather than the response-language preference.
 
 ## Token usage
 
