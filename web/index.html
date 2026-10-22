@@ -467,6 +467,15 @@
   .convo > header .who { display:inline-flex; align-items:center; gap:2px; }
   .convo > header .sw { margin:0 4px; color:var(--muted); font-weight:400; }
   .convo .empty { padding:26px 14px; text-align:center; font:400 13px/1.5 var(--sans); color:var(--muted); }
+  .usage-total { font:500 24px/1.4 var(--mono); color:var(--ink); margin:8px 0; }
+  .usage-scroll { overflow-x:auto; border:1px solid var(--line); border-radius:8px; margin:14px 0; background:var(--surface); }
+  .usage-table { width:100%; border-collapse:collapse; font:12px/1.5 var(--mono); }
+  .usage-table caption { text-align:left; padding:12px; color:var(--ink); font-weight:600; }
+  .usage-table th,.usage-table td { padding:9px 12px; text-align:right; border-top:1px solid var(--line-soft); white-space:nowrap; }
+  .usage-table th:first-child,.usage-table td:first-child { text-align:left; }
+  .usage-table th { color:var(--muted); font-weight:500; }
+  .usage-table td { color:var(--ink-2); font-variant-numeric:tabular-nums; }
+  #usage-sec details > summary { cursor:pointer; color:var(--accent); padding:8px 0; }
 </style>
 
 <div class="wrap">
@@ -489,6 +498,11 @@
   <section>
     <h2>Round by round</h2>
     <div class="rgrid" id="rounds"></div>
+  </section>
+
+  <section id="usage-sec">
+    <h2>Token usage</h2>
+    <div id="usage"></div>
   </section>
 
   <section id="convo-sec">
@@ -1123,8 +1137,48 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+function renderUsage(){
+  const container = $("usage");
+  const runKey = RUN.slug ?? JSON.stringify([RUN.target?.repo, RUN.target?.id, RUN.target?.attempt]);
+  const sameRun = container.dataset.run === runKey;
+  const previousDetails = container.querySelector("details");
+  const previousScrollers = [...container.querySelectorAll(".usage-scroll")];
+  const expanded = sameRun && previousDetails?.open;
+  const scrollPositions = sameRun ? previousScrollers.map(el => el.scrollLeft) : [];
+  const focusedScroller = sameRun ? previousScrollers.indexOf(document.activeElement) : -1;
+  const focusedSummary = sameRun && previousDetails?.querySelector("summary") === document.activeElement;
+  container.dataset.run = runKey;
+  const u = RUN.usage;
+  if (!u?.invocations?.length) {
+    container.innerHTML = '<p class="note">Unavailable — this run has no recorded token usage.</p>';
+    return;
+  }
+  const n = value => value == null ? "unavailable" : Number(value).toLocaleString("en-US");
+  const model = m => `${m.agent} / ${m.model ?? "model unavailable"} (${m.modelSource})`;
+  const table = (caption, rows) => `<div class="usage-scroll" tabindex="0"><table class="usage-table">
+    <caption>${esc(caption)}</caption><thead><tr><th scope="col">Action / model</th><th scope="col">Input</th><th scope="col">Output</th><th scope="col">Total</th><th scope="col">Cache read</th><th scope="col">Cache write</th></tr></thead>
+    <tbody>${rows.map(([label,r]) => `<tr><td>${esc(label)}${r.partial ? " · partial" : ""}</td>${["input","output","total","cacheRead","cacheWrite"].map(k=>`<td>${n(r[k])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const rounds = u.rounds.flatMap(r => [[`Round ${r.round ?? "?"}`, r], ...["review", "fix", "reply"].filter(a=>r[a]).map(a=>[`Round ${r.round ?? "?"} · ${a}`, r[a]])]);
+  const actions = u.invocations.flatMap(i => {
+    const label = `Round ${i.round ?? "?"} · ${i.action} · ${i.agent} · ${i.status}`;
+    return [[label, i], ...(i.records ?? []).map(m=>[model({...m,agent:i.agent}), m])];
+  });
+  container.innerHTML = `<p class="usage-total">${n(u.total)} tokens${u.partial ? " · partial" : ""}</p>
+    <p class="note">${n(u.input)} input · ${n(u.output)} output. Cache reads and writes are included in input, never added twice. Unavailable counts are not zero.</p>
+    ${table("By model", u.models.map(m=>[model(m),m]))}
+    ${table("By round", rounds)}
+    <details><summary>Each review, fix and reply (${u.invocations.length})</summary>${table("Invocations", actions)}</details>`;
+  const details = container.querySelector("details");
+  details.open = Boolean(expanded);
+  const scrollers = [...container.querySelectorAll(".usage-scroll")];
+  scrollers.forEach((el, i) => { el.scrollLeft = scrollPositions[i] ?? 0; });
+  if (focusedSummary) details.querySelector("summary").focus({ preventScroll: true });
+  else if (focusedScroller >= 0) scrollers[focusedScroller]?.focus({ preventScroll: true });
+}
+
 function render(){
   renderHeader();
+  renderUsage();
   // timeline
   $("tl").innerHTML =
     // Marks that land within a label's width of each other are drawn as one.
