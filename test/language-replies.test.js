@@ -117,3 +117,13 @@ for (const report of ['DISPUTE: A-extra', 'DISPUTE: unknown', '我同意 A 的�
     assert.deepEqual(outstanding(findings, events), []);
   });
 }
+
+for (const [id, clean] of [['A', false], ['unknown', true]]) {
+  test(`an explicit known dispute overrides the approval marker: ${id}`, async t => {
+    const {answer, events, findings} = await reply(t, '[P2] Missing authorization validation',
+      `DISPUTE: ${id}\nNO NEW FINDINGS`);
+    assert.equal(answer.clean, clean);
+    assert.equal(findings.get('A').contested, !clean);
+    assert.equal(outstanding(findings, events).length, Number(!clean));
+  });
+}
