@@ -1186,7 +1186,8 @@ async function cmdReply(argv) {
 
     const replyId = randomUUID();
     await appendEvent(dir, { t: "reply.sent", agent: a.name, replyId, sha, resumed: resumable, sessionId, sessionCursor: events.length, promptFile: file, text, who: judge });
-    const spec = { ...a, argv: replyArgv(a, { promptText: text, worktree, sessionId }).argv };
+    // Leave prompt text for runAgent so literal {{...}} content is not expanded twice.
+    const spec = { ...a, argv: replyArgv(a, { worktree, sessionId }).argv };
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);
     const r = await runAgent(spec, {
