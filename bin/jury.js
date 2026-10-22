@@ -24,7 +24,7 @@ import { assertTrunk } from "../lib/trunk.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, publishEvents, readEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, judgeSessionIn, openFindings, currentJudge } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, judgeSessionIn, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, parsePrUrl, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
@@ -746,6 +746,9 @@ async function cmdAgent(argv) {
         return;
       }
     }
+    let findings = await findingsIn(dir);
+    const events = await readEvents(dir);
+    const todo = outstanding(findings, events);
     if (result.clean) {
       // Clean is not enough on its own. A finding left open by the previous
       // round — triage failed, the gate refused the verdict, or a reply raised
@@ -753,8 +756,8 @@ async function cmdAgent(argv) {
       // reviewers, because settled.md lists only what has a verdict. They can
       // all sign off in good faith while it sits unanswered. Fall through and
       // triage it; the round-end check below is the one that may declare
-      // convergence.
-      const open = await openFindings(dir);
+      // convergence. Saved rebuttals also need triage, subject to the same
+      // per-finding turn limit as a round that raises new findings.
       const pending = group ? await groupReady(group.targets, values.push) : null;
       if (pending || pushFailed) {
         const reason = pending ?? "a push failed";
@@ -762,7 +765,7 @@ async function cmdAgent(argv) {
         await publishRun(dir, { ...target, state: "human", stateNote: reason });
         return;
       }
-      if (!open.length) {
+      if (!todo.length) {
         console.log(st.ok(`\nREVIEW COMPLETE after ${st.count(round - first + 1, "round")}.`));
         console.log(st.muted(`Reviewed commit ${head.sha}.`));
         await publishRun(dir, {
@@ -770,12 +773,8 @@ async function cmdAgent(argv) {
         });
         return;
       }
-      console.log(st.warn(`\nevery reviewer is clean, but ${st.count(open.length, "finding")} from earlier ${open.length === 1 ? "is" : "are"} still open.`));
+      console.log(st.warn(`\nevery reviewer is clean, but ${st.count(todo.length, "finding")} from earlier ${todo.length === 1 ? "is" : "are"} still open or contested.`));
     }
-
-    let findings = await findingsIn(dir);
-    const events = await readEvents(dir);
-    const todo = outstanding(findings, events);
 
     // Nothing to answer and nobody signed off: the reviewers produced prose
     // this parser could not track. Another identical round will not fix that.
@@ -914,17 +913,14 @@ async function cmdAgent(argv) {
       console.log(`${st.dim("reply")}    ${st.agent(a.agent.padEnd(8))} ${a.failed ? st.bad(what) : a.clean ? st.ok(what) : st.warn(what)}`);
     }
 
-    // Convergence is three things, and the first one was missing: every
-    // reviewer signed off, no reviewer failed to run, AND nothing is still
-    // open. Without the last, a round that raised findings nobody triaged
-    // reported success — every thread had nothing to answer, "nothing to
-    // answer" counted as clean, and the run exited having addressed none of it.
+    // Both convergence checks use the same pending-work and turn-limit rules.
+    // A clean reply cannot resolve a dispute the judge failed to answer.
     const settled = await findingsIn(dir);
-    const stillOpen = [...settled.values()].filter((f) => f.status === "open");
+    const stillOutstanding = outstanding(settled, await readEvents(dir));
     const broke = answers.filter((a) => a.failed);
     const pending = group ? await groupReady(group.targets, values.push) : await reviewedHeadProblem(worktree, finalHead.fullSha);
     if (pending) console.log(st.warn(`Review incomplete: ${pending}.`));
-    if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed && !pending && !(group && fixed)) {
+    if (answers.every((a) => a.clean) && !stillOutstanding.length && !broke.length && !pushFailed && !pending && !(group && fixed)) {
       console.log(st.ok(st.bold(`\nREVIEW COMPLETE — every reviewer approved after round ${round}.`)));
       console.log(st.muted(`Reviewed commit ${finalHead.sha}.`));
       await publishRun(dir, {
@@ -932,8 +928,8 @@ async function cmdAgent(argv) {
       });
       return;
     }
-    if (stillOpen.length) {
-      console.log(st.warn(`\n${st.count(stillOpen.length, "finding")} still open — review incomplete.`));
+    if (stillOutstanding.length) {
+      console.log(st.warn(`\n${st.count(stillOutstanding.length, "finding")} still open or contested — review incomplete.`));
     }
     if (broke.length) {
       const reason = `reviewer replies failed: ${broke.map(a => a.agent).join(", ")}`;

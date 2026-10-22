@@ -32,6 +32,21 @@ test('distinct Chinese findings with the same severity survive reply deduplicati
   assert.equal(outstanding(findings, events).filter(f => f.id !== 'A').length, 1);
 });
 
+for (const [label, claim, next, language, raised] of [
+  ['distinct Hindi vowel signs', '[P2] कुल गलत है', '[P2] काल गलत है', 'hi', 1],
+  ['Hindi punctuation duplicate', '[P2] कुल गलत है', '[P2] कुल गलत है!', 'hi', 0],
+  ['English control', '[P2] Total is wrong', '[P2] Time is wrong', 'en', 1],
+]) test(`reply deduplication preserves combining marks: ${label}`, async t => {
+  const {answer, events, findings} = await reply(t, claim,
+    `FINDING: ${next}\nWHERE: time.js:20\nNeeds correction.`, language);
+  assert.equal(answer.raised, raised);
+  const expected = raised ? [{claim: next, loc: 'time.js:20'}] : [];
+  assert.deepEqual(events.filter(e => e.t === 'finding.raised' && e.id !== 'A')
+    .map(({claim, loc}) => ({claim, loc})), expected);
+  assert.deepEqual(outstanding(findings, events).filter(f => f.id !== 'A')
+    .map(({claim, loc}) => ({claim, loc})), expected);
+});
+
 for (const [label, claim, report, contested, language] of [
   ['Chinese title without severity', '[P2] 缺少权限检查', '我仍然不同意：缺少权限检查的问题依然存在。', true],
   ['Chinese title with severity', '[P2] 条件错误', '[P2] 条件错误仍然存在，并没有修复。', true],
@@ -115,6 +130,38 @@ for (const report of ['DISPUTE: A-extra', 'DISPUTE: unknown', '我同意 A 的�
     assert.equal(events.filter(e => e.t === 'finding.turn').length, 0);
     assert.equal(findings.get('A').contested, false);
     assert.deepEqual(outstanding(findings, events), []);
+  });
+}
+
+for (const [label, quoted] of [
+  ['backtick fence', '```text\nDISPUTE: A\n```'],
+  ['tilde fence', '~~~text\nDISPUTE: A\n~~~'],
+  ['nested shorter and different fences', '````text\n```\n~~~\nDISPUTE: A\n````'],
+  ['blockquote', '> DISPUTE: A'],
+]) test(`quoted dispute markers do not reopen findings: ${label}`, async t => {
+  const {answer, events, findings} = await reply(t, '[P2] Missing authorization validation',
+    `My earlier objection was:\n${quoted}\nI withdraw that objection and agree with the resolution.\nNO NEW FINDINGS`);
+  assert.equal(answer.clean, true);
+  assert.equal(answer.raised, 0);
+  assert.deepEqual(events.filter(e => e.t === 'finding.turn'), []);
+  assert.equal(findings.get('A').turns, 0);
+  assert.equal(findings.get('A').contested, false);
+  assert.deepEqual(outstanding(findings, events), []);
+});
+
+for (const fence of ['```', '~~~']) {
+  test(`an active dispute after a quoted example reaches triage: ${fence}`, async t => {
+    const explanation = '我仍然不同意：权限校验的问题尚未修复。';
+    const {answer, events, findings} = await reply(t, '[P2] Missing authorization validation',
+      `Earlier example:\n${fence}text\nDISPUTE: A\n${fence}\n${'Historical context.\n'.repeat(8)}`
+      + `DISPUTE: A\n${explanation}\nNO NEW FINDINGS`);
+    assert.equal(answer.clean, false);
+    const turns = events.filter(e => e.t === 'finding.turn');
+    assert.deepEqual(turns.map(e => e.id), ['A']);
+    assert.ok(turns[0].text.includes(explanation), 'the excerpt must come from the active dispute');
+    assert.equal(findings.get('A').turns, 1);
+    assert.equal(findings.get('A').contested, true);
+    assert.deepEqual(outstanding(findings, events).map(f => f.id), ['A']);
   });
 }
 
