@@ -17,7 +17,7 @@ import { automaticRoles, automaticReviewers } from "../lib/roles.js";
 import { loadConfig, reviewers, judgeAgent, knownAgents, readGlobalConfig, saveGlobalJudge, saveGlobalReviewers, defaultReviewers, savedReviewersNote, globalConfigPath, applyModelFlags, assertModelsSupported, modelsUsed, saveGlobalModel, modelProblem } from "../lib/config.js";
 import { runAgent, probe, supportsModel } from "../lib/agents.js";
 import { usageFromEvents, printUsage } from "../lib/usage.js";
-import { normalizeLanguage } from "../lib/language.js";
+import { normalizeLanguage, languageIn } from "../lib/language.js";
 import { threadFor, buildReply, replyArgv } from "../lib/reply.js";
 import { buildPrompt } from "../lib/prompt.js";
 import { assertTrunk } from "../lib/trunk.js";
@@ -260,6 +260,7 @@ async function commandDirectory(value) {
 async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, announceCompletion = true }) {
   const git = { sha };
   console.log(st.info(st.bold(`round ${round}`)));
+  target.language = normalizeLanguage(languageIn(await readEvents(dir)) ?? target.language);
 
   // Built before the round opens so the exact text handed to the reviewers is
   // part of the record. A verdict is only readable next to the question asked.
@@ -511,10 +512,10 @@ async function cmdAgent(argv) {
   // one ref the host may have pruned — rather than reading what is on disk —
   // is what issue #30 was.
   const resolveFrom = values.dir ? path.resolve(values.dir) : process.cwd();
-  const priorTargets = values.resume
-    ? [...await readEvents(path.join(runsDir(requestedWorktree), path.basename(values.resume)))].reverse()
-      .find(e => e.t === "target")?.target : null;
-  const language = normalizeLanguage(requestedLanguage ?? priorTargets?.language);
+  const priorEvents = values.resume
+    ? await readEvents(path.join(runsDir(requestedWorktree), path.basename(values.resume))) : [];
+  const priorTargets = priorEvents.findLast(e => e.t === "target")?.target;
+  const language = normalizeLanguage(requestedLanguage ?? languageIn(priorEvents));
   if (priorTargets?.targets && urls.length < 2) throw new Error("resuming a related-PR task requires all original PR URLs");
   if (urls.length > 1 && values.resume && !priorTargets?.targets) throw new Error("no related-PR task found to resume");
   if (priorTargets?.targets && !argv.some(a => a === "--push" || a.startsWith("--push="))) {
@@ -645,6 +646,9 @@ async function cmdAgent(argv) {
   }
   assertModelsSupported([judge, ...pool]);
   target.models = modelsUsed([judge, ...pool]);
+  if (requestedLanguage !== undefined) {
+    await appendEvent(dir, { t: "language.changed", language: requestedLanguage });
+  }
   if (!values["dry-run"]) {
     const checks = await Promise.all(pool.map(probe));
     const missing = checks.filter(a => !a.ok);
@@ -816,7 +820,7 @@ async function cmdAgent(argv) {
       try {
         v = await triageOne(judge, f, {
           worktree, trunk, context: group ? groupContext(group.targets) : "", stopToken: cfg.stopToken, dryRun: values["dry-run"],
-          language: target.language,
+          language: normalizeLanguage(languageIn(await readEvents(dir)) ?? target.language),
           usageContext: { dir, round, action: "fix", findingId: f.id },
           sessionId: judgeSessionId,
           onLog: (m) => console.log(`          ${st.muted(m)}`),
@@ -892,7 +896,7 @@ async function cmdAgent(argv) {
     const replyEvents = await readEvents(dir);
     const answers = await replyRound({
       dir, pool, cfg, worktree, sha: finalHead.sha, context: group ? groupContext(group.targets) : "", targets: group?.targets, round, findings: after, judge: judge.name,
-      language: target.language,
+      language: normalizeLanguage(languageIn(replyEvents) ?? target.language),
       sessions: sessionsIn(replyEvents), sessionCursor: replyEvents.length,
       dryRun: values["dry-run"],
       // Prefixed like the launch line: without a name this printed a bare
@@ -1164,7 +1168,7 @@ async function cmdReply(argv) {
   const { sha } = await describe(worktree, "master");
 
   const savedTarget = [...events].reverse().find(e => e.t === "target")?.target;
-  const language = normalizeLanguage(requestedLanguage ?? savedTarget?.language);
+  const language = normalizeLanguage(requestedLanguage ?? languageIn(events));
   const roles = savedTarget?.sameAgentRoles ?? savedTarget?.automaticRoles;
   let pool = roles ? automaticReviewers(cfg, roles, requestedReviewers(values))
     : selectReviewers(cfg, requestedReviewers(values), judge);
@@ -1178,7 +1182,7 @@ async function cmdReply(argv) {
   assertModelsSupported(pool);
 
   if (requestedLanguage !== undefined && !values["dry-run"]) {
-    await appendEvent(dir, { t: "target", target: { ...savedTarget, language } });
+    await appendEvent(dir, { t: "language.changed", language });
   }
   if (language) console.log(`language ${language}`);
   console.log(`judge    ${judge}`);

@@ -242,6 +242,34 @@ test("a reviewer that could not run is never counted as agreement", async () => 
   await rm(dir, { recursive: true, force: true });
 });
 
+for (const { label, language, claim, nextClaim, raised } of [
+  { label: "中文不同标题", language: "zh-CN", claim: "数值错误", nextClaim: "缺少权限检查", raised: 1 },
+  { label: "英文不同标题", language: "en", claim: "Incorrect value", nextClaim: "Missing authorization check", raised: 1 },
+  { label: "中文重复标题", language: "zh-CN", claim: "缺少权限检查", nextClaim: "缺少权限检查！", raised: 0 },
+  { label: "英文重复标题", language: "en", claim: "Missing authorization check", nextClaim: "MISSING authorization check!", raised: 0 },
+]) test(`回复去重保留不同位置的新问题：${label}`, async t => {
+  const dir = await tmp();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const report = `FINDING: ${nextClaim}\nWHERE: auth.js:20\n需要检查权限。`;
+  const agent = { name: "fixture", argv: [process.execPath, "-e", `console.log(${JSON.stringify(report)})`],
+    resume: { supported: false } };
+  await appendEvent(dir, { t: "finding.raised", id: "A", round: 1, agent: agent.name, claim, loc: "value.js:1" });
+  await appendEvent(dir, { t: "finding.resolved", id: "A", verdict: "rejected", reason: "已检查" });
+
+  const [answer] = await replyRound({
+    dir, pool: [agent], cfg: { stopToken: "NO NEW FINDINGS" }, worktree: dir,
+    sha: "abc", round: 1, findings: await findingsIn(dir), language,
+  });
+  assert.equal(answer.failed, false);
+  assert.equal(answer.clean, false);
+  assert.equal(answer.raised, raised, "只有重复标题才能被过滤，不同中文标题必须保留");
+  const events = await readEvents(dir);
+  const fresh = events.filter(e => e.t === "finding.raised" && e.id !== "A");
+  assert.equal(fresh.length, raised, "新问题必须写入事件日志");
+  assert.deepEqual(outstanding(await findingsIn(dir), events).filter(f => f.id !== "A").map(f => ({ claim: f.claim, loc: f.loc })),
+    raised ? [{ claim: nextClaim, loc: "auth.js:20" }] : [], "新问题必须进入下一轮 triage");
+});
+
 test("automatic replies persist a discovered session and keep it when resumed output omits the ID", async t => {
   const dir = await tmp();
   t.after(() => rm(dir, { recursive: true, force: true }));
