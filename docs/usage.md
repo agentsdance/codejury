@@ -165,6 +165,8 @@ Codex reports cumulative thread usage; each resumed invocation counts only the
 increase over that thread's last saved totals, including across CLI restarts.
 If a resumed thread has no saved baseline, that invocation's usage is unavailable;
 its reported totals establish a baseline for subsequent invocations.
+An interrupted turn without usage invalidates its session's baseline, so its
+unmeasured work is not charged to a later invocation.
 When resuming an older run, reviews and replies without usage snapshots remain
 unavailable in the breakdown and keep the combined totals partial.
 
@@ -179,6 +181,8 @@ Input includes cached input once. Cache reads and writes are also shown separate
 Codex and Qwen already include them in input, while Droid and OpenCode report them
 separately. OpenCode reasoning is included in output. Qwen's reported total is
 preserved; thinking counted beyond input and candidate output is included in output.
+When Qwen reports model counters, they supply the model breakdown and replace its
+aggregate usage rather than being added to it.
 Cache counts that are absent remain unavailable. Partial totals add only available
 counts; missing invocations, missing input/output fields and unfinished or failed
 invocations mark them partial.

@@ -592,3 +592,11 @@ for(const event of [{type:'thread.started',thread_id:session},{type:'turn.starte
   assert.equal(run.usage.total,850); assert.equal(run.usage.invocations.length,5);
   assert.equal(run.usage.partial,false);
 });
+
+test('Qwen model counters fall back when zero denotes an unreported total', () => {
+  const decoder=usageDecoder({name:'qwen',report:'result-json'});
+  decoder.feed(JSON.stringify({type:'result',usage:{input_tokens:100,output_tokens:20},
+    stats:{models:{actual:{tokens:{prompt:100,candidates:20,total:0,cached:0,thoughts:0}}}}}));
+  assert.deepEqual(decoder.finish().map(({model,input,output,total})=>({model,input,output,total})),
+    [{model:'actual',input:100,output:20,total:120}]);
+});
