@@ -25,10 +25,10 @@ test('plugin launcher installs into Windows cache paths containing spaces', () =
       assert.equal(args[0], 'install');
       assert.equal(args[1], '--prefix');
       assert.equal(path.resolve(args[2]), process.cwd(), 'npm received a split cache path: ' + JSON.stringify(args));
-      assert.deepEqual(args.slice(3), ['--no-save', '--package-lock=false', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org', '@agentsdance/codejury@0.8.2-rc.1']);
+      assert.deepEqual(args.slice(3), ['--no-save', '--package-lock=false', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org', '@agentsdance/codejury@0.9.0']);
       const pkg = path.join(path.resolve(args[2]), 'node_modules', '@agentsdance', 'codejury');
       fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
-      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.8.2-rc.1', type: 'module' }));
+      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.9.0', type: 'module' }));
       fs.writeFileSync(path.join(pkg, 'bin', 'jury.js'), 'console.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) }));');
     `);
     const preload = path.join(root, 'windows.mjs');
@@ -46,21 +46,21 @@ test('plugin launcher installs into Windows cache paths containing spaces', () =
     const result = spawnSync(process.execPath, [...nodeArgs, launcher, 'version'], { cwd, env, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), { cwd: realpathSync(cwd), argv: ['version'] });
-    const metadata = JSON.parse(readFileSync(path.join(cache, '0.8.2-rc.1', 'node_modules', '@agentsdance', 'codejury', 'package.json'), 'utf8'));
-    assert.equal(metadata.version, '0.8.2-rc.1');
+    const metadata = JSON.parse(readFileSync(path.join(cache, '0.9.0', 'node_modules', '@agentsdance', 'codejury', 'package.json'), 'utf8'));
+    assert.equal(metadata.version, '0.9.0');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('plugin launcher preserves cwd, literal arguments, and exit status without using a shadowed jury', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'codejury-plugin-'));
   try {
-    const pkg = path.join(root, 'cache', '0.8.2-rc.1', 'node_modules', '@agentsdance', 'codejury');
+    const pkg = path.join(root, 'cache', '0.9.0', 'node_modules', '@agentsdance', 'codejury');
     const cwd = path.join(root, 'repository with spaces');
     const shadow = path.join(root, 'bin');
     mkdirSync(path.join(pkg, 'bin'), { recursive: true });
     mkdirSync(cwd);
     mkdirSync(shadow);
-    writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.8.2-rc.1', type: 'module' }));
+    writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.9.0', type: 'module' }));
     writeFileSync(path.join(pkg, 'bin', 'jury.js'), 'console.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) })); process.exitCode = 7;');
     writeFileSync(path.join(shadow, 'jury'), '#!/bin/sh\nexit 99\n', { mode: 0o755 });
     const args = ['review', '--summary', 'literal $(touch unwanted) `echo bad` ; & "text"'];
@@ -75,7 +75,7 @@ test('plugin launcher preserves cwd, literal arguments, and exit status without 
 test('plugin launcher rejects an incomplete cache without replacing user files', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'codejury-plugin-'));
   try {
-    const install = path.join(root, '0.8.2-rc.1');
+    const install = path.join(root, '0.9.0');
     mkdirSync(install);
     writeFileSync(path.join(install, 'keep.txt'), 'preserve');
     const result = spawnSync(process.execPath, [launcher, 'version'], {
@@ -94,7 +94,7 @@ test('plugin launcher reuses a cache published after its initial miss', () => {
     const bin = path.join(root, 'bin');
     const calls = path.join(root, 'npm-calls');
     const peerResult = path.join(root, 'peer.json');
-    const metadata = path.join(cache, '0.8.2-rc.1', 'node_modules', '@agentsdance', 'codejury', 'package.json');
+    const metadata = path.join(cache, '0.9.0', 'node_modules', '@agentsdance', 'codejury', 'package.json');
     mkdirSync(bin);
     const fixture = path.join(bin, 'npm.cjs');
     writeFileSync(fixture, `#!${process.execPath}
@@ -102,7 +102,7 @@ test('plugin launcher reuses a cache published after its initial miss', () => {
       fs.appendFileSync(${JSON.stringify(calls)}, 'install\\n');
       const pkg = path.join(process.cwd(), 'node_modules', '@agentsdance', 'codejury');
       fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
-      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.8.2-rc.1', type: 'module' }));
+      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@agentsdance/codejury', version: '0.9.0', type: 'module' }));
       fs.writeFileSync(path.join(pkg, 'bin', 'jury.js'), 'console.log("cached fixture CLI");');
     `);
     if (process.platform === 'win32') {
@@ -147,6 +147,6 @@ test('plugin launcher reuses a cache published after its initial miss', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), 'cached fixture CLI');
     assert.equal(readFileSync(calls, 'utf8'), 'install\n', 'the completed cache must be reused without another installation');
-    assert.equal(JSON.parse(readFileSync(metadata, 'utf8')).version, '0.8.2-rc.1');
+    assert.equal(JSON.parse(readFileSync(metadata, 'utf8')).version, '0.9.0');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
