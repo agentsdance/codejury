@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Redact reviewer names ending in hyphens from reply verdicts while preserving
+  longer names, identifiers, and words that merely contain a reviewer name.
 - Preserve literal `{{...}}` text in automatic and standalone reviewer replies,
   rather than interpreting quoted findings and verdicts as command placeholders.
 - Stop console port fallback at 65535 and report address-in-use when the valid
