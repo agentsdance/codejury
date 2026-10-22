@@ -724,6 +724,14 @@ async function cmdAgent(argv) {
       process.exitCode = 1;
       return;
     }
+    if (!group) {
+      const pending = await reviewedHeadProblem(worktree, head.fullSha);
+      if (pending) {
+        console.log(st.warn(`\nReview incomplete: ${pending}.`));
+        await publishRun(dir, { ...target, state: "human", stateNote: pending });
+        return;
+      }
+    }
     if (result.clean) {
       // Clean is not enough on its own. A finding left open by the previous
       // round — triage failed, the gate refused the verdict, or a reply raised
@@ -733,7 +741,7 @@ async function cmdAgent(argv) {
       // triage it; the round-end check below is the one that may declare
       // convergence.
       const open = await openFindings(dir);
-      const pending = group ? await groupReady(group.targets, values.push) : await reviewedHeadProblem(worktree, head.fullSha);
+      const pending = group ? await groupReady(group.targets, values.push) : null;
       if (pending || pushFailed) {
         const reason = pending ?? "a push failed";
         console.log(st.warn(`\nReview incomplete: ${reason}.`));

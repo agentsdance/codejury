@@ -10,7 +10,7 @@ import { testEnvironment } from '../scripts/test-environment.mjs';
 
 const cli = process.env.JURY_TEST_CLI ?? new URL('../bin/jury.js', import.meta.url).pathname;
 
-for (const phase of ['review', 'reply', 'fix reply', 'failed reply']) {
+for (const phase of ['review', 'finding review', 'reply', 'fix reply', 'failed reply']) {
   for (const changed of phase === 'failed reply' ? [true] : [false, true]) {
     test(`${phase} ${changed ? 'cannot complete after a concurrent commit' : 'completes on an unchanged reviewed HEAD'}`, { timeout: 25000 }, async () => {
       const root = await mkdtemp(path.join(tmpdir(), 'jury-review-head-'));
@@ -34,11 +34,26 @@ for (const phase of ['review', 'reply', 'fix reply', 'failed reply']) {
               assert.equal(cp.spawnSync(process.execPath, ['added.test.cjs']).status, 0);
               console.log(JSON.stringify({ verdict: 'accepted', reproduced: 'new-file test failed before correction', test: 'added.test.cjs fails before and passes after', reason: 'created missing file' }));
             } else console.log(JSON.stringify({ verdict: 'rejected', reason: 'fixture claim is not valid' }));
+          } else if (phase === 'finding review' && !prompt.startsWith('Thanks —')) {
+            const git = (...args) => cp.execFileSync('git', args, { encoding: 'utf8' }).trim();
+            fs.writeFileSync(${JSON.stringify(ready)}, JSON.stringify({ head: git('rev-parse', 'HEAD'), files: git('ls-files') }));
+            const start = Date.now();
+            const timer = setInterval(() => {
+              if (fs.existsSync(${JSON.stringify(release)})) {
+                clearInterval(timer);
+                console.log('FINDING: missing file fixture\\nWHERE: added.txt:1\\nCheck the fixture.');
+              }
+              else if (Date.now() - start > 15000) { clearInterval(timer); console.error('fixture release timed out'); process.exitCode = 1; }
+            }, 10);
           } else if (phase !== 'review' && !prompt.startsWith('Thanks —')) {
             console.log('FINDING: missing file fixture\\nWHERE: added.txt:1\\nCheck the fixture.');
           } else {
             const git = (...args) => cp.execFileSync('git', args, { encoding: 'utf8' }).trim();
-            fs.writeFileSync(${JSON.stringify(ready)}, JSON.stringify({ head: git('rev-parse', 'HEAD'), files: git('ls-files') }));
+            if (phase === 'fix reply') {
+              fs.writeFileSync('staged-only.txt', 'not part of the reviewed commit');
+              git('add', 'staged-only.txt');
+            }
+            fs.writeFileSync(${JSON.stringify(ready)}, JSON.stringify({ head: git('rev-parse', 'HEAD'), files: git('ls-tree', '-r', '--name-only', 'HEAD') }));
             const start = Date.now();
             const timer = setInterval(() => {
               if (fs.existsSync(${JSON.stringify(release)})) {
@@ -85,6 +100,7 @@ for (const phase of ['review', 'reply', 'fix reply', 'failed reply']) {
           assert.notEqual(reviewedHead, initialHead, 'the loop must commit the judge fix before asking for approval');
           assert.ok(observed.files.split('\n').includes('added.txt'));
           assert.ok(observed.files.split('\n').includes('added.test.cjs'));
+          assert.ok(!observed.files.split('\n').includes('staged-only.txt'), 'the checkpoint must inspect the reviewed commit, not the index');
         } else assert.equal(reviewedHead, initialHead);
         if (changed) {
           await writeFile(path.join(repo, 'value.txt'), 'concurrent change\n');
