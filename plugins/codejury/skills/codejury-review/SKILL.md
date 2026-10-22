@@ -84,7 +84,9 @@ printed run slug for resume.
 **Resume:** use the same target arguments and state root plus `--resume <slug>`.
 Pass the user's push preference explicitly. Preserve a previous local-only
 request unless the user changes it; use the saved push setting when resuming
-without a new preference, and default to `--push=true` if no setting is recorded.
+without a new preference, and default to `--push=false` if no setting is recorded.
+Older single-PR runs may omit the setting, so only enable pushing when the user
+explicitly requests it for that resume.
 If remote heads have changed, inspect the conflict before starting a new review
 instead of publishing obsolete local fixes.
 
