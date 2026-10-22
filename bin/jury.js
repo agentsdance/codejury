@@ -26,7 +26,7 @@ import { appendEvent, publishEvents, readEvents, slugFor, attemptStamp, runsDir,
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
 import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, judgeSessionIn, openFindings, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
-import { assertPrCheckout, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
+import { assertPrCheckout, parsePrUrl, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
 import * as st from "../lib/style.js";
 import { parseReviewArgs, reviewerOptions, requestedReviewers } from "../lib/cli-options.js";
@@ -1576,8 +1576,9 @@ function repoFromUrl(u) {
 }
 
 function idFromUrl(u) {
-  const m = u.match(/\/merge_requests\/(\d+)|\/pull\/(\d+)/);
-  return m ? (m[1] ? `!${m[1]}` : `#${m[2]}`) : "";
+  const parsed = parsePrUrl(u);
+  if (!parsed) return "";
+  return `${parsed.kind === "merge_requests" ? "!" : "#"}${parsed.number}`;
 }
 
 function firstLine(s) {
