@@ -184,6 +184,10 @@ JSON keys, verdict values and exact protocol/stop markers remain unchanged.
 Code comments, string literals and test names follow the repository's conventions
 and task requirements rather than the response-language preference.
 
+Replies with explicit `DISPUTE: <finding-id>` markers reopen only the named
+findings. Agreements with other findings remain settled. Each complete rebuttal
+ends at the next live dispute or new finding; quoted examples stay in its evidence.
+
 ## Token usage
 
 The CLI and saved-run console show input, output and total tokens for every review,
