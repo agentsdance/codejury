@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve literal `{{...}}` text in automatic and standalone reviewer replies,
+  rather than interpreting quoted findings and verdicts as command placeholders.
 - Stop console port fallback at 65535 and report address-in-use when the valid
   retry range is occupied, rather than crashing while trying invalid port 65536.
 - Commit judge-created files even when Git's `status.showUntrackedFiles` setting
