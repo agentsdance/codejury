@@ -161,13 +161,14 @@ judge/fix invocation and reply, with subtotals per round, per model and for the 
 A judge/fix turn is counted even when it rejects a finding without editing code.
 The expanded invocation table includes failures and retries. Resuming adds new
 invocations to the saved run rather than replacing earlier usage.
-Codex reports cumulative thread usage; each resumed invocation counts only the
-increase over that thread's last saved totals, including across CLI restarts.
+Codex and Qwen report cumulative session usage; each resumed invocation counts only
+the increase over that session's last saved totals, including across CLI restarts.
+Qwen model counters are compared with the saved totals for each model.
 If a resumed thread has no saved baseline, that invocation's usage is unavailable;
 its reported totals establish a baseline for subsequent invocations.
 An interrupted turn without usage invalidates its session's baseline, so its
 unmeasured work is not charged to a later invocation.
-When resuming an older run, reviews and replies without usage snapshots remain
+When resuming an older run, reviews, judge turns and replies without usage snapshots remain
 unavailable in the breakdown and keep the combined totals partial.
 
 Counts come from agent output, never estimates. Codex JSON, Droid/Qwen result JSON

@@ -56,6 +56,75 @@ test('Droid cache is additional, Qwen cache is included, OpenCode separates reas
   assert.equal(d.snapshot()[0].output,20);
 });
 
+test('result-json saves complete envelopes during feed without counting nested or partial usage', () => {
+  for (const name of ['qwen','droid']) for (const format of ['object','array','ndjson']) {
+    const updates = [], decoder = usageDecoder({name,report:'result-json'},records => updates.push(records));
+    const result = {type:'result',result:'Quoted braces } ] and "escaped" \\ text',usage:{input_tokens:100,output_tokens:20}};
+    const nested = {type:'assistant',text:JSON.stringify(result),message:result};
+    const wire = format === 'object' ? JSON.stringify(result,null,2)
+      : format === 'array' ? JSON.stringify([nested,result],null,2) : lines([nested]) + JSON.stringify(result);
+    // Split strings, escapes, and nested objects across stdout chunks.
+    for (let i=0; i<wire.length-1; i+=3) decoder.feed(wire.slice(i,Math.min(i+3,wire.length-1)));
+    assert.equal(updates.length,0,`${name}/${format}: incomplete or nested results are not usage`);
+    decoder.feed(wire.slice(-1));
+    assert.equal(updates.at(-1)?.[0].total,120,`${name}/${format}: save a complete result before finish`);
+    const received = updates.length;
+    decoder.feed('\n  ');
+    decoder.finish();
+    assert.equal(updates.length,received,'finish must not replay an already saved envelope');
+    // Multiple complete documents in one chunk must persist before a partial tail.
+    decoder.feed(lines([result,result]) + '{"type":"result","usage":{"input_tokens":999');
+    assert.equal(updates.length,received+2);
+    assert.equal(decoder.snapshot().length,1);
+    assert.equal(decoder.finish()[0].total,120);
+  }
+});
+
+for (const name of ['qwen','droid']) test(`${name} received result usage survives SIGKILL before provider exit`,
+  {skip:process.platform === 'win32',timeout:15000}, async t => {
+    const dir = await scratch(t);
+    await writeFile(path.join(dir,'run.json'),JSON.stringify({target:{},rounds:[]}));
+    const provider = `
+      const result = {type:'result',subtype:'success',result:'NO NEW FINDINGS',pid:process.pid,
+        session_id:'received-session',usage:{input_tokens:100,output_tokens:20}};
+      process.stdout.write(JSON.stringify(${name === 'qwen' ? '[{type:"system",model:"fixture",session_id:"received-session"},result]' : 'result'},null,2));
+      setInterval(()=>{},1000);`;
+    const agent = {name,report:'result-json',argv:[process.execPath,'-e',provider]};
+    const script = `import {runAgent} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/agents.js')).href)};
+let received = '';
+await runAgent(${JSON.stringify(agent)}, {...${JSON.stringify({worktree:dir,prompt:'review',stopToken:'NO NEW FINDINGS',usageContext:{dir,round:1,action:'review'}})},
+  onChunk:text=>{received+=text;try {const parsed=JSON.parse(received);console.log('received:'+(Array.isArray(parsed)?parsed.at(-1):parsed).pid);}catch{}}});`;
+    const child = spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe']});
+    let providerPid;
+    const reapProvider = () => {
+      if (providerPid) try { process.kill(-providerPid,'SIGKILL'); }
+      catch (error) { if (error.code !== 'ESRCH') throw error; }
+      providerPid = null;
+    };
+    t.after(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      reapProvider();
+    });
+    const exited = once(child,'exit');
+    const [ready] = await once(child.stdout,'data');
+    providerPid = Number(String(ready).match(/received:(\d+)/)?.[1]);
+    assert.ok(providerPid,'Jury received the entire result while the provider is still alive');
+    child.kill('SIGKILL');
+    await exited;
+    reapProvider();
+    const {usage} = await readRun(dir);
+    assert.equal(usage.total,120,'readRun recovers received usage without finish or republishing');
+    assert.equal(usage.invocations[0].status,'running');
+    assert.equal(usage.partial,true);
+    if (name === 'qwen') {
+      await invokeQwen(dir,{sessionId:'received-session',breakdown:false,
+        counters:{fixture:{prompt:140,candidates:30,total:170,cached:0}}});
+      const resumed = (await readRun(dir)).usage;
+      assert.equal(resumed.total,170);
+      assert.equal(resumed.invocations[1].total,50,'the received snapshot is also the resume baseline');
+    }
+  });
+
 test('Qwen preserves reported totals and includes separately counted thinking in saved output', async t => {
   const dir = await scratch(t), logs = [];
   const response = JSON.stringify([
@@ -139,6 +208,78 @@ test('Qwen falls back for absent or invalid totals and preserves totals with inc
   }
 });
 
+async function invokeQwen(dir, {sessionId = null, counters, breakdown, omitSession = false}) {
+  const usage = counters && Object.fromEntries([
+    ['input_tokens','prompt'],['output_tokens','candidates'],['total_tokens','total'],['cache_read_input_tokens','cached'],
+  ].map(([field,key]) => [field,Object.values(counters).reduce((sum,u) => sum + u[key],0)]));
+  const result = {type:'result',subtype:'success',is_error:false,result:'NO NEW FINDINGS',usage,
+    ...(breakdown ? {stats:{models:Object.fromEntries(Object.entries(counters ?? {}).map(([name,tokens]) => [name,{tokens}]))}} : {})};
+  const provider = `
+    const result = ${JSON.stringify(result)};
+    const system = {type:'system',model:'model-a'};
+    if (!${omitSession}) system.session_id = result.session_id = process.argv[2];
+    if (${Boolean(counters)}) process.stdout.write(JSON.stringify([system,result,result]));
+    else process.exit(1);`;
+  const argv = [process.execPath,'-e',provider,'fresh','{{sessionId}}'];
+  const agent = {name:'qwen',report:'result-json',newSession:true,argv,
+    resume:{supported:true,argv:[...argv.slice(0,-2),'resume','{{sessionId}}']}};
+  // Recover usage from disk in a fresh Jury process for every reply.
+  const script = `import {runAgent} from ${JSON.stringify(pathToFileURL(path.join(root,'lib/agents.js')).href)};
+const result = await runAgent(${JSON.stringify(agent)},${JSON.stringify({worktree:dir,prompt:'review',
+  stopToken:'NO NEW FINDINGS',sessionId,usageContext:{dir,round:1,action:sessionId ? 'reply' : 'review'}})});
+console.log(JSON.stringify({ok:result.ok,sessionId:result.sessionId}));`;
+  const {stdout} = await exec(process.execPath,['--input-type=module','-e',script]);
+  const run = JSON.parse(stdout);
+  assert.equal(run.ok,Boolean(counters));
+  return run.sessionId;
+}
+
+for (const breakdown of [true,false]) {
+  const format = breakdown ? 'models' : 'aggregate';
+  test(`Qwen resumed ${format} subtract persisted session counters across processes`, async t => {
+    const dir = await scratch(t);
+    const sessionId = await invokeQwen(dir,{breakdown,
+      counters:{'model-a':{prompt:100,candidates:10,thoughts:10,total:120,cached:80}}});
+    await invokeQwen(dir,{breakdown,sessionId,
+      counters:{'model-a':{prompt:140,candidates:20,thoughts:10,total:170,cached:100}}});
+    await publishEvents(dir);
+    let usage = (await readRun(dir)).usage;
+    assert.equal(usage.total,170,'120 then 170 cumulative must total 170, not 290');
+    assert.deepEqual(usage.invocations.map(i => [i.input,i.output,i.total,i.cacheRead]),[[100,20,120,80],[40,10,50,20]]);
+    assert.equal(usage.partial,false);
+    if (breakdown) {
+      await invokeQwen(dir,{breakdown,sessionId,counters:{
+        'model-a':{prompt:140,candidates:20,thoughts:10,total:170,cached:100},
+        'model-b':{prompt:50,candidates:10,thoughts:0,total:60,cached:20},
+      }});
+      usage = usageFromEvents(await readEvents(dir));
+      assert.equal(usage.total,230);
+      assert.equal(usage.invocations.at(-1).total,60,'new models start at zero; unchanged models add zero');
+      assert.deepEqual(usage.models.map(m => [m.model,m.total]),[['model-a',170],['model-b',60]]);
+    }
+    const other = await invokeQwen(dir,{breakdown,
+      counters:{'model-a':{prompt:100,candidates:10,thoughts:10,total:120,cached:80}}});
+    assert.notEqual(other,sessionId);
+    assert.equal(usageFromEvents(await readEvents(dir)).invocations.at(-1).total,120,'new sessions do not inherit another baseline');
+  });
+
+  test(`Qwen resumed ${format} keep missing baselines and unmeasured gaps unavailable`, async t => {
+    const dir = await scratch(t), sessionId = 'older-qwen-session';
+    const invoke = (prompt,candidates) => invokeQwen(dir,{breakdown,sessionId,omitSession:true,
+      counters:prompt === null ? null : {'model-a':{prompt,candidates,total:prompt+candidates,cached:0}}});
+    await invoke(100,20);
+    await invoke(140,30);
+    await invoke(null,null); // Resumed invocation exits without any usage.
+    await invoke(190,40);
+    await invoke(240,50);
+    const events = await readEvents(dir), usage = usageFromEvents(events);
+    assert.deepEqual(usage.invocations.map(i => i.total),[null,50,null,null,60]);
+    assert.equal(usage.total,110);
+    assert.equal(usage.partial,true);
+    assert.ok(events.filter(e => e.t === 'usage.snapshot').every(e => e.resumedSessionId === sessionId));
+  });
+}
+
 test('missing and invalid counts stay unavailable; aggregates retain available totals as partial', () => {
   const d=usageDecoder(codex);
   d.feed(lines([{type:'turn.completed',usage:{input_tokens:-1,output_tokens:'20'}}]));
@@ -180,6 +321,67 @@ test('resuming an older run keeps unrecorded reviews unavailable and combined us
     assert.equal(usage.rounds[1].total,120);
     assert.equal(usage.rounds[1].partial,false);
   }
+});
+
+test('legacy judge turns survive recovery and publication beside a measured new round', async t => {
+  const dir = await scratch(t);
+  const events = [{t:'round.start',n:1},
+    {t:'agent.launch',agent:'reviewer',round:1},
+    {t:'agent.report',agent:'reviewer',round:1,verdict:'findings'},
+    {t:'judge.session',agent:'judge',sessionId:'legacy-judge',round:1},
+    {t:'finding.resolved',id:'F1',who:'judge',verdict:'rejected'},
+    // The second invocation reuses the judge session, so no new session event.
+    {t:'finding.resolved',id:'F2',who:'judge',verdict:'deferred'},
+    {t:'round.start',n:2},
+    {t:'usage.snapshot',id:'new-review',agent:'reviewer',round:2,action:'review',status:'completed',
+      records:[{model:'fixture',modelSource:'reported',input:100,output:20,total:120,cacheRead:null,cacheWrite:null}]}];
+  await writeFile(path.join(dir,'events.ndjson'),lines(events));
+  await writeFile(path.join(dir,'run.json'),JSON.stringify({target:{},rounds:[{n:1}]}));
+  const recovered = await readRun(dir);
+  await publishEvents(dir);
+  const published = JSON.parse(await readFile(path.join(dir,'run.json'),'utf8'));
+  for (const {usage} of [recovered,published]) {
+    assert.deepEqual(usage.invocations.map(i => [i.agent,i.action,i.round,i.findingId ?? null,i.total]),
+      [['reviewer','review',1,null,null],['judge','fix',1,'F1',null],['judge','fix',1,'F2',null],['reviewer','review',2,null,120]]);
+    assert.equal(usage.rounds[0].fix.total,null);
+    assert.equal(usage.rounds[0].fix.partial,true);
+    assert.equal(usage.models.find(m => m.agent === 'judge').modelSource,'unavailable');
+    assert.equal(usage.models.find(m => m.agent === 'judge').partial,true);
+    assert.equal(usage.total,120);
+    assert.equal(usage.partial,true);
+    assert.equal(usage.rounds[1].partial,false);
+    assert.ok(usage.invocations.filter(i => i.action === 'fix').every(i => i.status === 'completed'));
+  }
+});
+
+test('judge lifecycle recovery matches measured findings without phantom invocations', () => {
+  const snapshot = (id,findingId,status) => ({t:'usage.snapshot',id,agent:'judge',round:1,action:'fix',findingId,status,
+    records:status === 'running' ? [] : [{model:'fixture',modelSource:'reported',input:100,output:20,total:120}]});
+  const events = [{t:'round.start',n:1},snapshot('first','F1','running'),snapshot('first','F1','completed'),
+    {t:'judge.session',agent:'judge',sessionId:'measured-judge',round:1},
+    {t:'finding.resolved',id:'F1',who:'judge',verdict:'accepted'},
+    snapshot('second','F2','running'),snapshot('second','F2','completed'),
+    {t:'finding.resolved',id:'F2',who:'judge',verdict:'rejected'},
+    // These resolutions do not establish an additional judge invocation.
+    {t:'finding.resolved',id:'manual',who:'operator',verdict:'rejected'},
+    {t:'finding.resolved',id:'unknown',verdict:'rejected'},
+    {t:'finding.resolved',id:'limit',who:'judge',verdict:'deferred',reason:'argued 3 turns without agreement; both positions are in the log'}];
+  const usage = usageFromEvents(events);
+  assert.deepEqual(usage.invocations.map(i => [i.id,i.findingId,i.total]),[['first','F1',120],['second','F2',120]]);
+  assert.equal(usage.total,240);
+  assert.equal(usage.partial,false);
+});
+
+test('a legacy judge session without a verdict remains unavailable beside a measured retry', () => {
+  const usage = usageFromEvents([{t:'round.start',n:1},
+    {t:'judge.session',agent:'judge',sessionId:'unparsed-judge',round:1},
+    {t:'usage.snapshot',id:'retry',agent:'judge',round:1,action:'fix',findingId:'F1',status:'completed',
+      records:[{input:100,output:20,total:120}]},
+    {t:'finding.resolved',id:'F1',who:'judge',verdict:'rejected'}]);
+  assert.deepEqual(usage.invocations.map(i => [i.action,i.status,i.total]),[['fix','unknown',null],['fix','completed',120]]);
+  assert.equal(usage.rounds[0].fix.partial,true);
+  assert.equal(usage.total,120);
+  assert.equal(usage.partial,true);
 });
 
 test('legacy attempts stay unavailable beside tracked retries and replies in the same round', () => {
