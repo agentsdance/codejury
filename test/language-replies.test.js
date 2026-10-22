@@ -11,6 +11,7 @@ const load = name => import(pathToFileURL(path.join(root, 'lib', name)));
 const {appendEvent, readEvents} = await load('store.js');
 const {findingsIn} = await load('findings.js');
 const {replyRound, outstanding} = await load('loop.js');
+const {languageIn} = await load('language.js');
 
 async function reply(t, claim, report, language = 'zh-CN') {
   const dir = await mkdtemp(path.join(tmpdir(), 'jury-language-reply-'));
@@ -51,3 +52,68 @@ for (const [label, claim, report, contested, language] of [
   assert.equal(findings.get('A').contested, contested);
   assert.equal(outstanding(findings, events).some(f => f.id === 'A'), contested);
 });
+
+for (const [initial, language, claim, message] of [
+  ['en', 'zh-CN', '[P2] Missing authorization validation',
+    '我仍然不同意：缺少权限校验的问题依然存在，尚未修复。'],
+  ['zh-CN', 'en', '[P2] 缺少权限校验',
+    'I still disagree: missing authorization validation remains unfixed.'],
+]) for (const resumed of [false, true]) {
+  test(`translated disputes retain finding IDs: ${initial} to ${language}, resumed=${resumed}`, async t => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'jury-language-switch-'));
+    t.after(() => rm(dir, {recursive: true, force: true}));
+    // The fixture can return an ID only if the delivered prompt supplies it.
+    const argv = [process.execPath, '-e', `
+      const prompt = process.argv[1];
+      const ids = [...prompt.matchAll(/^Finding ID: (.+)$/gm)].map(match => match[1]);
+      const marker = ids[1] ? 'DISPUTE: ' + ids[1] + '\\n' : '';
+      console.log('...\\n'.repeat(8) + marker + ${JSON.stringify(message)});
+    `, '{{promptText}}'];
+    const agent = {name: 'fixture', argv, resume: {supported: true, argv: [...argv, '{{sessionId}}']}};
+    const id = 'r1-fixture-10', neighbor = 'r1-fixture-1', other = 'r1-peer-1';
+    await appendEvent(dir, {t: 'target', target: {language: initial}});
+    for (const [findingId, owner, title] of [
+      [neighbor, agent.name, '[P2] Numeric overflow'],
+      [id, agent.name, claim],
+      [other, 'peer', '[P2] Missing validation'],
+    ]) {
+      await appendEvent(dir, {t: 'finding.raised', id: findingId, agent: owner, round: 1,
+        claim: title, loc: `${findingId}.js:20`});
+      await appendEvent(dir, {t: 'finding.resolved', id: findingId, verdict: 'rejected', reason: 'Checked'});
+    }
+    await appendEvent(dir, {t: 'language.changed', language});
+    const [answer] = await replyRound({dir, pool: [agent], cfg: {stopToken: 'NO NEW FINDINGS'},
+      worktree: dir, sha: 'abc', round: 1, language: languageIn(await readEvents(dir)),
+      sessions: new Map(resumed ? [[agent.name, 'session']] : []), findings: await findingsIn(dir)});
+    assert.equal(answer.failed, false);
+    const events = await readEvents(dir), findings = await findingsIn(dir);
+    const turns = events.filter(e => e.t === 'finding.turn');
+    assert.deepEqual(turns.map(e => e.id), [id]);
+    assert.ok(turns[0].text.includes(message), 'the saved rebuttal must include its translated explanation');
+    assert.equal(findings.get(id).contested, true);
+    assert.equal(findings.get(id).turns, 1);
+    assert.equal(findings.get(neighbor).contested, false, 'an ID prefix must not match');
+    assert.equal(findings.get(other).contested, false);
+    assert.deepEqual(outstanding(findings, events).map(f => f.id), [id]);
+    const sent = events.find(e => e.t === 'reply.sent');
+    assert.equal(sent.resumed, resumed);
+    assert.ok(sent.text.includes(`Response language: ${language}.`));
+    assert.ok(sent.text.includes(`Finding ID: ${id}`));
+    assert.ok(!sent.text.includes(other), 'only this reviewer receives its finding IDs');
+    assert.match(sent.text, /"DISPUTE: <finding-id>" on its own line/);
+    assert.match(sent.text, /Preserve the DISPUTE:\nmarker and finding ID unchanged even when translating your response/);
+    assert.match(sent.text, /only for findings you still dispute, not for agreements or new findings/);
+    assert.ok(sent.text.includes('say exactly "NO NEW FINDINGS" on its own line'));
+    assert.equal(answer.raised, 0, 'a dispute marker is not a new finding');
+    assert.equal(answer.clean, false);
+  });
+}
+
+for (const report of ['DISPUTE: A-extra', 'DISPUTE: unknown', '我同意 A 的结论。\nNO NEW FINDINGS']) {
+  test(`finding IDs require an exact dispute marker: ${report.split('\n')[0]}`, async t => {
+    const {events, findings} = await reply(t, '[P2] Missing authorization validation', report);
+    assert.equal(events.filter(e => e.t === 'finding.turn').length, 0);
+    assert.equal(findings.get('A').contested, false);
+    assert.deepEqual(outstanding(findings, events), []);
+  });
+}
