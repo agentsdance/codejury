@@ -169,10 +169,11 @@ its reported totals establish a baseline for subsequent invocations.
 An interrupted turn without usage invalidates its session's baseline, so its
 unmeasured work is not charged to a later invocation.
 When resuming an older run, known reviews, judge turns and replies without usage
-snapshots remain unavailable and keep combined totals partial. Judge session records
-and heartbeats establish old fix invocations. A verdict alone does not: manual
-resolutions use the judge name too, so ambiguous historical verdicts cannot
-establish an additional invocation.
+snapshots remain unavailable and keep combined totals partial. Saved judge session
+records establish known old fix invocations. Bare verdicts and heartbeats cannot
+establish additional calls: manual resolutions use the judge name too, and
+heartbeats lack invocation IDs and may arrive late. Historical invocation counts
+are therefore limited to what those old logs can establish.
 
 Counts come from agent output, never estimates. Codex JSON, Droid/Qwen result JSON
 and OpenCode JSON expose supported usage fields. Other output formats, including

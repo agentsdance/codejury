@@ -374,8 +374,8 @@ test('legacy judge turns survive recovery and publication beside a measured new 
     {t:'agent.report',agent:'reviewer',round:1,verdict:'findings'},
     {t:'judge.session',agent:'judge',sessionId:'legacy-judge',round:1},
     {t:'finding.resolved',id:'F1',who:'judge',verdict:'rejected'},
-    // A reused session is identified by its judge heartbeat, not the verdict.
-    {t:'agent.alive',agent:'judge',forAgent:'reviewer',round:1},
+    // A new saved session establishes another old call. Bare heartbeats do not.
+    {t:'judge.session',agent:'judge',sessionId:'legacy-judge-2',round:1},
     {t:'agent.alive',agent:'judge',forAgent:'reviewer',round:1},
     {t:'finding.resolved',id:'F2',who:'judge',verdict:'deferred'},
     {t:'round.start',n:2},
@@ -415,6 +415,20 @@ test('judge lifecycle recovery matches measured findings without phantom invocat
   const usage = usageFromEvents(events);
   assert.deepEqual(usage.invocations.map(i => [i.id,i.findingId,i.total]),[['first','F1',120],['second','F2',120]]);
   assert.equal(usage.total,240);
+  assert.equal(usage.partial,false);
+});
+
+test('late judge heartbeats cannot create another usage invocation after resolution', () => {
+  const events = [{t:'round.start',n:1},
+    {t:'usage.snapshot',id:'one-call',agent:'judge',action:'fix',round:1,findingId:'F1',status:'completed',
+      records:[{input:100,output:20,total:120}]},
+    {t:'judge.session',agent:'judge',sessionId:'session',round:1},
+    {t:'finding.resolved',id:'F1',who:'judge',verdict:'rejected'},
+    // An asynchronous interval append can complete after its timer is cleared.
+    {t:'agent.alive',agent:'judge',forAgent:'codex',round:1,seconds:5}];
+  const usage = usageFromEvents(events);
+  assert.equal(usage.invocations.length,1);
+  assert.equal(usage.total,120);
   assert.equal(usage.partial,false);
 });
 
