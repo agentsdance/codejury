@@ -280,6 +280,50 @@ for (const breakdown of [true,false]) {
   });
 }
 
+test('every persisted Qwen model result is a complete resume baseline', async t => {
+  const dir = await scratch(t);
+  const agent = {name:'qwen',report:'result-json'};
+  const result = n => JSON.stringify({type:'result',session_id:'qwen-atomic',stats:{models:{
+    A:{tokens:{prompt:n, candidates:0,total:n}}, B:{tokens:{prompt:n,candidates:0,total:n}},
+  }}});
+  const first = trackUsage(agent,{dir,round:1,action:'review'});
+  first.feed(result(100)); first.finish('completed');
+  const reply = trackUsage(agent,{dir,round:1,action:'reply'},null,'qwen-atomic');
+  reply.feed(result(150)); reply.finish('completed');
+  const events = await readEvents(dir);
+  const snapshots = events.filter(e => e.t === 'usage.snapshot' && e.records?.length);
+  // A concurrent process may start after any append, not just after feed returns.
+  for (const snapshot of snapshots) assert.deepEqual(snapshot.records.map(r => r.model),['A','B']);
+  const last = trackUsage(agent,{dir,round:1,action:'reply'},null,'qwen-atomic');
+  last.feed(result(200)); last.finish('completed');
+  assert.equal(usageFromEvents(await readEvents(dir)).total,400);
+});
+
+test('actual manual resolution after measured judge work adds no usage invocation', async t => {
+  const worktree = await scratch(t), dir = path.join(worktree,'runs','manual');
+  const isolated = testEnvironment(); t.after(() => isolated.dispose());
+  for (const event of [{t:'target',target:{judge:'codex'}},{t:'round.start',n:1},
+    {t:'usage.snapshot',id:'judge-call',agent:'codex',action:'fix',round:1,findingId:'F1',status:'completed',
+      records:[{input:100,output:20,total:120}]},
+    {t:'judge.session',agent:'codex',sessionId:'judge-thread',round:1},
+    {t:'finding.resolved',id:'F1',who:'codex',verdict:'rejected'},
+    {t:'finding.raised',id:'manual',agent:'codex',round:1,claim:'Manual case',loc:'a.js:1'}]) await appendEvent(dir,event);
+  await exec(process.execPath,[cli,'finding','resolve','manual','--dir',worktree,'--run','manual',
+    '--verdict','rejected','--reason','Checked manually'],{cwd:worktree,env:isolated.env});
+  const events = await readEvents(dir);
+  assert.equal(events.findLast(e => e.t === 'finding.resolved').who,'codex');
+  const usage = usageFromEvents(events);
+  assert.equal(usage.invocations.length,1);
+  assert.equal(usage.total,120);
+  assert.equal(usage.partial,false);
+  // Ambiguous old resolution records alone are not proof that an agent ran.
+  const legacy = usageFromEvents([{t:'round.start',n:1},
+    {t:'judge.session',agent:'codex',sessionId:'old'},
+    {t:'finding.resolved',id:'first',who:'codex',verdict:'rejected'},
+    {t:'finding.resolved',id:'manual',who:'codex',verdict:'rejected'}]);
+  assert.equal(legacy.invocations.length,1);
+});
+
 test('missing and invalid counts stay unavailable; aggregates retain available totals as partial', () => {
   const d=usageDecoder(codex);
   d.feed(lines([{type:'turn.completed',usage:{input_tokens:-1,output_tokens:'20'}}]));
@@ -330,7 +374,9 @@ test('legacy judge turns survive recovery and publication beside a measured new 
     {t:'agent.report',agent:'reviewer',round:1,verdict:'findings'},
     {t:'judge.session',agent:'judge',sessionId:'legacy-judge',round:1},
     {t:'finding.resolved',id:'F1',who:'judge',verdict:'rejected'},
-    // The second invocation reuses the judge session, so no new session event.
+    // A reused session is identified by its judge heartbeat, not the verdict.
+    {t:'agent.alive',agent:'judge',forAgent:'reviewer',round:1},
+    {t:'agent.alive',agent:'judge',forAgent:'reviewer',round:1},
     {t:'finding.resolved',id:'F2',who:'judge',verdict:'deferred'},
     {t:'round.start',n:2},
     {t:'usage.snapshot',id:'new-review',agent:'reviewer',round:2,action:'review',status:'completed',

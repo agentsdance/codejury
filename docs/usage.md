@@ -168,8 +168,11 @@ If a resumed thread has no saved baseline, that invocation's usage is unavailabl
 its reported totals establish a baseline for subsequent invocations.
 An interrupted turn without usage invalidates its session's baseline, so its
 unmeasured work is not charged to a later invocation.
-When resuming an older run, reviews, judge turns and replies without usage snapshots remain
-unavailable in the breakdown and keep the combined totals partial.
+When resuming an older run, known reviews, judge turns and replies without usage
+snapshots remain unavailable and keep combined totals partial. Judge session records
+and heartbeats establish old fix invocations. A verdict alone does not: manual
+resolutions use the judge name too, so ambiguous historical verdicts cannot
+establish an additional invocation.
 
 Counts come from agent output, never estimates. Codex JSON, Droid/Qwen result JSON
 and OpenCode JSON expose supported usage fields. Other output formats, including
