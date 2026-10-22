@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve single-PR push preferences on resume, and keep fixes local when an
+  older run has no saved preference unless pushing is explicitly enabled.
 - Scope agent temporary files and default Go caches to owned invocation directories,
   reclaim them after completion, and add `jury cache clean` for stopped runs (#122).
 - Retain Windows agent caches when descendant termination cannot be confirmed,

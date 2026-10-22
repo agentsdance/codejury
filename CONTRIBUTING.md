@@ -65,11 +65,13 @@ These tests use saved review data; they do not call live model providers.
 
 The Node/OS matrix runs the same `npm test` and `npm run test:package` commands
 through `node scripts/ci-check.mjs test` and `node scripts/ci-check.mjs test:package`.
-Each phase has a three-minute watchdog, within the existing fifteen-minute job
-limit. A timeout remains a failed check and terminates that phase's process group.
+The source suite has a three-minute watchdog; package validation has five minutes
+for packing, installation, and subprocess-heavy installed CLI regressions on slower
+runners. Both remain within the fifteen-minute job limit. A timeout remains a
+failed check and terminates that phase's process group.
 Tests and their parallelism are unchanged.
 
-Package validation prints named subprocess start/end markers. The independent
+Package validation streams test results and prints named subprocess start/end markers. The independent
 watchdog streams Node process lifecycle/resource records and snapshots of its own
 process group and descendants, without command arguments or environment values.
 CI uploads these records as `test-diagnostics-node<version>-<os>` artifacts for

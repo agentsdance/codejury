@@ -538,8 +538,10 @@ async function cmdAgent(argv) {
   const language = normalizeLanguage(requestedLanguage ?? languageIn(priorEvents));
   if (priorTargets?.targets && urls.length < 2) throw new Error("resuming a related-PR task requires all original PR URLs");
   if (urls.length > 1 && values.resume && !priorTargets?.targets) throw new Error("no related-PR task found to resume");
-  if (priorTargets?.targets && !argv.some(a => a === "--push" || a.startsWith("--push="))) {
-    values.push = priorTargets.pushEnabled ?? false;
+  // Older single-PR runs did not save this preference. Keep their fixes local
+  // unless the caller explicitly enables pushing on resume.
+  if (values.resume && !argv.some(a => a === "--push" || a.startsWith("--push="))) {
+    values.push = priorTargets?.pushEnabled ?? false;
   }
   const group = urls.length > 1 ? await prepareGroup(urls, {
     root: requestedWorktree, dir: resolveFrom, allowPush: values.push, trunk: values.trunk, previous: priorTargets,
@@ -604,12 +606,13 @@ async function cmdAgent(argv) {
     title: values.title ?? pr.title ?? git.subject,
     branch: resolved?.branch ?? git.branch,
     trunk,
+    pushEnabled: values.push,
     state: "review",
     stateNote: "",
     ...(language ? { language } : {}),
   };
   if (group) Object.assign(target, {
-    targets: group.targets, workspace: group.worktree, pushEnabled: values.push, repo: "related-prs",
+    targets: group.targets, workspace: group.worktree, repo: "related-prs",
     reviewedCommit: null, reviewedCommits: null,
     id: groupId(urls), url: "", branch: "", summary: values.summary ?? "",
   });

@@ -17,16 +17,17 @@ selected, without starting a review.
    Identify missing prerequisites before attempting a review. Help install or
    authenticate them only within the user's requested setup scope.
 2. Resolve `<plugin-root>` as two directories above this skill folder. Use this
-   pinned runner for plugin commands:
+   runner for plugin commands:
 
    ```sh
    node "<plugin-root>/scripts/jury.mjs" version
    node "<plugin-root>/scripts/jury.mjs" agents
    ```
 
-   First use downloads the exact published stable release into
-   `~/.cache/codejury/plugin-cli/` and invokes its absolute entrypoint. It
-   does not require a global installation or change the user's installed CLI.
+   The launcher first checks for an installed CodeJury CLI available as `jury`
+   or `codejury` on PATH and uses it. Otherwise, it downloads the fallback
+   release into `~/.cache/codejury/plugin-cli/`. Report the selected CLI version.
+   It does not replace or upgrade the user's global installation.
    An explicitly requested CLI version takes precedence; check its help before
    using version-dependent options.
 3. `jury agents` checks executable availability, not authentication or quota.
@@ -42,9 +43,11 @@ selected, without starting a review.
    subsequent review rather than defaulting to local files. Do not start agents
    just to validate setup.
 
-A CodeJury review can edit files and create commits. Agent providers process
-the review's code and prompts and may charge for usage. `--push=false` disables
-Jury's pushes; it does not make a review read-only or sandbox an agent.
+A CodeJury review can edit files, create commits, and push fixes. Pushing defaults
+to `--push=true`. Honor requests to keep fixes local with `--push=false`.
+Agent providers process the review's code and prompts and may charge for usage.
+`--push=false` disables Jury's pushes; it does not make a review read-only or
+sandbox an agent.
 
 Official project documentation:
 [setup](https://github.com/agentsdance/codejury#quick-start) and

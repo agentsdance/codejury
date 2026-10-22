@@ -14,8 +14,9 @@ In a new Codex chat, select **CodeJury** and ask:
 
 > Set up CodeJury and check which agents I can use.
 
-Setup checks prerequisites without starting a review. The plugin installs its
-CodeJury CLI automatically on first use; agent installation and login are separate.
+Setup checks prerequisites without starting a review. The plugin uses your global
+CodeJury CLI if available on PATH, or installs its fallback release automatically.
+Agent installation and login are separate.
 
 ## Review a PR
 
@@ -26,9 +27,10 @@ Provide a PR link when starting a review. For example:
 Replace the example URL with your PR and choose agents you have installed. The
 plugin shares a live browser console link so you can follow the review.
 
-The judge can edit files and create commits. Fixes remain in a persistent local
-checkout unless you ask to push them. Local files or folders alone are not
-supported review targets for this plugin.
+The judge can edit files, create commits, and push fixes to the PR's source branch.
+Pushing is enabled by default (`--push=true`). Ask to keep fixes local, or specify
+`--push=false`, to retain them in a persistent local checkout instead. Local files
+or folders alone are not supported review targets for this plugin.
 
 To continue or inspect a saved review, ask:
 
@@ -39,8 +41,8 @@ To continue or inspect a saved review, ask:
 ## Development and packaging
 
 The plugin source is in [`plugins/codejury`](../plugins/codejury). Its launcher
-automatically downloads the pinned CLI release from npm, independently of any
-globally installed `jury`. The plugin and CLI have separate versions.
+checks for an installed `jury` or `codejury` on PATH before downloading its fallback
+CLI release from npm. The plugin and CLI have separate versions.
 
 Build the submission archive from the repository root:
 

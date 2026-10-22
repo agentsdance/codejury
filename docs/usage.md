@@ -53,8 +53,10 @@ jury review <same-pr-url-1> <same-pr-url-2> --resume <slug> --push=false
 ```
 
 Repeat the same `--dir` root if you used one. Keep related-PR URLs in the same order.
-Related-PR resume retains its previous push setting unless explicitly overridden;
-`--push=true` publishes retained fixes with fast-forward pushes. If a remote branch changes
+All reviews save their push setting and retain it on resume unless explicitly overridden.
+Older runs without a saved setting resume with pushing disabled; pass `--push=true`
+to enable it explicitly. For related PRs, `--push=true` publishes retained fixes
+with fast-forward pushes. If a remote branch changes
 independently, start a new task rather than resuming obsolete heads.
 
 `--rounds 3` caps review rounds; it is not a monetary budget. Each round may involve multiple

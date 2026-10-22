@@ -126,9 +126,9 @@ Start a new Codex chat, select **CodeJury**, and ask:
 
 > Review https://github.com/OWNER/REPO/pull/123
 
-Use your PR link. Reviews run locally and can make fixes; changes stay local unless
-you ask to push. See [setup and usage](docs/codex-plugin.md) for prerequisites,
-agent selection, and saved reviews.
+Use your PR link. Reviews run locally and push fixes to the PR by default. Ask to
+keep fixes local to disable pushing. See [setup and usage](docs/codex-plugin.md)
+for prerequisites, agent selection, and saved reviews.
 
 ## Claude Code plugin
 

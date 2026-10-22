@@ -107,5 +107,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   mkdirSync(base, { recursive: true });
   const directory = mkdtempSync(path.join(base, task.replace(':', '-') + '-'));
   console.error(`[ci-check] ${task}; diagnostics: ${directory}`);
-  process.exitCode = await runCheck('npm', ['run', task], { directory });
+  // The installed suite also packs/installs the CLI and runs subprocess-heavy
+  // regressions. macOS runners can still be progressing at the old 3m limit.
+  const timeoutMs = task === 'test:package' ? 300000 : 180000;
+  process.exitCode = await runCheck('npm', ['run', task], { directory, timeoutMs });
 }

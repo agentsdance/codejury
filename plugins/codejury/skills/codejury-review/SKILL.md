@@ -23,10 +23,10 @@ original PR link from the saved run or conversation.
 
 Resolve `<plugin-root>` as two directories above this skill folder. Use
 `node "<plugin-root>/scripts/jury.mjs"` followed by the command and its arguments.
-The launcher downloads the exact published stable release into
-`~/.cache/codejury/plugin-cli/` on first use and invokes its absolute entrypoint,
-so a different local/global `jury` cannot shadow it. If the user requests a different
-version, use that version and inspect its help.
+The launcher first uses an installed CodeJury CLI available as `jury` or `codejury`
+on PATH. If none is found, it downloads the fallback release into
+`~/.cache/codejury/plugin-cli/`. Run `version` to report the selected CLI version.
+If the user requests a different version, use that version and inspect its help.
 
 Check Node.js 20.10+, npm, Git, and the requested agent CLIs. For GitHub PRs,
 check GitHub CLI authentication. Run `jury agents` to discover executables;
@@ -40,7 +40,8 @@ launching agents. Read `jury help review` for flags rather than inventing them.
   `--push=false` promise; explain the mismatch and clarify the workflow.
 - Respect specified judges, juries, models, round limits, and repository config.
   Do not silently save global defaults or add reviewers the user did not request.
-- Use `--push=false` unless pushing the resulting fixes is authorized. For an
+- Use `--push=true` by default. If the user asks to keep fixes local or disables
+  pushes, pass `--push=false` and use the local-only workflow below. For an
   interactive desktop review, keep the default live console enabled, share its
   printed URL as a clickable link as soon as it starts, and retain the managed
   process. Use `--web=false` for a headless workflow that should exit when the
@@ -50,8 +51,15 @@ launching agents. Read `jury help review` for flags rather than inventing them.
 
 ## Preserve fixes and state
 
-**Single PR, local-only fixes:** create a persistent clone or worktree of the
-PR's source branch, or use an existing matching clean checkout. Discover the
+**PR URL (default):** pass the PR URL with `--push=true` to review, fix, commit,
+and push to the PR's source branch. Never force-push to work around a rejected push.
+
+```sh
+node "<plugin-root>/scripts/jury.mjs" review <pr-url> --push=true
+```
+
+**Single PR, local-only fixes when requested:** create a persistent clone or
+worktree of the PR's source branch, or use an existing matching clean checkout. Discover the
 head and base from the supplied PR's metadata and verify that the checkout
 matches that PR. This checkout only retains fixes for the URL-selected PR;
 it is not a separate local-file review mode. Leave unrelated working changes
@@ -68,26 +76,26 @@ title or summary so the saved review remains traceable. A single-PR URL review r
 including unpushed commits; adding `--dir` to a URL only changes the state root
 and does not prevent this cleanup.
 
-**PR URL with authorized pushes:** the URL workflow is suitable. Pass
-`--push=true` explicitly when requested. Never force-push to work around a
-rejected push.
-
 **Related PRs:** pass the URLs together in the original order, omit `--trunk`
 so each PR uses its own base, and keep an explicit state root when useful.
 Related-PR workspaces retain local commits. Preserve the URLs, state root, and
 printed run slug for resume.
 
 **Resume:** use the same target arguments and state root plus `--resume <slug>`.
-Carry the user's push preference explicitly; related-PR resumes can inherit
-the prior push setting. If remote heads have changed, inspect the conflict
-before starting a new review instead of publishing obsolete local fixes.
+Pass the user's push preference explicitly. Preserve a previous local-only
+request unless the user changes it; use the saved push setting when resuming
+without a new preference, and default to `--push=false` if no setting is recorded.
+Older single-PR runs may omit the setting, so only enable pushing when the user
+explicitly requests it for that resume.
+If remote heads have changed, inspect the conflict before starting a new review
+instead of publishing obsolete local fixes.
 
 ## Execute and report
 
 Run through the host's managed long-running process facility and retain the
-process handle and output. Give progress updates while agents run. A reviewer
-has a fixed ten-minute execution deadline; the whole multi-round review can
-take longer. Do not launch duplicate reviews merely because output is quiet.
+process handle and output. Give progress updates while agents run. The whole
+multi-round review can take several minutes. Do not launch duplicate reviews
+merely because output is quiet.
 With the live console enabled, the process stays up after review completion;
 inspect the completion message and saved run status instead of waiting for the
 server process to exit. Keep the dashboard available while the user needs it.
