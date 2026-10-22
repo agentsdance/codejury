@@ -75,7 +75,8 @@ available for inspection until Ctrl-C.
 
 URL routing distinguishes route segments from owner, repository, and subgroup names.
 Names such as `pull` and `merge_requests` are preserved, including when removing
-view suffixes, query strings, and fragments from related-PR URLs. GitHub
+view suffixes, query strings, and fragments from related-PR URLs. Saved review
+labels use the same request number as checkout resolution. GitHub
 `/owner/repo/pull/<id>` and GitLab `/<group>/<project>/-/merge_requests/<id>`
 forms are supported; existing separatorless GitLab links continue to work.
 

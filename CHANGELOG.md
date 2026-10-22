@@ -3,7 +3,8 @@
 ## Unreleased
 
 - Resolve PR URLs whose owner, repository, or group names contain `pull` or
-  `merge_requests`, keeping repository identity and request-number selection aligned.
+  `merge_requests`, keeping repository identity, request-number selection, and
+  saved review labels aligned.
 - Keep related-PR reviews incomplete when a checkout contains untracked files,
   even when Git's saved display setting hides them; ignored files remain ignored.
 - Redact reviewer names in one pass so names matching replacement words cannot

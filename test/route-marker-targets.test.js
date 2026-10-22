@@ -5,10 +5,11 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { prepareGroup } from "../lib/review-group.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const exec = promisify(execFile);
-const cli = process.env.JURY_TEST_CLI ?? new URL("../bin/jury.js", import.meta.url).pathname;
+const cli = process.env.JURY_TEST_CLI ?? fileURLToPath(new URL("../bin/jury.js", import.meta.url));
+const { prepareGroup } = await import(new URL("../lib/review-group.js", pathToFileURL(cli)));
 
 async function repository(root, name, env) {
   const dir = path.join(root, name);
