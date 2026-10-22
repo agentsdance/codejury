@@ -83,11 +83,11 @@ for (const name of ['peer', 'peer-reviewer', 'peer-', 'peer--']) {
   test(`reply redaction recognizes complete ${name} names without changing partial words`, () => {
     assert.deepEqual(validateAgent({ ...DEFAULTS.agents.find(a => a.name === 'codex'), name }), []);
     const finding = { agent: 'fixture', status: 'rejected', claim: 'A defect', loc: 'file.js:1',
-      reason: `Reason: [${name}], the ${name} report, a ${name.toUpperCase()} report; r12-${name}-3.`,
+      reason: `Reason: [${name}], the ${name} report, a ${name.toUpperCase()} report; r12-${name}-3; 12-${name}-reply-3.`,
       reproduced: `Evidence: ${name}.`, test: `Test: ${name}.` };
     const build = f => buildReply({ agent: 'fixture', thread: [f], sha: 'abc', worktree: '/fixture', stopToken: 'NO NEW FINDINGS', others: [name] });
     const reply = build(finding);
-    assert.ok(reply.includes("Reason: [another reviewer], another reviewer's report, another reviewer's report; another reviewer's finding."));
+    assert.ok(reply.includes("Reason: [another reviewer], another reviewer's report, another reviewer's report; another reviewer's finding; another reviewer's finding."));
     assert.ok(reply.includes('Reproduced first: Evidence: another reviewer.'));
     assert.ok(reply.includes('Regression test: Test: another reviewer.'));
     const partials = [
