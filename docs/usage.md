@@ -73,6 +73,12 @@ available for inspection until Ctrl-C.
 
 ## GitHub and GitLab
 
+URL routing distinguishes route segments from owner, repository, and subgroup names.
+Names such as `pull` and `merge_requests` are preserved, including when removing
+view suffixes, query strings, and fragments from related-PR URLs. GitHub
+`/owner/repo/pull/<id>` and GitLab `/<group>/<project>/-/merge_requests/<id>`
+forms are supported; existing separatorless GitLab links continue to work.
+
 GitHub uses `gh` for PR metadata and cloning plus Git for commits and pushes. Authenticate both
 as needed (`gh auth login`, your SSH key or Git credential helper). Source-branch push permission
 is needed when pushing is enabled.
