@@ -98,6 +98,11 @@ for (const name of ['peer', 'peer-reviewer', 'peer-', 'peer--']) {
       `${name}‿reviewer`, `${name}⁀reviewer`,
       `prefix-r12-${name}-3`, `r12-${name}-3-suffix`, `r12-${name}-3x`, `r12-${name}-3_`,
       `r12-${name}-3²`, `r12-${name}-3¼`,
+      ...['\u2e2f', '\u20dd'].flatMap(char => [
+        `${char}${name}`, `${name}${char}`,
+        `${char}r12-${name}-3`, `r12-${name}-3${char}`,
+        `${char}12-${name}-reply-3`, `12-${name}-reply-3${char}`,
+      ]),
     ].join(' ');
     const reason = `Preserve: ${partials}`;
     assert.ok(build({ ...finding, reason }).includes(reason), 'do not redact part of a larger name, identifier, or Unicode word');
@@ -114,7 +119,7 @@ test('reply redaction case-folds ASCII reviewer names within ASCII only', () => 
 });
 
 for (const otherName of ['peer-reviewer', 'peer-']) {
-  test(`standalone reply redacts accepted other reviewer ${otherName} before delivery`, async t => {
+  test(`standalone reply redacts schema-valid other reviewer ${otherName} before delivery`, async t => {
     const temp = await mkdtemp(path.join(tmpdir(), 'jury-reply-name-'));
     const isolated = testEnvironment();
     t.after(() => { isolated.dispose(); return rm(temp, { recursive: true, force: true }); });
