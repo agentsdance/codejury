@@ -57,6 +57,10 @@ independently, start a new task rather than resuming obsolete heads.
 reviewers, judge calls, and replies. Costs and latency depend on provider subscriptions and usage.
 A review that reaches its round limit remains incomplete in the saved state. Do not use exit code
 alone as evidence of approval; inspect `target.state` and the reviewed commit in the run record.
+For single-checkout reviews, Jury checks that HEAD still matches the commit used
+for the review or reviewer replies before reporting completion. If another process
+commits during that phase, the run remains incomplete with `HEAD changed during review`;
+inspect the new commit and run the review again. This check does not lock the checkout.
 Reviewer execution failures exit nonzero with `--web=false`. With the console enabled, it stays
 available for inspection until Ctrl-C.
 

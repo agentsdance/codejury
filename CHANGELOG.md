@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep a single-checkout review incomplete when HEAD changes while reviewers
+  or their replies are running, instead of reporting approval for an obsolete commit.
 - Reuse a plugin CLI cache published by a concurrent launcher during startup,
   instead of incorrectly reporting that completed installation as incomplete.
 - Preserve multiline reasoning and evidence from settled findings in subsequent
