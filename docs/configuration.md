@@ -43,6 +43,9 @@ and remain visible in the saved reports.
 ```
 
 `my-reviewer` is a placeholder executable, not an included product. Use arguments supported by your CLI.
+Replies redact other reviewers' complete names and finding IDs from verdicts, reproduction notes,
+and test explanations. Hyphens remain part of a name, including at its end; longer names and words
+that merely contain that name are left intact.
 Supported prompt delivery is `argv` or `file` (`{{promptFile}}`); stdin is closed.
 `cwd: "worktree"` starts in the checkout; with `cwd: "flag"`, pass `{{worktree}}` in the command.
 `report: "tail"` extracts a final response from a verbose transcript; `report: "kimi-json"` reads the
