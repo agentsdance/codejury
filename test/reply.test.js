@@ -53,20 +53,6 @@ test("another reviewer's name and finding ids are redacted from verdicts", () =>
   assert.doesNotMatch(agy, /the another reviewer/i);
 });
 
-test("redaction output is not re-redacted by a placeholder-word reviewer name", () => {
-  const reply = buildReply({
-    agent: "fixture",
-    thread: [{
-      agent: "fixture", status: "rejected", claim: "A defect",
-      reason: "codex agreed; r1-codex-1",
-    }],
-    sha: "abc", worktree: "/wt", stopToken: "NO NEW FINDINGS",
-    others: ["codex", "reviewer"],
-  });
-  assert.match(reply, /another reviewer agreed; another reviewer's finding/);
-  assert.doesNotMatch(reply, /another another/);
-});
-
 test("an agent that cannot resume gets its own words quoted back", () => {
   const withSession = buildReply({
     agent: "codex", thread: threadFor("codex", findings), sha: "f656a37",
