@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep related-PR reviews incomplete when a checkout contains untracked files,
+  even when Git's saved display setting hides them; ignored files remain ignored.
 - Redact reviewer names in one pass so names matching replacement words cannot
   rewrite generated text or make replies depend on reviewer order.
 - Redact reviewer names ending in hyphens from reply verdicts while preserving
