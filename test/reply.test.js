@@ -53,6 +53,50 @@ test("another reviewer's name and finding ids are redacted from verdicts", () =>
   assert.doesNotMatch(agy, /the another reviewer/i);
 });
 
+const replyWithText = (text, others) => buildReply({
+  agent: "fixture", sha: "abc", worktree: "/wt", stopToken: "NO NEW FINDINGS", others,
+  thread: [{ agent: "fixture", status: "rejected", claim: "A defect",
+    reason: text, reproduced: text, test: text }],
+});
+
+for (const name of ["another", "reviewer", "finding"]) {
+  test(`reviewer named ${name} cannot reprocess generated redaction text`, () => {
+    const text = "codex agreed; r1-codex-1; 1-codex-reply-2; the codex; a codex.";
+    const expected = "another reviewer agreed; another reviewer's finding; another reviewer's finding; another reviewer's; another reviewer's.";
+    for (const names of [["codex", name], [name, "codex"], ["codex", name, "codex", name]]) {
+      assert.equal(replyWithText(text, names), replyWithText(expected, []));
+    }
+  });
+}
+
+test("redacting original placeholder-word names is independent of reviewer order", () => {
+  const permutations = values => values.length
+    ? values.flatMap((value, i) => permutations(values.filter((_, j) => i !== j)).map(rest => [value, ...rest]))
+    : [[]];
+  const text = "codex; another; REVIEWER; finding; r2-codex-7; 2-reviewer-reply-8; the codex; a reviewer.";
+  const expected = "another reviewer; another reviewer; another reviewer; another reviewer; another reviewer's finding; another reviewer's finding; another reviewer's; another reviewer's.";
+  for (const names of permutations(["codex", "another", "reviewer", "finding"])) {
+    assert.equal(replyWithText(text, names), replyWithText(expected, []), names.join(", "));
+  }
+});
+
+test("combined redaction preserves whole-name boundaries for overlapping slugs", () => {
+  const names = ["peer", "peer-", "peer--", "peer-reviewer", "reviewer"];
+  const text = "peer; peer-; peer--; peer-reviewer; r1-peer--2; 1-peer---reply-3; peer-reviewers; r1-peer-2x.";
+  const expected = "another reviewer; another reviewer; another reviewer; another reviewer; another reviewer's finding; another reviewer's finding; peer-reviewers; r1-peer-2x.";
+  const original = [...names];
+  assert.equal(replyWithText(text, names), replyWithText(expected, []));
+  assert.deepEqual(names, original, "the configured reviewer list must not be reordered");
+  assert.equal(replyWithText(text, [...names].reverse()), replyWithText(expected, []));
+});
+
+test("redaction preserves nonmatching text and leaves empty reviewer lists alone", () => {
+  const text = "reviewerish another-tool findings codex2 écodex codex² codex⃝ taſK r1-codex-1x 1-codex-reply-1x {{untouched}} $& $1 文😀\nsecond line";
+  assert.equal(replyWithText(text, ["codex", "another", "reviewer", "finding", "task"]), replyWithText(text, []));
+  const literal = "codex; another; reviewer; finding; r1-codex-1; 1-codex-reply-1.";
+  assert.ok(replyWithText(literal, []).includes(literal));
+});
+
 test("an agent that cannot resume gets its own words quoted back", () => {
   const withSession = buildReply({
     agent: "codex", thread: threadFor("codex", findings), sha: "f656a37",
