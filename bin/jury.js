@@ -282,7 +282,8 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
   const started = Date.now();
   const results = await Promise.all(
     pool.map(async (a) => {
-      await appendEvent(dir, { t: "agent.launch", agent: a.name, round });
+      const reviewId = randomUUID();
+      await appendEvent(dir, { t: "agent.launch", agent: a.name, round, reviewId });
 
       // Stream to the artifact as the reviewer talks, rather than only once it
       // exits. Without this a twenty-minute agent is a black box for all twenty
@@ -339,7 +340,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
       try {
         r = await runAgent(a, {
           worktree, prompt, stopToken: cfg.stopToken,
-          usageContext: { dir, round, action: "review" },
+          usageContext: { dir, round, action: "review", reviewId },
           dryRun: values["dry-run"],
           onTimeout: () => clearInterval(heart),
           onLog: (m) => console.log(`  ${st.agent(a.name)} ${st.muted(m)}`),
@@ -367,7 +368,7 @@ async function runRound({ dir, round, pool, cfg, target, worktree, values, sha, 
       await sink.close();
       const rawFile = await writeArtifact(dir, rawName, r.raw ?? "");
       await appendEvent(dir, {
-        t: "agent.report", agent: a.name, round,
+        t: "agent.report", agent: a.name, round, reviewId,
         verdict: r.verdict, seconds: r.seconds, summary: firstLine(r.report), report: r.report,
         ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
         // The session this review happened in, so the reply resumes THIS

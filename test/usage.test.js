@@ -208,18 +208,20 @@ test('Qwen falls back for absent or invalid totals and preserves totals with inc
   }
 });
 
-async function invokeQwen(dir, {sessionId = null, counters, breakdown, omitSession = false}) {
+async function invokeQwen(dir, {sessionId = null, counters, breakdown, omitSession = false, failed = false}) {
   const usage = counters && Object.fromEntries([
     ['input_tokens','prompt'],['output_tokens','candidates'],['total_tokens','total'],['cache_read_input_tokens','cached'],
   ].map(([field,key]) => [field,Object.values(counters).reduce((sum,u) => sum + u[key],0)]));
-  const result = {type:'result',subtype:'success',is_error:false,result:'NO NEW FINDINGS',usage,
+  const result = {type:'result',subtype:failed ? 'error_during_execution' : 'success',is_error:failed,
+    result:failed ? 'Authentication failed' : 'NO NEW FINDINGS',usage,
     ...(breakdown ? {stats:{models:Object.fromEntries(Object.entries(counters ?? {}).map(([name,tokens]) => [name,{tokens}]))}} : {})};
   const provider = `
     const result = ${JSON.stringify(result)};
     const system = {type:'system',model:'model-a'};
     if (!${omitSession}) system.session_id = result.session_id = process.argv[2];
     if (${Boolean(counters)}) process.stdout.write(JSON.stringify([system,result,result]));
-    else process.exit(1);`;
+    else process.exit(1);
+    if (${failed}) process.exitCode = 1;`;
   const argv = [process.execPath,'-e',provider,'fresh','{{sessionId}}'];
   const agent = {name:'qwen',report:'result-json',newSession:true,argv,
     resume:{supported:true,argv:[...argv.slice(0,-2),'resume','{{sessionId}}']}};
@@ -230,7 +232,7 @@ const result = await runAgent(${JSON.stringify(agent)},${JSON.stringify({worktre
 console.log(JSON.stringify({ok:result.ok,sessionId:result.sessionId}));`;
   const {stdout} = await exec(process.execPath,['--input-type=module','-e',script]);
   const run = JSON.parse(stdout);
-  assert.equal(run.ok,Boolean(counters));
+  assert.equal(run.ok,Boolean(counters) && !failed);
   return run.sessionId;
 }
 
@@ -277,6 +279,28 @@ for (const breakdown of [true,false]) {
     assert.equal(usage.total,110);
     assert.equal(usage.partial,true);
     assert.ok(events.filter(e => e.t === 'usage.snapshot').every(e => e.resumedSessionId === sessionId));
+  });
+
+  test(`Qwen regressing ${format} error counters cannot become a resume baseline`, async t => {
+    const dir = await scratch(t);
+    const counters = (prompt,candidates) => ({'model-a':{prompt,candidates,total:prompt+candidates,cached:0}});
+    const sessionId = await invokeQwen(dir,{breakdown,counters:counters(100,20)});
+    await invokeQwen(dir,{breakdown,sessionId,failed:true,counters:counters(0,0)});
+    await invokeQwen(dir,{breakdown,sessionId,failed:true,counters:counters(140,30)});
+    let usage = usageFromEvents(await readEvents(dir));
+    assert.deepEqual(usage.invocations.map(i => i.total),[120,null,null],
+      'regressing counters invalidate the baseline; the next measurement cannot charge earlier tokens again');
+    assert.equal(usage.total,120);
+    assert.deepEqual(usage.invocations.map(i => i.status),['completed','failed','failed']);
+    assert.equal(usage.partial,true);
+    // The first trustworthy measurement restores the baseline, even on failure.
+    await invokeQwen(dir,{breakdown,sessionId,counters:counters(180,40)});
+    await publishEvents(dir);
+    usage = (await readRun(dir)).usage;
+    assert.deepEqual(usage.invocations.map(i => [i.input,i.output,i.total]),
+      [[100,20,120],[null,null,null],[null,null,null],[40,10,50]]);
+    assert.equal(usage.total,170);
+    assert.equal(usage.partial,true);
   });
 }
 
@@ -481,6 +505,46 @@ test('failed invocations retain usage and retries have unique IDs', async t => {
   assert.equal(usage.total,240);
   assert.equal(usage.partial,true);
   assert.ok(usage.invocations.every(i=>i.status==='failed'));
+});
+
+test('overlapping measured reviews stay distinct in either report order, including legacy snapshots', () => {
+  const record = {model:'fixture',modelSource:'configured',input:100,output:20,total:120,cacheRead:null,cacheWrite:null};
+  for (const correlated of [true, false]) for (const order of [['a','b'], ['b','a']]) {
+    const launch = reviewId => ({t:'agent.launch',agent:'codex',round:1,reviewId});
+    const snapshot = (reviewId, status) => ({t:'usage.snapshot',id:`usage-${reviewId}`,
+      agent:'codex',action:'review',round:1,status,records:status === 'running' ? [] : [record],
+      ...(correlated ? {reviewId} : {})});
+    const starts = [[launch('a'), snapshot('a','running'), launch('b'), snapshot('b','running')]];
+    if (correlated) starts.push([launch('a'), launch('b'), snapshot('b','running'), snapshot('a','running')]);
+    for (const start of starts) {
+      const usage = usageFromEvents([{t:'round.start',n:1}, ...start, ...order.flatMap(reviewId => [
+        snapshot(reviewId,'completed'), snapshot(reviewId,'completed'),
+        {t:'agent.report',agent:'codex',round:1,reviewId,verdict:'clean'},
+      ])]);
+      assert.equal(usage.invocations.length,2,'two measured reviews must not create a phantom invocation');
+      assert.deepEqual(usage.invocations.map(i=>i.id),['usage-a','usage-b']);
+      assert.deepEqual(usage.invocations.map(i=>i.total),[120,120]);
+      for (const row of [usage,usage.rounds[0],usage.rounds[0].review,usage.models[0]]) {
+        assert.equal(row.total,240);
+        assert.equal(row.partial,false);
+      }
+      if (correlated) assert.deepEqual(usage.invocations.map(i=>i.reviewId),['a','b']);
+    }
+  }
+});
+
+test('a measured review cannot hide an overlapping unmeasured review', () => {
+  const usage = usageFromEvents([{t:'round.start',n:1},
+    {t:'agent.launch',agent:'codex',round:1,reviewId:'unmeasured'},
+    {t:'agent.launch',agent:'codex',round:1,reviewId:'measured'},
+    {t:'usage.snapshot',id:'usage-measured',agent:'codex',action:'review',round:1,reviewId:'measured',
+      status:'completed',records:[{model:null,modelSource:'unavailable',input:100,output:20,total:120}]},
+    {t:'agent.report',agent:'codex',round:1,reviewId:'unmeasured',verdict:'error'},
+    {t:'agent.report',agent:'codex',round:1,reviewId:'measured',verdict:'clean'}]);
+  assert.deepEqual(usage.invocations.map(i=>[i.reviewId,i.total,i.status]),
+    [['unmeasured',null,'failed'],['measured',120,'completed']]);
+  assert.equal(usage.total,120);
+  assert.equal(usage.partial,true);
 });
 
 test('overlapping measured replies stay distinct in either answer order, including legacy snapshots', () => {
@@ -853,6 +917,17 @@ for(const event of [{type:'thread.started',thread_id:session},{type:'turn.starte
   run=JSON.parse(await readFile(path.join(repo,'runs',slug,'run.json')));
   assert.equal(run.usage.total,850); assert.equal(run.usage.invocations.length,5);
   assert.equal(run.usage.partial,false);
+  const events = await readEvents(path.join(repo,'runs',slug));
+  const launches = events.filter(e => e.t === 'agent.launch');
+  assert.equal(launches.length,3);
+  assert.equal(new Set(launches.map(e => e.reviewId)).size,3,'every review gets a distinct lifecycle ID');
+  for (const launch of launches) {
+    assert.ok(launch.reviewId);
+    assert.ok(events.some(e => e.t === 'agent.report' && e.reviewId === launch.reviewId));
+    const snapshots = events.filter(e => e.t === 'usage.snapshot' && e.action === 'review' && e.round === launch.round);
+    assert.ok(snapshots.length);
+    assert.ok(snapshots.every(e => e.reviewId === launch.reviewId),'review snapshots retain the caller lifecycle ID');
+  }
 });
 
 test('Qwen model counters fall back when zero denotes an unreported total', () => {
