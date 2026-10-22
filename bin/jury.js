@@ -733,7 +733,7 @@ async function cmdAgent(argv) {
       // triage it; the round-end check below is the one that may declare
       // convergence.
       const open = await openFindings(dir);
-      const pending = group ? await groupReady(group.targets, values.push) : null;
+      const pending = group ? await groupReady(group.targets, values.push) : await reviewedHeadProblem(worktree, head.fullSha);
       if (pending || pushFailed) {
         const reason = pending ?? "a push failed";
         console.log(st.warn(`\nReview incomplete: ${reason}.`));
@@ -897,7 +897,7 @@ async function cmdAgent(argv) {
     const settled = await findingsIn(dir);
     const stillOpen = [...settled.values()].filter((f) => f.status === "open");
     const broke = answers.filter((a) => a.failed);
-    const pending = group ? await groupReady(group.targets, values.push) : null;
+    const pending = group ? await groupReady(group.targets, values.push) : await reviewedHeadProblem(worktree, finalHead.fullSha);
     if (pending) console.log(st.warn(`Review incomplete: ${pending}.`));
     if (answers.every((a) => a.clean) && !stillOpen.length && !broke.length && !pushFailed && !pending && !(group && fixed)) {
       console.log(st.ok(st.bold(`\nREVIEW COMPLETE — every reviewer approved after round ${round}.`)));
@@ -915,6 +915,10 @@ async function cmdAgent(argv) {
       await publishRun(dir, { ...target, state: "human", stateNote: reason });
       console.error(`Review stopped: ${reason}. Check authentication/quota and saved reports, then resume with --resume ${path.basename(dir)} and the same target and --dir arguments.`);
       process.exitCode = 1;
+      return;
+    }
+    if (pending && !group) {
+      await publishRun(dir, { ...target, state: "human", stateNote: pending });
       return;
     }
     if (pushFailed) {
@@ -953,6 +957,16 @@ function beat(dir, agent, round, forAgent = null) {
 async function publishRun(dir, target) {
   await appendEvent(dir, { t: "target", target });
   await publishEvents(dir, { target });
+}
+
+/** A clean report or reply cannot approve a commit that arrived while it ran. */
+async function reviewedHeadProblem(worktree, expected) {
+  try {
+    const current = (await run("git", ["rev-parse", "HEAD"], { cwd: worktree })).stdout.trim();
+    return current === expected ? null : "HEAD changed during review";
+  } catch (error) {
+    return `could not verify reviewed HEAD: ${error.message.split("\n")[0]}`;
+  }
 }
 
 /**
@@ -1502,10 +1516,11 @@ async function prDetails(url, dir) {
 
 async function describe(dir, trunk) {
   const g = async (...args) => (await run("git", ["-C", dir, ...args])).stdout.trim();
+  const fullSha = await g("rev-parse", "HEAD");
   const [sha, branch, subject] = await Promise.all([
-    g("rev-parse", "--short", "HEAD"),
+    g("rev-parse", "--short", fullSha),
     g("rev-parse", "--abbrev-ref", "HEAD").catch(() => "HEAD"),
-    g("log", "-1", "--format=%s").catch(() => ""),
+    g("log", "-1", "--format=%s", fullSha).catch(() => ""),
   ]);
   let repo = path.basename(dir);
   let remote = "";
@@ -1513,7 +1528,7 @@ async function describe(dir, trunk) {
     remote = await g("remote", "get-url", "origin");
     repo = remote.replace(/\.git$/, "").split(/[:/]/).slice(-2).join("/");
   } catch { /* no remote is fine */ }
-  return { sha, branch, subject, repo, remote, trunk };
+  return { sha, fullSha, branch, subject, repo, remote, trunk };
 }
 
 // Declarations, not const arrows: the dispatch switch above runs at module
