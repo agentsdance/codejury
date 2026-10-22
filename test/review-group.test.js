@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFile, rm, readdir, readFile } from "node:fs/promises";
+import { writeFile, rm, readdir, readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { groupFixture } from "./helpers/group-fixture.js";
 import { conversation } from "../lib/loop.js";
@@ -155,6 +155,67 @@ test("duplicate source branches are rejected and read-only checkouts need no pus
     await assert.rejects(assertGroupCheckout(group.targets[0]), /refusing to commit or push/);
   } finally { await group.cleanup(); }
 });
+
+for (const display of ["normal", "no"]) {
+  test(`related readiness detects untracked files with status.showUntrackedFiles=${display}`, async t => {
+    const f = await groupFixture(t);
+    const m = f.members[0];
+    const target = { key: "PR1", worktree: m.repo, sha: m.sha, checkoutBranch: m.branch };
+    await f.git(m.repo, "config", "--local", "status.showUntrackedFiles", display);
+    const exclude = path.join(m.repo, ".git", "info", "exclude");
+    await writeFile(exclude, "ignored.txt\n");
+    assert.equal(await groupReady([target], false), null, "clean checkout is ready");
+    await writeFile(path.join(m.repo, "ignored.txt"), "ignored output\n");
+    assert.equal(await groupReady([target], false), null, "ignored output does not block readiness");
+
+    const generated = path.join(m.repo, "generated");
+    await mkdir(generated);
+    await writeFile(path.join(generated, "new.txt"), "uncommitted output\n");
+    assert.equal(await groupReady([target], false), "PR1 has uncommitted changes");
+    assert.equal(await f.git(m.repo, "status", "--porcelain", "--untracked-files=normal"), "?? generated/");
+    await rm(generated, { recursive: true });
+    await writeFile(path.join(m.repo, "contract.txt"), "tracked modification\n");
+    assert.equal(await groupReady([target], false), "PR1 has uncommitted changes");
+    assert.equal(await f.git(m.repo, "config", "--local", "--get", "status.showUntrackedFiles"), display);
+    assert.equal(await readFile(exclude, "utf8"), "ignored.txt\n");
+  });
+
+  for (const ignored of [false, true]) {
+    test(`related CLI readiness preserves ${ignored ? "ignored" : "untracked"} files with status.showUntrackedFiles=${display}`, async t => {
+      const f = await groupFixture(t);
+      // A local fake reviewer creates a file after checkout, without changing HEAD.
+      await writeFile(path.join(f.root, "agent.cjs"), `
+const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
+if (process.argv[2] !== 'alpha') throw new Error('unexpected judge invocation');
+const repo = path.join(process.cwd(), 'PR1');
+cp.execFileSync('git', ['config', '--local', 'status.showUntrackedFiles', ${JSON.stringify(display)}], { cwd: repo });
+if (${ignored}) fs.writeFileSync(path.join(repo, '.git', 'info', 'exclude'), 'generated/\\n');
+fs.mkdirSync(path.join(repo, 'generated'));
+fs.writeFileSync(path.join(repo, 'generated', 'new.txt'), 'uncommitted output\\n');
+console.log('NO NEW FINDINGS');
+`);
+      const result = await f.review(["--push=false", "--reviewer", "alpha", "--judge", "codex", "--rounds", "1"]);
+      assert.equal(result.code, 0, result.stderr);
+      const { run } = await f.saved();
+      const target = run.target.targets[0];
+      assert.equal(run.target.state, ignored ? "converged" : "human");
+      if (ignored) {
+        assert.match(result.stdout, /REVIEW COMPLETE/);
+        assert.equal(run.target.reviewedCommits.PR1, target.sha);
+        assert.equal(await f.git(target.worktree, "check-ignore", "generated/new.txt"), "generated/new.txt");
+      } else {
+        assert.doesNotMatch(result.stdout, /REVIEW COMPLETE/);
+        assert.equal(run.target.stateNote, "PR1 has uncommitted changes");
+        assert.equal(run.target.reviewedCommit, null);
+      }
+      assert.equal(await f.git(target.worktree, "status", "--porcelain", "--untracked-files=normal"), ignored ? "" : "?? generated/");
+      assert.equal(await f.git(target.worktree, "rev-parse", "HEAD"), target.sha);
+      assert.equal(await f.git(target.worktree, "ls-tree", "--name-only", "HEAD", "generated/new.txt"), "");
+      assert.equal(await readFile(path.join(target.worktree, "generated", "new.txt"), "utf8"), "uncommitted output\n");
+      assert.equal(await f.git(target.worktree, "config", "--local", "--get", "status.showUntrackedFiles"), display);
+    });
+  }
+}
 
 test("a stale task lock can be reclaimed by only one resumer", async t => {
   const f = await groupFixture(t);
