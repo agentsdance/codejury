@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const version = '0.8.2-rc.1';
+const version = '0.9.0';
 const [major, minor] = process.versions.node.split('.').map(Number);
 if (major < 20 || (major === 20 && minor < 10)) throw new Error('CodeJury requires Node.js 20.10+.');
 const cache = path.resolve(process.env.CODEJURY_PLUGIN_CACHE || path.join(homedir(), '.cache', 'codejury', 'plugin-cli'));

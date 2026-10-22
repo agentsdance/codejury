@@ -1,0 +1,53 @@
+name: Publish npm package
+run-name: Publish ${{ github.ref_name }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'agentsdance/codejury'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.21.1
+      - name: Validate release tag
+        id: release
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const { name, version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          if (name !== '@agentsdance/codejury' || process.env.GITHUB_REF !== `refs/tags/v${version}`) {
+            throw new Error('Run this workflow on the tag matching the package version.');
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `dist_tag=${version.includes('-') ? 'next' : 'latest'}\n`);
+          JS
+      - run: git config --global user.name 'Code Jury CI'
+      - run: git config --global user.email 'ci@example.com'
+      - run: npm ci --ignore-scripts
+      # prepublishOnly runs the full source and fresh installed-package suites.
+      # npm uses GitHub OIDC; no NPM_TOKEN or NODE_AUTH_TOKEN secret is needed.
+      - name: Test and publish
+        env:
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: npm publish --access public --tag "$DIST_TAG"

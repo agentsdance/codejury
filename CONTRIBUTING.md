@@ -76,3 +76,26 @@ CI uploads these records as `test-diagnostics-node<version>-<os>` artifacts for
 seven days. Logs also receive the records periodically so a failed artifact upload
 does not remove the only copy. A missing runner log still limits diagnosis; a
 successful retry alone does not explain a prior timeout.
+
+
+## Publishing releases
+
+The `publish.yml` GitHub Actions workflow publishes to npm using
+[trusted publishing](https://docs.npmjs.com/trusted-publishers/), without a stored
+npm token. Configure the npm package's GitHub Actions trusted publisher once:
+organization `agentsdance`, repository `codejury`, workflow filename
+`publish.yml`, no environment name, and allow direct `npm publish`.
+
+Prepare the package version, lockfile, and changelog in a release PR and wait for
+CI to pass. Tag the merged commit as `v<package version>` and publish its GitHub
+release. The workflow checks that the tag matches the package version, runs the
+source and fresh installed-package tests through `prepublishOnly`, and publishes
+stable versions to `latest` and prereleases to `next`. Verify the publish workflow
+succeeds and the expected version is available from npm before announcing it.
+
+To retry a failed publish, use **Re-run failed jobs** on that workflow run. For a
+release whose publish workflow never started, dispatch it on the existing tag:
+`gh workflow run publish.yml --ref v<package version>`. Branch refs are rejected.
+An already published npm version cannot be overwritten; do not rerun a successful
+publish. The npm CLI tarball, plugin ZIP, and checksums are attached separately to
+the GitHub release.

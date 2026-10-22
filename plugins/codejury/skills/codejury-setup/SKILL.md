@@ -24,7 +24,7 @@ selected, without starting a review.
    node "<plugin-root>/scripts/jury.mjs" agents
    ```
 
-   First use downloads the exact published release candidate into
+   First use downloads the exact published stable release into
    `~/.cache/codejury/plugin-cli/` and invokes its absolute entrypoint. It
    does not require a global installation or change the user's installed CLI.
    An explicitly requested CLI version takes precedence; check its help before
