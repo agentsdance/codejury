@@ -986,7 +986,7 @@ async function reviewedHeadProblem(worktree, expected) {
  */
 async function commitFixes(worktree, round, pushTarget) {
   // A display preference must not hide a fix consisting only of new files.
-  const status = await run("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: worktree });
+  const status = await run("git", ["status", "--porcelain", "--untracked-files=normal"], { cwd: worktree });
   if (!status.stdout.trim()) return null;
   await run("git", ["add", "-A"], { cwd: worktree });
   await run("git", ["commit", "-m", `fix: round ${round} review findings`], { cwd: worktree });

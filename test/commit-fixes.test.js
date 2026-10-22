@@ -10,7 +10,7 @@ import { testEnvironment } from '../scripts/test-environment.mjs';
 const exec = promisify(execFile);
 const cli = process.env.JURY_TEST_CLI ?? new URL('../bin/jury.js', import.meta.url).pathname;
 
-for (const visibility of ['normal', 'no']) {
+for (const visibility of ['normal', 'no', 'all']) {
   test(`judge-created files reach the reviewed commit with status.showUntrackedFiles=${visibility}`, { timeout: 20000 }, async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'jury-commit-files-'));
     const isolated = testEnvironment();
