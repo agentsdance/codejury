@@ -34,5 +34,11 @@ configuration, agent processes, and Git remotes are isolated; these checks do no
 change the user's global judge or contact real agent services. Executable-link
 checks use a temporary npm installation, not the user's global npm prefix.
 
+Related-PR reviews require every reviewed checkout to be clean. Readiness checks
+include untracked files even when `status.showUntrackedFiles=no` hides them from
+ordinary Git status output. Ignored files do not block completion, and the saved
+Git setting and ignore rules are unchanged. `review-group` checks these cases
+with local fixtures against both the source CLI and the installed package.
+
 CI runs source and package checks on Linux and macOS with Node 20, 22, and 24.
 Separate Chromium checks exercise the installed console's timeline rendering.
