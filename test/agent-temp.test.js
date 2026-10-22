@@ -9,6 +9,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {testEnvironment} from '../scripts/test-environment.mjs';
 
 const cli = process.env.JURY_TEST_CLI ?? new URL('../bin/jury.js', import.meta.url).pathname;
 const packageRoot = path.dirname(path.dirname(cli));
@@ -95,6 +96,94 @@ test('file-delivered prompts follow cache cleanup and failed launches add no tem
   const failed = await runAgent({...agent('', {JURY_AGENT_TEMP_ROOT: root}), argv: ['/jury-missing-agent']}, options);
   assert.equal(failed.ok, false);
   assert.equal((await readdir(root)).length, process.platform === 'win32' ? 1 : 0);
+});
+
+test('cache initialization failures return agent errors and preserve known sessions', async t => {
+  const {dir, root} = await fixture(t);
+  await writeFile(root, 'not a directory');
+  const launched = path.join(dir, 'launched');
+  for (const sessionId of [null, 'existing-session']) {
+    const result = await runAgent(agent(`require('node:fs').writeFileSync(${JSON.stringify(launched)}, 'unexpected')`,
+      {JURY_AGENT_TEMP_ROOT: root}), {...options, sessionId});
+    assert.equal(result.agent, 'fixture');
+    assert.equal(result.ok, false);
+    assert.equal(result.verdict, 'error');
+    assert.match(result.report, /Could not initialize temporary cache:/);
+    assert.ok(result.report.includes(root));
+    assert.equal(result.sessionId, sessionId);
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.raw, '');
+    assert.ok(Number.isFinite(result.seconds) && result.seconds >= 0);
+    assert.equal(existsSync(launched), false);
+  }
+});
+
+test('cache initialization failure records an error while a running peer finishes', {
+  skip: process.platform === 'win32' || process.getuid?.() === 0, timeout: 20000,
+}, async t => {
+  const {dir, root} = await fixture(t);
+  const repo = path.join(dir, 'repo'), denied = path.join(dir, 'denied');
+  const ready = path.join(dir, 'peer-ready'), finished = path.join(dir, 'peer-finished');
+  const launched = path.join(dir, 'blocked-launched');
+  await mkdir(repo); await mkdir(denied); await chmod(denied, 0o555);
+  const isolated = testEnvironment();
+  t.after(() => isolated.dispose());
+  try {
+    const git = (...args) => exec('git', args, {cwd: repo, env: isolated.env});
+    await git('init', '-q', '-b', 'master');
+    await git('commit', '--allow-empty', '-qm', 'base');
+    await git('update-ref', 'refs/remotes/origin/master', 'HEAD');
+    await writeFile(path.join(repo, 'jury.config.json'), JSON.stringify({agents: [
+      {...agent(`require('node:fs').writeFileSync(${JSON.stringify(launched)}, 'unexpected')`,
+        {JURY_AGENT_TEMP_ROOT: denied}), name: 'blocked', role: 'reviewer'},
+      {...agent(`
+        const fs = require('node:fs');
+        fs.writeFileSync(${JSON.stringify(ready)}, 'ready');
+        setTimeout(() => {
+          fs.writeFileSync(${JSON.stringify(finished)}, 'complete');
+          console.log('NO NEW FINDINGS');
+        }, 300);
+      `, {JURY_AGENT_TEMP_ROOT: root}), name: 'peer', role: 'reviewer'},
+      {...agent(`throw Error('judge must not run')`), name: 'fixture-judge', role: 'main'},
+    ]}));
+    const gate = path.join(dir, 'wait-for-peer.mjs');
+    await writeFile(gate, `
+      import fs from 'node:fs/promises';
+      import {existsSync} from 'node:fs';
+      import {syncBuiltinESMExports} from 'node:module';
+      import {setTimeout as delay} from 'node:timers/promises';
+      const mkdtemp = fs.mkdtemp;
+      fs.mkdtemp = async (...args) => {
+        if (String(args[0]) === ${JSON.stringify(path.join(denied, 'agent-'))}) {
+          const deadline = Date.now() + 10000;
+          while (!existsSync(${JSON.stringify(ready)}) && Date.now() < deadline) await delay(10);
+        }
+        return mkdtemp(...args); // The real filesystem rejects the unwritable root.
+      };
+      syncBuiltinESMExports();
+    `);
+    const result = await exec(process.execPath, ['--import', pathToFileURL(gate).href, cli, 'review',
+      '--dir', repo, '--trunk', 'master', '--agents', 'blocked,peer', '--judge', 'fixture-judge',
+      '--rounds', '1', '--web=false', '--push=false'], {cwd: repo, env: isolated.env, timeout: 15000})
+      .catch(error => { if (error.killed) throw error; return error; });
+    assert.equal(result.code, 1, 'an incomplete review must still exit unsuccessfully');
+    assert.equal(existsSync(ready), true, `the peer must be running before initialization fails\n${result.stdout}\n${result.stderr}`);
+    const [slug] = await readdir(path.join(repo, 'runs'));
+    const runDir = path.join(repo, 'runs', slug);
+    const saved = JSON.parse(await readFile(path.join(runDir, 'run.json'), 'utf8'));
+    assert.equal(saved.target.state, 'human', result.stderr);
+    assert.match(saved.target.stateNote, /reviewers failed: blocked/);
+    assert.equal(existsSync(finished), true, 'the healthy peer must finish its work');
+    assert.equal(existsSync(launched), false, 'the reviewer with no cache must not launch');
+    const events = (await readFile(path.join(runDir, 'events.ndjson'), 'utf8')).trim().split('\n').map(JSON.parse);
+    const reports = events.filter(event => event.t === 'agent.report');
+    assert.equal(reports.length, 2);
+    assert.equal(reports.find(report => report.agent === 'peer').verdict, 'clean');
+    const failed = reports.find(report => report.agent === 'blocked');
+    assert.equal(failed.verdict, 'error');
+    assert.match(failed.report, /EACCES/);
+    assert.ok(events.some(event => event.t === 'round.end'));
+  } finally { await chmod(denied, 0o755); }
 });
 
 test('timed-out agents release their caches after process termination', {skip: process.platform === 'win32'}, async t => {
@@ -190,7 +279,8 @@ for (const code of [0, 1]) test(`Windows cleanup retains caches used by descenda
       let result = 'compiled';
       try { fs.writeFileSync(path.join(process.env.GOCACHE, 'compiled'), 'cache content'); }
       catch (error) { result = error.code; }
-      fs.writeFileSync(${JSON.stringify(outcome)}, result);
+      fs.writeFileSync(${JSON.stringify(outcome + '.next')}, result);
+      fs.renameSync(${JSON.stringify(outcome + '.next')}, ${JSON.stringify(outcome)});
     }, 10);
     setTimeout(() => process.exit(), 30000);
   `;
@@ -275,7 +365,9 @@ test('concurrent agents keep their own caches while a peer completes', async t =
   const {dir, root} = await fixture(t);
   const ready = path.join(dir, 'ready'), release = path.join(dir, 'release');
   const pending = runAgent(agent(`
-    const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(ready)}, process.env.TMPDIR);
+    const fs = require('node:fs');
+    fs.writeFileSync(${JSON.stringify(ready + '.next')}, process.env.TMPDIR);
+    fs.renameSync(${JSON.stringify(ready + '.next')}, ${JSON.stringify(ready)});
     const timer = setInterval(() => { if (fs.existsSync(${JSON.stringify(release)})) { clearInterval(timer); console.log('NO NEW FINDINGS'); } }, 10);
   `, {JURY_AGENT_TEMP_ROOT: root}), {...options, timeoutSeconds: 10});
   try {
@@ -286,6 +378,64 @@ test('concurrent agents keep their own caches while a peer completes', async t =
     assert.equal((await agentTemps({root, clean: true}))[0].status, 'active');
   } finally { await writeFile(release, ''); await pending; }
   assert.equal((await readdir(root)).length, process.platform === 'win32' ? 2 : 0);
+});
+
+for (const [signal, pattern, count] of [
+  ['ready', '^concurrent agents keep their own caches', 1],
+  ['outcome', '^Windows cleanup retains caches used by descendants', 2],
+]) test(`cache fixtures publish ${signal} only after writing completes`, async t => {
+  const {dir} = await fixture(t);
+  const preload = path.join(dir, 'pause-signal-write.cjs'), observed = path.join(dir, 'observed');
+  await writeFile(preload, `
+    const fs = require('node:fs'), fsp = require('node:fs/promises'), path = require('node:path');
+    const write = fs.writeFileSync, exists = fs.existsSync, read = fsp.readFile;
+    const signal = file => typeof file === 'string' && path.basename(file) === ${JSON.stringify(signal)};
+    const wait = file => {
+      const deadline = Date.now() + 5000;
+      while (!exists(file)) {
+        if (Date.now() >= deadline) throw Error('Signal handshake timed out: ' + file);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      }
+    };
+    const release = file => {
+      if (!exists(file + '.observed')) {
+        fs.appendFileSync(${JSON.stringify(observed)}, 'observed\\n');
+        write(file + '.observed', '');
+      }
+    };
+    // Pause after the real open creates an empty file, before any data is written.
+    // Exercise both direct writes and writes staged for an atomic rename.
+    fs.writeFileSync = (file, ...args) => {
+      const published = typeof file === 'string' ? file.replace(/\\.next$/, '') : file;
+      if (!signal(published)) return write(file, ...args);
+      const fd = fs.openSync(file, 'w');
+      try {
+        write(published + '.opened', '');
+        wait(published + '.observed');
+        return write(fd, ...args);
+      } finally { fs.closeSync(fd); }
+    };
+    fs.existsSync = file => {
+      const writing = signal(file) && exists(file + '.opened');
+      const found = exists(file);
+      if (writing && !found) release(file);
+      return found;
+    };
+    fsp.readFile = async (file, ...args) => {
+      const contents = await read(file, ...args);
+      if (signal(file)) { wait(file + '.opened'); release(file); }
+      return contents;
+    };
+    require('node:module').syncBuiltinESMExports();
+  `);
+  const env = {...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require=${JSON.stringify(preload)}`};
+  delete env.NODE_TEST_CONTEXT;
+  const {stdout} = await exec(process.execPath, ['--test', '--test-reporter=tap',
+    '--test-name-pattern=' + pattern, fileURLToPath(import.meta.url)], {env, timeout: 20000})
+    .catch(error => assert.fail(error.stdout || error.message));
+  assert.match(stdout, new RegExp('# pass ' + count + '\\b'));
+  assert.equal((await readFile(observed, 'utf8')).trim().split('\n').length, count,
+    'each fixture must probe its signal while the writer is paused');
 });
 
 test('cleanup retains unrecognized entries and uncertain launches and never follows symlinks', async t => {

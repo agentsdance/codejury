@@ -260,6 +260,9 @@ persistent Go caches are preferred over a fresh cache for each invocation.
 `JURY_AGENT_TEMP_ROOT` selects another managed root; an agent-specific value is
 supported, and the same value must be used when inspecting it from the CLI.
 Jury overrides inherited temporary-directory variables for each invocation.
+If temporary-cache initialization fails (for example, the root is unwritable),
+Jury records an error for that agent and lets other reviewers finish. Their reports
+and the failed round status are saved before the review stops.
 
 Cleanup keeps ownership metadata until cache content is deleted, so interrupted
 deletions can be retried. Interrupted invocations are reclaimed when the next
