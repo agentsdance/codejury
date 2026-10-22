@@ -138,6 +138,9 @@ for (const [label, quoted] of [
   ['tilde fence', '~~~text\nDISPUTE: A\n~~~'],
   ['nested shorter and different fences', '````text\n```\n~~~\nDISPUTE: A\n````'],
   ['blockquote', '> DISPUTE: A'],
+  ['four-space code block', '\n    DISPUTE: A\n'],
+  ['tab-indented code block', '\n\tDISPUTE: A\n'],
+  ['space and tab code block', '\n \tDISPUTE: A\n'],
 ]) test(`quoted dispute markers do not reopen findings: ${label}`, async t => {
   const {answer, events, findings} = await reply(t, '[P2] Missing authorization validation',
     `My earlier objection was:\n${quoted}\nI withdraw that objection and agree with the resolution.\nNO NEW FINDINGS`);
@@ -147,6 +150,14 @@ for (const [label, quoted] of [
   assert.equal(findings.get('A').turns, 0);
   assert.equal(findings.get('A').contested, false);
   assert.deepEqual(outstanding(findings, events), []);
+});
+
+test('a three-space indented live dispute remains active', async t => {
+  const {answer, events, findings} = await reply(t, '[P2] Missing authorization validation',
+    '   DISPUTE: A\nThe objection remains.\nNO NEW FINDINGS');
+  assert.equal(answer.clean, false);
+  assert.equal(events.filter(e => e.t === 'finding.turn').length, 1);
+  assert.equal(findings.get('A').contested, true);
 });
 
 for (const fence of ['```', '~~~']) {
