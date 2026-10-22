@@ -111,30 +111,20 @@ jury help review                      # complete review options
 
 ## Codex desktop plugin
 
-The standalone plugin in [`plugins/codejury`](plugins/codejury) provides setup,
-PR-link review/resume, and saved-results skills. A new review requires a PR URL;
-local files or folders alone are not supported plugin review targets.
-It uses the published `0.8.2-rc.1` CLI
-through an isolated npm cache and an absolute CLI entrypoint, so an existing
-`jury` installation cannot select another version. Node.js 20.10+, npm, Git,
-and authenticated coding-agent CLIs
-are still required. Reviews may edit code and create commits; pushes are disabled
-unless requested, and local-only fixes use a persistent checkout.
-
-To install from a checkout with the marketplace files:
+Review pull requests from Codex using your own coding agents. Install from GitHub:
 
 ```sh
-codex plugin marketplace add /absolute/path/to/codejury
+codex plugin marketplace add agentsdance/codejury
 codex plugin add codejury@codejury
 ```
 
-Restart the desktop app after local plugin changes. Use the **CodeJury** plugin
-to set up agents, review a PR, or inspect a saved run. The package is marked
-desktop-only because its workflows call local programs.
+Start a new Codex chat, select **CodeJury**, and ask:
 
-Build the public-directory submission archive with `npm run package:plugin`.
-This produces `dist/codejury-plugin-0.1.1.zip`. Building or installing it locally
-does not mean OpenAI has reviewed or listed it in the public directory.
+> Review https://github.com/OWNER/REPO/pull/123
+
+Use your PR link. Reviews run locally and can make fixes; changes stay local unless
+you ask to push. See [setup and usage](docs/codex-plugin.md) for prerequisites,
+agent selection, and saved reviews.
 
 ## Claude Code plugin
 
