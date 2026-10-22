@@ -302,7 +302,51 @@ for (const breakdown of [true,false]) {
     assert.equal(usage.total,170);
     assert.equal(usage.partial,true);
   });
+
+  test(`Qwen repeated zero-valued ${format} errors cannot restore an invalid baseline`, async t => {
+    for (const resets of [2,4]) {
+      const dir = await scratch(t);
+      const counters = (prompt,candidates) => ({'model-a':{prompt,candidates,total:prompt+candidates,cached:0}});
+      const sessionId = await invokeQwen(dir,{breakdown,counters:counters(100,20)});
+      for (let i=0; i<resets; i++) {
+        await invokeQwen(dir,{breakdown,sessionId,failed:true,counters:counters(0,0)});
+        const snapshots = (await readEvents(dir)).filter(e => e.t === 'usage.snapshot');
+        assert.ok(snapshots.at(-1).records.every(r => r.cumulative.input === null
+          && r.cumulative.output === null && r.cumulative.total === null),
+        `empty error ${i+1} must leave its durable baseline invalid`);
+      }
+      await invokeQwen(dir,{breakdown,sessionId,failed:true,counters:counters(140,30)});
+      let usage = usageFromEvents(await readEvents(dir));
+      assert.deepEqual(usage.invocations.map(i => i.total),[120,...Array(resets+1).fill(null)]);
+      assert.equal(usage.total,120,'repeated errors cannot charge the earlier 120 tokens again');
+      assert.equal(usage.partial,true);
+      // A failed result with real usage restores the baseline for the next turn.
+      await invokeQwen(dir,{breakdown,sessionId,counters:counters(180,40)});
+      await publishEvents(dir);
+      usage = (await readRun(dir)).usage;
+      assert.deepEqual(usage.invocations.map(i => i.total),[120,...Array(resets+1).fill(null),50]);
+      assert.equal(usage.total,170);
+      assert.equal(usage.partial,true);
+    }
+  });
 }
+
+test('Qwen distinguishes empty errors from genuine zero-valued measurements after a missing baseline', () => {
+  const unknown = {input:null,output:null,total:null,cacheRead:null,cacheWrite:null};
+  for (const error of [{is_error:true},{subtype:'error_during_execution'}]) {
+    const decoder = usageDecoder({name:'qwen',report:'result-json'},undefined,new Map([['old-session',unknown]]),'old-session');
+    decoder.feed(JSON.stringify({type:'result',...error,usage:{input_tokens:0,output_tokens:0}}));
+    assert.equal(decoder.snapshot()[0].cumulative.total,null);
+  }
+  for (const [is_error,input,output] of [[false,0,0],[true,140,0]]) {
+    const decoder = usageDecoder({name:'qwen',report:'result-json'},undefined,new Map([['old-session',unknown]]),'old-session');
+    decoder.feed(JSON.stringify({type:'result',is_error,usage:{input_tokens:input,output_tokens:output}}));
+    const [record] = decoder.finish();
+    assert.equal(record.total,null,'the unknown earlier baseline keeps this invocation unavailable');
+    assert.equal(record.cumulative.total,input+output,'a successful zero or a nonempty failure establishes a baseline');
+    assert.equal(record.cumulative.output,output);
+  }
+});
 
 test('every persisted Qwen model result is a complete resume baseline', async t => {
   const dir = await scratch(t);
@@ -453,6 +497,55 @@ test('late judge heartbeats cannot create another usage invocation after resolut
   const usage = usageFromEvents(events);
   assert.equal(usage.invocations.length,1);
   assert.equal(usage.total,120);
+  assert.equal(usage.partial,false);
+});
+
+for (const name of ['codex','qwen']) for (const identified of [true,false]) {
+  test(`ID-less interrupted ${name} resume preserves unknown gaps (identified=${identified})`, async t => {
+    const dir = await scratch(t), agent = {name,report:name === 'codex' ? 'codex-json' : 'result-json'};
+    const invoke = (thread, resumed, savedId, input, output, emitIdentity=true) => {
+      const tracker = trackUsage(agent,{dir,round:1,action:resumed?'reply':'review'},null,savedId,resumed);
+      if (emitIdentity) tracker.feed(lines([name === 'codex'
+        ? {type:'thread.started',thread_id:thread} : {type:'system',session_id:thread}]));
+      if (input !== null) tracker.feed(lines([name === 'codex'
+        ? {type:'turn.completed',usage:{input_tokens:input,output_tokens:output}}
+        : {type:'result',session_id:thread,usage:{input_tokens:input,output_tokens:output}}]));
+      tracker.finish(input === null ? 'interrupted' : 'completed');
+    };
+    invoke('A',false,null,100,20); invoke('B',false,null,100,20);
+    invoke('A',true,null,null,null,identified);
+    invoke('A',true,'A',200,50);
+    invoke('A',true,'A',240,60);
+    invoke('B',true,'B',140,30);
+    const usage = usageFromEvents(await readEvents(dir));
+    assert.deepEqual(usage.invocations.map(i=>i.total),[120,120,null,null,50,identified?50:null]);
+    assert.equal(usage.invocations[3].partial,true);
+    assert.equal(usage.invocations[4].partial,false);
+    // Without an identity the interrupted resume could have selected any saved
+    // session. Once identified, only that session's baseline is uncertain.
+    assert.equal(usage.invocations[5].partial,!identified);
+  });
+}
+
+test('distinct legacy judge sessions survive without intervening verdicts', () => {
+  const usage = usageFromEvents([{t:'round.start',n:1},
+    {t:'judge.session',agent:'judge',sessionId:'old-A',round:1},
+    {t:'judge.session',agent:'judge',sessionId:'old-A',round:1},
+    {t:'judge.session',agent:'judge',sessionId:'old-B',round:1}]);
+  assert.equal(usage.invocations.length,2);
+  assert.ok(usage.invocations.every(i=>i.action==='fix' && i.total===null && i.partial));
+});
+
+test('overlapping judge session records match measured session identities', () => {
+  const snapshot = (id,sessionId) => ({t:'usage.snapshot',id,agent:'judge',action:'fix',round:1,
+    findingId:id,status:'completed',records:[{sessionId,input:100,output:20,total:120}]});
+  const usage = usageFromEvents([{t:'round.start',n:1},snapshot('A','session-A'),snapshot('B','session-B'),
+    {t:'judge.session',agent:'judge',sessionId:'session-A',round:1},
+    {t:'finding.resolved',id:'A',who:'judge',verdict:'rejected'},
+    {t:'judge.session',agent:'judge',sessionId:'session-B',round:1},
+    {t:'finding.resolved',id:'B',who:'judge',verdict:'rejected'}]);
+  assert.equal(usage.invocations.length,2);
+  assert.equal(usage.total,240);
   assert.equal(usage.partial,false);
 });
 
@@ -762,8 +855,37 @@ test('resuming a Codex thread without a saved baseline leaves its first delta un
   assert.equal(usage.partial,true);
 });
 
-for (const mode of ['automatic', 'standalone']) {
-  test(`${mode} reply without a saved Codex baseline records unavailable then only the new delta`, async t => {
+test('ID-less cumulative resumes require a baseline for the reported session', async t => {
+  for (const format of ['codex','qwen-aggregate','qwen-models']) for (const reportsId of [true,false]) {
+    const dir = await scratch(t);
+    const agent = format === 'codex' ? codex : {name:'qwen',report:'result-json'};
+    const invoke = (input,output) => {
+      const tracker = trackUsage(agent,{dir,round:1,action:'reply'},undefined,null,true);
+      if (format === 'codex') {
+        tracker.feed(lines([...(reportsId ? [{type:'thread.started',thread_id:'reported-thread'}] : []),complete(input,output)]));
+      } else {
+        tracker.feed(JSON.stringify({type:'result',subtype:'success',is_error:false,
+          ...(reportsId ? {session_id:'reported-thread'} : {}),
+          usage:{input_tokens:input,output_tokens:output},
+          ...(format === 'qwen-models' ? {stats:{models:{fixture:{tokens:{prompt:input,candidates:output,total:input+output}}}}} : {}),
+        }));
+      }
+      tracker.finish('completed');
+    };
+    invoke(1040,110);
+    let usage = usageFromEvents(await readEvents(dir));
+    assert.equal(usage.total,null,`${format}: cumulative history is unavailable without a saved baseline`);
+    assert.equal(usage.partial,true);
+    invoke(1080,120);
+    usage = usageFromEvents(await readEvents(dir));
+    assert.deepEqual(usage.invocations.map(i => i.total),[null,reportsId ? 50 : null],
+      `${format}: only an identified session can recover its saved baseline`);
+    assert.equal(usage.partial,true);
+  }
+});
+
+for (const mode of ['automatic', 'standalone']) for (const idless of [false,true]) {
+  test(`${mode} ${idless ? 'ID-less ' : ''}reply without a saved Codex baseline records unavailable then only the new delta`, async t => {
     const worktree = await scratch(t), dir = path.join(worktree, 'runs', 'old-run');
     const isolated = testEnvironment();
     t.after(() => isolated.dispose());
@@ -772,13 +894,13 @@ for (const mode of ['automatic', 'standalone']) {
       const fs = require('node:fs');
       const assert = require('node:assert/strict');
       assert.equal(process.argv[2], 'resume');
-      assert.equal(process.argv[3], 'old-thread');
+      assert.equal(process.argv[3], ${JSON.stringify(idless ? '--last' : 'old-thread')});
       const usage = fs.existsSync('usage.json') ? JSON.parse(fs.readFileSync('usage.json', 'utf8'))
         : {input_tokens: 1000, output_tokens: 100};
       usage.input_tokens += 40;
       usage.output_tokens += 10;
       fs.writeFileSync('usage.json', JSON.stringify(usage));
-      for (const event of [{type: 'thread.started', thread_id: process.argv[3]},
+      for (const event of [{type: 'thread.started', thread_id: 'old-thread'},
         {type: 'turn.started'},
         {type: 'item.completed', item: {type: 'agent_message', text: 'NO NEW FINDINGS'}},
         {type: 'turn.completed', usage}]) {
@@ -787,11 +909,11 @@ for (const mode of ['automatic', 'standalone']) {
     `);
     const agent = {...codex, cwd: 'worktree',
       argv: [process.execPath, fixture, 'fresh', '{{promptText}}'],
-      resume: {supported: true, argv: [process.execPath, fixture, 'resume', '{{sessionId}}', '{{promptText}}']}};
-    // An older review saved its session but no usage snapshot.
+      resume: {supported: true, argv: [process.execPath, fixture, 'resume', idless ? '--last' : '{{sessionId}}', '{{promptText}}']}};
+    // An older review has no usage snapshot and may also lack a saved session ID.
     for (const event of [{t: 'target', target: {judge: 'fixture-judge'}},
       {t: 'round.start', n: 1},
-      {t: 'agent.report', agent: 'codex', round: 1, sessionId: 'old-thread'},
+      {t: 'agent.report', agent: 'codex', round: 1, sessionId: idless ? null : 'old-thread'},
       {t: 'finding.raised', id: 'A', agent: 'codex', round: 1, claim: 'Wrong value', loc: 'a.txt:1'},
       {t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'Value is correct'}]) {
       await appendEvent(dir, event);
@@ -835,6 +957,16 @@ for (const mode of ['automatic', 'standalone']) {
     assert.equal(replies.length, 2);
     assert.notEqual(replies[0].replyId, replies[1].replyId);
     const snapshots = events.filter(e => e.t === 'usage.snapshot');
+    if (idless) {
+      assert.ok(replies.every(e => e.resumed && !e.sessionId));
+      assert.ok(snapshots.every(e => e.resumed),
+        'the actual resume decision survives even without a caller session ID');
+      assert.ok(snapshots.some(e => !e.resumedSessionId), 'the call starts without a known ID');
+      assert.ok(snapshots.some(e => e.observedSessionId === 'old-thread'),
+        'the observed identity is saved before usage or interruption');
+      assert.ok(snapshots.some(e => e.records.some(r => r.sessionId === 'old-thread')),
+        'the reported thread establishes the durable baseline');
+    }
     assert.ok(snapshots.every(e => replies.some(reply => reply.replyId === e.replyId)),
       'every usage snapshot must retain its caller replyId');
     for (const reply of replies) {

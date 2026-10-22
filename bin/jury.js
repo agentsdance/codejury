@@ -1197,7 +1197,7 @@ async function cmdReply(argv) {
     const replyRaw = `reply.${a.name}.stdout.txt`;
     const sink = await openArtifact(dir, replyRaw);
     const r = await runAgent(spec, {
-      worktree, prompt: text, stopToken: cfg.stopToken, sessionId: resumable ? sessionId : null, onLog: (m) => console.log(`  ${m}`),
+      worktree, prompt: text, stopToken: cfg.stopToken, resumed: resumable, sessionId: resumable ? sessionId : null, onLog: (m) => console.log(`  ${m}`),
       usageContext: { dir, action: "reply", replyId, round: Math.max(0, ...events.filter(e => e.t === "round.start").map(e => e.n)) || null },
       onChunk: (chunk) => sink.write(chunk),
     });

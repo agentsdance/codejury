@@ -168,6 +168,10 @@ If a resumed thread has no saved baseline, that invocation's usage is unavailabl
 its reported totals establish a baseline for subsequent invocations.
 An interrupted turn without usage invalidates its session's baseline, so its
 unmeasured work is not charged to a later invocation.
+Commands that resume the last session follow the same rules. If an interrupted
+call never identifies the session it used, saved baselines for that agent remain
+uncertain until refreshed. Empty Qwen error results cannot restore an invalidated
+baseline, including across repeated failures.
 When resuming an older run, known reviews, judge turns and replies without usage
 snapshots remain unavailable and keep combined totals partial. Saved judge session
 records establish known old fix invocations. Bare verdicts and heartbeats cannot
