@@ -13,6 +13,23 @@ import { writeRun } from "../lib/store.js";
 
 const exec = promisify(execFile);
 
+// These success cases need room above the occupied port for normal fallback.
+// Exhaustion at 65535 is checked deterministically in server-port.test.js.
+async function reserveFallbackPort(cleanup) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const reserved = net.createServer();
+    cleanup(async () => {
+      if (reserved.listening) await new Promise(resolve => reserved.close(resolve));
+    });
+    reserved.listen(0, "127.0.0.1");
+    await once(reserved, "listening");
+    const port = reserved.address().port;
+    if (port <= 65515) return port;
+    await new Promise(resolve => reserved.close(resolve));
+  }
+  throw new Error("Could not reserve an occupied port with fallback headroom");
+}
+
 // Observe the CLI-to-listener handoff without replacing real socket behavior.
 async function listenProbe(root) {
   const file = path.join(root, "listen-attempts.jsonl");
@@ -28,6 +45,36 @@ Server.prototype.listen = function (...args) {
 `);
   return { module, firstPort: async () => JSON.parse((await readFile(file, "utf8")).split("\n")[0]) };
 }
+
+test("web-only reports an occupied maximum port without attempting an invalid port", async t => {
+  const root = await mkdtemp(path.join(tmpdir(), "jury-port-boundary-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const attempts = path.join(root, "attempts.jsonl");
+  const module = path.join(root, "occupied-port.cjs");
+  await writeFile(module, `
+const { appendFileSync } = require("node:fs");
+const { Server } = require("node:net");
+const listen = Server.prototype.listen;
+Server.prototype.listen = function (...args) {
+  appendFileSync(${JSON.stringify(attempts)}, JSON.stringify(args[0]) + "\\n");
+  if (args[0] === 65535) {
+    queueMicrotask(() => this.emit("error", Object.assign(new Error("listen EADDRINUSE: occupied port 65535"), { code: "EADDRINUSE" })));
+    return this;
+  }
+  return Reflect.apply(listen, this, args);
+};
+`);
+  await assert.rejects(exec(process.execPath, ["--require", module,
+    process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only", "--dir", root, "--port", "65535"],
+  { timeout: 5000 }), error => {
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /jury: listen EADDRINUSE: occupied port 65535/);
+    assert.doesNotMatch(error.stderr, /ERR_SOCKET_BAD_PORT|RangeError/);
+    assert.doesNotMatch(error.stdout, /console:/);
+    return true;
+  });
+  assert.deepEqual((await readFile(attempts, "utf8")).trim().split("\n").map(JSON.parse), [65535]);
+});
 
 for (const automaticPort of [false, true]) {
 test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : "a fallback"} port`, { timeout: 30000, skip: process.platform === "win32" }, async (t) => {
@@ -54,10 +101,7 @@ test(`default web opens the current run on ${automaticPort ? "an OS-assigned" : 
   await writeFile(path.join(bin, process.platform === "darwin" ? "open" : "xdg-open"), opener, { mode: 0o755 });
   let port = 0;
   if (!automaticPort) {
-    const occupied = net.createServer();
-    occupied.listen(0, "127.0.0.1"); await once(occupied, "listening");
-    cleanup(() => new Promise(resolve => occupied.close(resolve)));
-    port = occupied.address().port;
+    port = await reserveFallbackPort(cleanup);
   }
   const child = spawn(process.execPath, ["--require", listening.module, process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "review", "--dir", repo,
     "--trunk", "main", "--rounds", "1", "--dry-run", "--agents", "claude", "--port", String(port)],
@@ -122,9 +166,7 @@ test(`web-only opens a saved run on ${automaticPort ? "an OS-assigned" : "a fall
     `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({url:process.argv[2]}));\n`, { mode: 0o755 });
   let port = 0;
   if (!automaticPort) {
-    const reserved = net.createServer(); reserved.listen(0, "127.0.0.1"); await once(reserved, "listening");
-    cleanup(() => new Promise(resolve => reserved.close(resolve)));
-    port = reserved.address().port;
+    port = await reserveFallbackPort(cleanup);
   }
   const child = spawn(process.execPath, ["--require", listening.module, process.env.JURY_TEST_CLI ?? path.resolve("bin/jury.js"), "--web-only",
     "--dir", root, "--run", "saved", "--port", String(port)],
