@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Scope agent temporary files and default Go caches to owned invocation directories,
+  reclaim them after completion, and add `jury cache clean` for stopped runs (#122).
+- Retain Windows agent caches when descendant termination cannot be confirmed,
+  including during startup cleanup and `jury cache clean`.
+- Preserve cache ownership metadata until cache data is deleted, so interrupted
+  cleanup remains retryable.
+- Record temporary-cache initialization failures as agent errors, allowing other
+  reviewers to finish and their reports and round status to be saved.
 - Recognize quoted dispute examples in JSON replies with CRLF line endings,
   avoiding false reopened findings and preserving the correct rebuttal evidence.
 - Keep agreed findings settled in mixed replies with explicit dispute IDs, and
