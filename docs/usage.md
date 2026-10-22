@@ -250,8 +250,9 @@ Each reviewer, judge and reply invocation gets an owned directory under
 `GOCACHE` and `GOMODCACHE` defaults inside it. Tools using those variables or their
 normal temporary-directory API stay within that invocation's storage. File-based
 prompts use the same directory. Jury removes it after success, failure or timeout,
-once the agent's process group has stopped. Read-only Go module directories are
-also removed.
+once the agent's process group has stopped. On Windows, a reviewer's exit does not
+confirm that its descendants stopped, so launched invocations retain their caches.
+Read-only Go module directories are also removed when cleanup is safe.
 
 An explicit `GOCACHE` or `GOMODCACHE` in the parent environment or agent `env`
 configuration takes precedence and remains your responsibility. Set these when
@@ -260,7 +261,9 @@ persistent Go caches are preferred over a fresh cache for each invocation.
 supported, and the same value must be used when inspecting it from the CLI.
 Jury overrides inherited temporary-directory variables for each invocation.
 
-Interrupted invocations are reclaimed when the next agent starts, or explicitly:
+Cleanup keeps ownership metadata until cache content is deleted, so interrupted
+deletions can be retried. Interrupted invocations are reclaimed when the next
+agent starts, or explicitly:
 
 ```sh
 jury cache          # list directories and ownership status
@@ -268,8 +271,10 @@ jury cache clean    # reclaim known stopped invocations
 ```
 
 Cleanup preserves live owners and process groups, unknown directories, symlinks,
-and launches whose process identity could not be recorded. An uncertain entry
-requires manual inspection. Processes that deliberately detach from their agent's
-process group are outside this lifecycle. Explicit external caches and arbitrary
+and launches whose process identity could not be recorded. Windows invocations
+remain `uncertain` after their owner exits, including after timeout termination;
+startup cleanup and `jury cache clean` preserve them. An uncertain entry requires
+manual inspection before removal. Processes that deliberately detach from their
+agent's process group are outside this lifecycle. Explicit external caches and arbitrary
 `/tmp` or `/private/tmp` directories are never claimed or removed. This does not
 retroactively identify old, unmarked caches created before managed storage.
