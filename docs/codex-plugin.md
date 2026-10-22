@@ -39,8 +39,8 @@ To continue or inspect a saved review, ask:
 ## Development and packaging
 
 The plugin source is in [`plugins/codejury`](../plugins/codejury). Its launcher
-uses the published CodeJury CLI `0.8.2-rc.1` in an isolated cache, independently
-of any globally installed `jury`. The plugin and CLI have separate versions.
+automatically downloads the pinned CLI release from npm, independently of any
+globally installed `jury`. The plugin and CLI have separate versions.
 
 Build the submission archive from the repository root:
 
