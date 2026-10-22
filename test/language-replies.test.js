@@ -281,3 +281,34 @@ test('complete rebuttal sections preserve code examples and repeated disputes wi
   assert.ok(!prompt.includes('Unrelated dispute evidence.'));
   assert.ok(!prompt.includes('Unrelated new finding evidence.'));
 });
+
+for (const [label, claim, loc] of [
+  ['same title and location', 'Missing authorization', 'auth.js:20'],
+  ['same location with a revised title', 'Alternate route permits anonymous writes', 'auth.js:20'],
+  ['normalized title with a different location', 'Missing authorization!', 'alternate.js:30'],
+]) test(`restated disputed findings retain evidence and stop at separate findings: ${label}`, async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'jury-restated-reply-'));
+  t.after(() => rm(dir, {recursive: true, force: true}));
+  const evidence = 'New evidence: anonymous POST to the alternate route returns 200 and changes protected data.';
+  const section = `DISPUTE: A\nFINDING: ${claim}\nWHERE: ${loc}\n${evidence}`;
+  const separate = 'FINDING: Numeric overflow\nWHERE: balance.js:8\nUnrelated new finding evidence.';
+  const report = `${section}\n\n${separate}\n\nDISPUTE: B\nUnrelated dispute evidence.`;
+  const agent = {name: 'fixture', argv: [process.execPath, '-e', `console.log(${JSON.stringify(report)})`]};
+  await appendEvent(dir, {t: 'finding.raised', id: 'A', agent: agent.name, round: 1,
+    claim: 'Missing authorization', loc: 'auth.js:20'});
+  await appendEvent(dir, {t: 'finding.resolved', id: 'A', verdict: 'rejected', reason: 'Checked'});
+  const [answer] = await replyRound({dir, pool: [agent], cfg: {stopToken: 'NO NEW FINDINGS'},
+    worktree: dir, sha: 'abc', round: 1, language: 'en', findings: await findingsIn(dir)});
+  assert.equal(answer.failed, false);
+  assert.equal(answer.clean, false);
+  assert.equal(answer.raised, 1, 'only the separate finding is raised');
+  const events = await readEvents(dir), findings = await findingsIn(dir);
+  assert.deepEqual(events.filter(e => e.t === 'finding.raised' && e.id !== 'A')
+    .map(({claim, loc}) => ({claim, loc})), [{claim: 'Numeric overflow', loc: 'balance.js:8'}]);
+  assert.equal(events.find(e => e.t === 'finding.turn' && e.id === 'A').text, section);
+  assert.deepEqual(findings.get('A').rebuttals, [section]);
+  const prompt = triagePrompt({finding: findings.get('A'), trunk: 'master', language: 'en'});
+  assert.ok(prompt.includes(evidence));
+  assert.ok(!prompt.includes('Unrelated new finding evidence.'));
+  assert.ok(!prompt.includes('Unrelated dispute evidence.'));
+});

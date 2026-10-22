@@ -186,7 +186,8 @@ and task requirements rather than the response-language preference.
 
 Replies with explicit `DISPUTE: <finding-id>` markers reopen only the named
 findings. Agreements with other findings remain settled. Each complete rebuttal
-ends at the next live dispute or new finding; quoted examples stay in its evidence.
+ends at the next live dispute or separate new finding; restatements of the disputed
+finding and quoted examples stay in its evidence.
 
 ## Token usage
 
