@@ -12,6 +12,7 @@ const {appendEvent, readEvents} = await load('store.js');
 const {findingsIn} = await load('findings.js');
 const {replyRound, outstanding} = await load('loop.js');
 const {languageIn} = await load('language.js');
+const {triagePrompt} = await load('triage.js');
 
 async function reply(t, claim, report, language = 'zh-CN') {
   const dir = await mkdtemp(path.join(tmpdir(), 'jury-language-reply-'));
@@ -160,6 +161,17 @@ test('a three-space indented live dispute remains active', async t => {
   assert.equal(findings.get('A').contested, true);
 });
 
+test('complete unmarked rebuttals retain late reproduction evidence for the judge', async t => {
+  const report = ['Missing authorization remains unfixed.', '', 'Reproduction:',
+    '1. Sign out.', '', '2. Request the primary route and observe 401.', '',
+    '3. Request the alternate route.', 'Observed: 200 and the protected action succeeded.'].join('\n');
+  const {findings} = await reply(t, 'Missing authorization', report, 'en');
+  const finding = findings.get('A');
+  assert.deepEqual(finding.rebuttals, [report]);
+  assert.ok(triagePrompt({finding, trunk: 'master', language: 'en'})
+    .includes(`> ${report.split('\n').join('\n> ')}`));
+});
+
 for (const fence of ['```', '~~~']) {
   test(`an active dispute after a quoted example reaches triage: ${fence}`, async t => {
     const explanation = '我仍然不同意：权限校验的问题尚未修复。';
@@ -183,5 +195,36 @@ for (const [id, clean] of [['A', false], ['unknown', true]]) {
     assert.equal(answer.clean, clean);
     assert.equal(findings.get('A').contested, !clean);
     assert.equal(outstanding(findings, events).length, Number(!clean));
+  });
+}
+
+for (const fence of ['```', '~~~']) {
+  test(`complete dispute sections preserve quoted markers and stop at the next live dispute: ${fence}`, async t => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'jury-dispute-sections-'));
+    t.after(() => rm(dir, {recursive: true, force: true}));
+    const sections = [
+      ['DISPUTE: A', '复现步骤：', '', '1. 使用匿名请求。', '2. 改用备用路由。',
+        `${fence}text`, 'DISPUTE: B', '示例输出，不是新的争议。', fence,
+        '> DISPUTE: B', '    DISPUTE: B', '', '实际结果：备用路由返回 200。'].join('\n'),
+      'DISPUTE: B\n另一个问题的证据。\n实际结果：余额变为负数。',
+    ];
+    const report = `Review context.\n\n${sections.join('\n\n')}`;
+    const agent = {name: 'fixture', argv: [process.execPath, '-e', `console.log(${JSON.stringify(report)})`]};
+    for (const [id, claim] of [['A', 'Missing authorization'], ['B', 'Incorrect balance']]) {
+      await appendEvent(dir, {t: 'finding.raised', id, agent: agent.name, round: 1, claim});
+      await appendEvent(dir, {t: 'finding.resolved', id, verdict: 'rejected', reason: 'Checked'});
+    }
+    await replyRound({dir, pool: [agent], cfg: {stopToken: 'NO NEW FINDINGS'}, worktree: dir,
+      sha: 'abc', round: 1, findings: await findingsIn(dir), language: 'zh-CN'});
+    const events = await readEvents(dir), findings = await findingsIn(dir);
+    assert.deepEqual(events.filter(e => e.t === 'finding.turn').map(e => e.text), sections);
+    for (const [index, id] of ['A', 'B'].entries()) {
+      const finding = findings.get(id);
+      assert.deepEqual(finding.rebuttals, [sections[index]]);
+      const prompt = triagePrompt({finding, trunk: 'master', language: 'zh-CN'});
+      assert.ok(prompt.includes(`> ${sections[index].split('\n').join('\n> ')}`));
+      assert.ok(!prompt.includes(sections[1 - index].split('\n').at(-1)),
+        'a finding must not receive the neighboring dispute section');
+    }
   });
 }

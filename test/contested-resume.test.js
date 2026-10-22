@@ -22,7 +22,7 @@ const explanation = '缺少权限校验的问题依然存在：匿名请求仍�
 const dispute = `DISPUTE: ${id}\n${explanation}`;
 const acknowledgement = `${claim} at a.txt:1 is resolved; I agree.\nNO NEW FINDINGS`;
 
-async function fixture(t, {fresh = false, invalidJudge = false} = {}) {
+async function fixture(t, {fresh = false, invalidJudge = false, firstReply = null} = {}) {
   const temp = await mkdtemp(path.join(tmpdir(), 'jury-contested-resume-'));
   const repo = path.join(temp, 'repo'), calls = path.join(temp, 'calls.ndjson');
   const isolated = testEnvironment();
@@ -44,7 +44,7 @@ async function fixture(t, {fresh = false, invalidJudge = false} = {}) {
     const previous = fs.readFileSync(${JSON.stringify(calls)}, 'utf8').trim().split('\\n').filter(Boolean).map(JSON.parse);
     fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({action, prompt}) + '\\n');
     const first = !previous.some(call => call.action === action);
-    console.log(${fresh} && first
+    console.log(action === 'reply' && first && ${firstReply !== null} ? ${JSON.stringify(firstReply)} : ${fresh} && first
       ? action === 'review' ? ${JSON.stringify(`FINDING: ${claim}\nWHERE: a.txt:1\n${body}`)} : ${JSON.stringify(dispute)}
       : action === 'reply' ? ${JSON.stringify(acknowledgement)} : 'NO NEW FINDINGS');
   `;
@@ -59,7 +59,7 @@ async function fixture(t, {fresh = false, invalidJudge = false} = {}) {
     {name: 'judgefixture', role: 'main', argv: [process.execPath, '-e', judgeCode, '{{promptText}}']},
   ]}));
   const dir = path.join(repo, 'runs', 'saved');
-  async function seed({status = 'rejected', turns = 1} = {}) {
+  async function seed({status = 'rejected', turns = 1, rebuttal = dispute} = {}) {
     await appendEvent(dir, {t: 'target', target: {judge: 'judgefixture', language: 'en'}});
     await appendEvent(dir, {t: 'round.start', n: 1});
     await appendEvent(dir, {t: 'finding.raised', id, round: 1, agent: 'reviewfixture', claim, loc: 'a.txt:1', body});
@@ -68,7 +68,7 @@ async function fixture(t, {fresh = false, invalidJudge = false} = {}) {
     // Save turns through the actual translated-reply path, not an assigned contested flag.
     for (let n = 0; n < turns; n++) {
       const [answer] = await replyRound({dir, pool: [{name: 'reviewfixture',
-        argv: [process.execPath, '-e', `console.log(${JSON.stringify(dispute)})`]}],
+        argv: [process.execPath, '-e', `console.log(${JSON.stringify(rebuttal)})`]}],
       cfg: {stopToken: 'NO NEW FINDINGS'}, worktree: repo, sha: 'abc', round: 1,
       language: 'zh-CN', findings: await findingsIn(dir)});
       assert.equal(answer.failed, false);
@@ -85,7 +85,63 @@ async function fixture(t, {fresh = false, invalidJudge = false} = {}) {
     return {...result, events, findings: await findingsIn(runDir), target: foldEvents(events).target,
       calls: (await readFile(calls, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse)};
   }
-  return {seed, invoke};
+  async function reply() {
+    await exec(process.execPath, [cli, 'reply', '--dir', repo, '--run', 'saved',
+      '--reviewer', 'reviewfixture', '--language', 'zh-CN'],
+    {cwd: repo, env: isolated.env, timeout: 15000, maxBuffer: 2e6});
+    const events = await readEvents(dir);
+    return {events, findings: await findingsIn(dir)};
+  }
+  return {seed, invoke, reply};
+}
+
+for (const standalone of [false, true]) {
+  test(`a complete multiline dispute reaches the resumed judge, standalone=${standalone}`, async t => {
+    const report = [
+      `DISPUTE: ${id}`, explanation, '', '复现步骤：',
+      '1. 创建普通用户并退出登录。', '2. 直接访问受保护接口，确认被拒绝。',
+      '3. 改用备用路由再次提交相同请求。', '',
+      '实际结果：未登录请求返回 200，并成功执行了受保护操作。',
+      '预期结果：备用路由也应返回 401，且不执行任何操作。',
+    ].join('\n');
+    const f = await fixture(t, {firstReply: standalone ? report : null});
+    await f.seed({turns: standalone ? 0 : 1, rebuttal: report});
+    if (standalone) await f.reply();
+    const result = await f.invoke();
+    const judges = result.calls.filter(call => call.action === 'judge');
+    assert.equal(judges.length, 1);
+    assert.ok(judges[0].prompt.includes('实际结果：未登录请求返回 200，并成功执行了受保护操作。'),
+      'the judge must receive the decisive observed result after the reproduction steps');
+    assert.ok(judges[0].prompt.includes(`> ${report.split('\n').join('\n> ')}`),
+      'the reconsideration prompt must quote the complete dispute, including blank lines');
+    assert.deepEqual(result.events.filter(e => e.t === 'finding.turn').map(e => e.text), [report]);
+  });
+}
+
+for (const status of ['rejected', 'accepted']) {
+  for (const report of [dispute, `${dispute}\nNO NEW FINDINGS`]) {
+    test(`standalone translated disputes survive a clean resume for a previously ${status} finding, stop token=${report !== dispute}`, async t => {
+      const f = await fixture(t, {firstReply: report});
+      await f.seed({status, turns: 0});
+      const answered = await f.reply();
+      const result = await f.invoke();
+      const judges = result.calls.filter(call => call.action === 'judge');
+      assert.deepEqual({
+        report: answered.events.findLast(e => e.t === 'reply.answered').report.trim(),
+        turns: answered.events.filter(e => e.t === 'finding.turn').map(e => e.id),
+        contested: answered.findings.get(id).contested,
+        outstanding: outstanding(answered.findings, answered.events).map(f => f.id),
+        judgeCalls: judges.length,
+        state: result.target.state,
+      }, {report, turns: [id], contested: true, outstanding: [id], judgeCalls: 1, state: 'converged'},
+      'a standalone dispute must be persisted and reach the judge before a clean resume converges');
+      assert.ok(judges[0].prompt.includes(explanation));
+      assert.ok(judges[0].prompt.includes('Response language: zh-CN.'));
+      assert.equal(result.findings.get(id).turns, 1, 'the later clean acknowledgement must not reopen the finding');
+      assert.equal(result.findings.get(id).contested, false);
+      assert.deepEqual(outstanding(result.findings, result.events), []);
+    });
+  }
 }
 
 for (const status of ['rejected', 'accepted']) {

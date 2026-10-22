@@ -24,7 +24,7 @@ import { assertTrunk } from "../lib/trunk.js";
 import { serve } from "../lib/server.js";
 import { appendEvent, publishEvents, readEvents, slugFor, attemptStamp, runsDir, writeArtifact, openArtifact } from "../lib/store.js";
 import { findingsIn, gate, settledList, VERDICTS } from "../lib/findings.js";
-import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, record, sessionsIn, judgeSessionIn, currentJudge } from "../lib/loop.js";
+import { MAX_TURNS, turnsFor, outstanding, deadlocked, refreshSettled, replyRound, recordReplyDisputes, record, sessionsIn, judgeSessionIn, currentJudge } from "../lib/loop.js";
 import { triageOne } from "../lib/triage.js";
 import { assertPrCheckout, parsePrUrl, repositoryFromPrUrl, resolvePrCheckout } from "../lib/repository.js";
 import { resolveJuryDirectory } from "../lib/directories.js";
@@ -1225,6 +1225,7 @@ async function cmdReply(argv) {
       sessionId: r.sessionId ?? (resumable ? sessionId : null),
       ...(r.timedOut ? { timedOut: true, timeoutSeconds: r.timeoutSeconds } : {}),
     });
+    await recordReplyDisputes(dir, a.name, thread, r);
     console.log(`\n${"─".repeat(64)}\n${a.name} answered (${r.seconds}s)\n${"─".repeat(64)}\n${r.report}`);
     return r;
   }));
