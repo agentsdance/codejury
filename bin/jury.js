@@ -6,6 +6,7 @@
 // deciding whether a finding reproduces is the calling agent's job, and roughly
 // a third of suggestions do not survive that step.
 import { commandHelp } from "../lib/help.js";
+import { agentTempRoot, agentTemps } from "../lib/agent-temp.js";
 import { parseArgs } from "node:util";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -78,6 +79,7 @@ Other commands
   jury agents judge <agent>  set the global default judge
   jury agents jury <agents>  set the default reviewers
   jury runs                  every PR under review
+  jury cache [clean]         list or reclaim stopped agents' temporary caches
   jury version
 
   jury help --all            every command and flag
@@ -89,6 +91,7 @@ const USAGE_FULL = `jury — review a pull request with multiple AI reviewers un
   jury finding <cmd>         list | reproduce | resolve | settled — appends events, enforces the gate
   jury reply [flags]         send each reviewer your verdicts on ITS findings, one conversation each
   jury runs                  list every PR under review, with its slug for --run
+  jury cache [clean]         list or reclaim stopped agents' temporary caches
   jury agents                check which configured agents are installed
   jury agents judge <agent>  set the global default judge
   jury agents jury <agents>  set the default reviewers (picker in a terminal)
@@ -143,6 +146,11 @@ reply flags
 state commands
   jury runs [--dir <path>]
   jury reply [--dir <path>] [--run <slug>]
+
+cache commands
+  jury cache [list]          list managed temporary directories and ownership status
+  jury cache clean           remove only known, stopped invocations
+Uses ~/.jury/tmp/agents, or JURY_AGENT_TEMP_ROOT. Active and unrecognized entries stay.
 `;
 
 let [, , cmd, ...rest] = process.argv;
@@ -181,6 +189,7 @@ try {
     case "finding": case "findings": await cmdFinding(rest); break;
     case "reply": await cmdReply(rest); break;
     case "runs": await cmdRuns(rest); break;
+    case "cache": await cmdCache(rest); break;
     case "agents": await cmdAgents(rest); break;
     case "version": case "-v": case "--version": console.log(`jury ${VERSION}`); break;
     case "help": case "-h": case "--help": case undefined:
@@ -205,6 +214,17 @@ try {
   await cleanupResolvedCheckout();
   console.error(`jury: ${err.message}`);
   process.exit(1);
+}
+
+async function cmdCache(args) {
+  if (args.length > 1 || args.length && !["list", "clean"].includes(args[0])) {
+    throw new Error("Usage: jury cache [list|clean]");
+  }
+  const root = agentTempRoot();
+  const entries = await agentTemps({ root, clean: args[0] === "clean" });
+  console.log(`Agent temporary caches: ${root}`);
+  for (const entry of entries) console.log(`${entry.status}\t${entry.path}`);
+  if (!entries.length) console.log("No managed temporary directories.");
 }
 
 /** Resolve an explicit reviewer list or explain each ineligible name. */

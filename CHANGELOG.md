@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Scope agent temporary files and default Go caches to owned invocation directories,
+  reclaim them after completion, and add `jury cache clean` for stopped runs (#122).
 - Keep agreed findings settled in mixed replies with explicit dispute IDs, and
   stop rebuttal evidence before a separate new finding while preserving restatements
   of the disputed finding.
