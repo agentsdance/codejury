@@ -134,25 +134,37 @@ for prerequisites, agent selection, and saved reviews.
 
 ## Claude Code plugin
 
-Code Jury is also a [Claude Code plugin](https://code.claude.com/docs/en/plugins). Add this
-repository as a plugin marketplace and install it:
+Use `/codejury:review <pr-url>` inside Claude Code to review and fix a pull request.
+You need Node.js 20.10+, npm, Git, and a signed-in Claude Code CLI. GitHub PRs also
+require a signed-in `gh` CLI. A separate `jury` installation is optional: the plugin
+uses it if available, or runs `npx -y @agentsdance/codejury` otherwise.
+
+**1. Install from your terminal:**
 
 ```sh
 claude plugin marketplace add agentsdance/codejury
 claude plugin install codejury@codejury
 ```
 
-In a session, `/codejury:review <pr-url>` runs `jury review` (or `npx @agentsdance/codejury`
-when `jury` is not installed). In Claude Code it always sets `--judge claude --reviewer claude`,
-overriding supplied and saved role choices for new and resumed runs. The two roles use separate
-sessions. Other flags take precedence over the `--web=true` and `--push=false` defaults.
-Claude shares the web console link, summarizes the findings and verdicts when the review ends,
-and leaves the console running. Pass `--web=false` to disable it. The plugin requires a PR URL;
-if omitted, Claude asks for it before starting. The plugin also ships the
-`codejury` skill for running the review loop by hand. Agent CLIs are still installed
-and authenticated separately. `--push=false` disables pushing; it does not make the review read-only.
+**2. Start a new Claude Code session** by running `claude` in your terminal.
+
+**3. Enter this at the Claude Code prompt**, replacing the URL with your PR:
+
+```text
+/codejury:review https://github.com/owner/repo/pull/123
+```
+
+Claude starts a separate Claude reviewer and Claude judge, shares the browser console
+link, and summarizes the result. The reviewer reports findings; the judge can edit
+files and create commits. Both roles always use Claude, overriding supplied and saved
+role choices for new and resumed runs.
+
+**Pushing is off by default.** Add `--push` to allow pushes to the PR branch.
 Single-PR checkouts are temporary and their unpushed fixes are removed during cleanup.
-See the [plugin guide](plugin/README.md) for prerequisites, updates, and local installation checks.
+The console stays open after review; add `--web=false` to skip it. A PR URL is required.
+
+See the [step-by-step plugin guide](plugin/README.md) for setup checks, examples,
+saved results, troubleshooting, and the separate manual-triage skill.
 
 ## Screenshots
 
