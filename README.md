@@ -1,5 +1,7 @@
 # Code Jury
 
+**English** | [简体中文](README.zh-CN.md)
+
 **Independent AI reviewers. One judge. A review you can follow.**
 
 [![CI](https://github.com/agentsdance/codejury/actions/workflows/ci.yml/badge.svg)](https://github.com/agentsdance/codejury/actions/workflows/ci.yml)
