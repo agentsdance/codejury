@@ -134,37 +134,24 @@ for prerequisites, agent selection, and saved reviews.
 
 ## Claude Code plugin
 
-Use `/codejury:review <pr-url>` inside Claude Code to review and fix a pull request.
-You need Node.js 20.10+, npm, Git, and a signed-in Claude Code CLI. GitHub PRs also
-require a signed-in `gh` CLI. A separate `jury` installation is optional: the plugin
-uses it if available, or runs `npx -y @agentsdance/codejury` otherwise.
-
-**1. Install from your terminal:**
+Install from your **terminal** and start a new Claude Code session:
 
 ```sh
 claude plugin marketplace add agentsdance/codejury
 claude plugin install codejury@codejury
+claude
 ```
 
-**2. Start a new Claude Code session** by running `claude` in your terminal.
-
-**3. Enter this at the Claude Code prompt**, replacing the URL with your PR:
+At the **Claude Code prompt**, enter your PR URL:
 
 ```text
 /codejury:review https://github.com/owner/repo/pull/123
 ```
 
-Claude starts a separate Claude reviewer and Claude judge, shares the browser console
-link, and summarizes the result. The reviewer reports findings; the judge can edit
-files and create commits. Both roles always use Claude, overriding supplied and saved
-role choices for new and resumed runs.
-
-**Pushing is off by default.** Add `--push` to allow pushes to the PR branch.
-Single-PR checkouts are temporary and their unpushed fixes are removed during cleanup.
-The console stays open after review; add `--web=false` to skip it. A PR URL is required.
-
-See the [step-by-step plugin guide](plugin/README.md) for setup checks, examples,
-saved results, troubleshooting, and the separate manual-triage skill.
+Claude reviews and fixes the PR in separate reviewer and judge sessions, and opens
+a browser console. Pushing is off by default; add `--push` to push fixes.
+Unpushed fixes in temporary single-PR checkouts are removed during cleanup.
+See the [plugin guide](plugin/README.md) for prerequisites, options, and updates.
 
 ## Screenshots
 
