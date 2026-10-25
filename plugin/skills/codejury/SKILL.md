@@ -23,6 +23,13 @@ checks npm's global CodeJury installation and installs globally if missing; it s
 on errors instead of using npx or a private copy. Use this runner in place of `jury`
 in the examples below. Keep the same `--dir` and `--run` for saved findings.
 
+The `version` check also looks for a newer stable CLI on npm. If an update is
+available, show both versions and ask whether to **upgrade globally** or **keep
+the current version**. Run the printed npm install command only after the user
+agrees, then rerun `version` to verify. If they decline or explicitly chose a
+version, keep it. An unavailable update check does not block the operation.
+Do not repeat this prompt during the same operation.
+
 ## The loop
 
 ```

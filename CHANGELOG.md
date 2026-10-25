@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Have both plugins check the global CLI against npm's latest stable version at
+  startup and offer an upgrade before continuing. Existing installations change
+  only after the user agrees; offline update checks keep the current CLI usable.
+
 ## 0.10.0 — 2026-10-25
 
 - Make Codex and Claude plugins reuse the global CodeJury CLI, install globally

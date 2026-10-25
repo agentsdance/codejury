@@ -18,6 +18,38 @@ function npm(args, capture = false) {
   return capture ? result.stdout.trim() : undefined;
 }
 
+function versionParts(version) {
+  return typeof version === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(version);
+}
+
+function checkForUpdate(currentVersion) {
+  // The host runs `version` once before the operation and presents the choice
+  // in chat. Never wait for terminal input or upgrade an existing CLI here.
+  try {
+    const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
+      'view', '@agentsdance/codejury@latest', 'version', '--json', '--prefer-online',
+      '--fetch-retries=0', '--fetch-timeout=2000',
+    ], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 3000,
+      maxBuffer: 16 * 1024, shell: process.platform === 'win32',
+    });
+    if (result.error || result.status !== 0) throw new Error('Registry unavailable');
+    const latestVersion = JSON.parse(result.stdout);
+    const current = versionParts(currentVersion);
+    const latest = versionParts(latestVersion);
+    if (!current || !latest || latest[4]) throw new Error('Invalid stable version');
+    const difference = [1, 2, 3].find(index => BigInt(latest[index]) !== BigInt(current[index]));
+    const newer = difference ? BigInt(latest[difference]) > BigInt(current[difference]) : Boolean(current[4]);
+    if (newer) {
+      console.error(`CodeJury update available: ${currentVersion} -> ${latestVersion}`);
+      console.error('Upgrade the global CLI? Ask the user before upgrading; they can keep the current version.');
+      console.error(`To upgrade: npm install --global @agentsdance/codejury@${latestVersion}`);
+    }
+  } catch {
+    console.error(`Update check unavailable; continuing with global CodeJury ${currentVersion}.`);
+  }
+}
+
 const globalRoot = npm(['root', '--global'], true);
 if (!path.isAbsolute(globalRoot)) throw new Error('npm did not return an absolute global package directory.');
 const packageRoot = path.join(globalRoot, '@agentsdance', 'codejury');
@@ -37,6 +69,7 @@ if (!metadata) {
 }
 if (!metadata) throw new Error(`Global CodeJury installation is incomplete at ${packageRoot}. Run npm install --global @agentsdance/codejury@latest and retry.`);
 console.error(`Using global CodeJury ${metadata.version} at ${entry}`);
+if (['version', '--version', '-v'].includes(process.argv[2])) checkForUpdate(metadata.version);
 
 // Import in this process so cancellation reaches the CLI and its agent cleanup.
 process.argv = [process.execPath, entry, ...process.argv.slice(2)];

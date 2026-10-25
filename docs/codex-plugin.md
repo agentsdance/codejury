@@ -16,7 +16,8 @@ In a new Codex chat, select **CodeJury** and ask:
 
 Setup checks prerequisites without starting a review. The plugin uses your global
 CodeJury CLI, or installs it globally with `npm install --global @agentsdance/codejury@latest`
-if missing. Agent installation and login are separate.
+if missing. If a newer stable CLI is available, it asks whether to upgrade or
+keep your current version. Agent installation and login are separate.
 
 ## Review a PR
 
@@ -44,6 +45,11 @@ The plugin source is in [`plugins/codejury`](../plugins/codejury). Its launcher
 checks npm's global package directory and reuses CodeJury there. If missing, it
 installs globally; it never creates a separate plugin CLI installation. The plugin
 and CLI have separate versions.
+
+The startup `version` check compares the installed CLI with npm's `latest` stable
+release. The host asks before upgrading an existing CLI; ordinary CLI commands
+do not repeat the lookup. The registry check times out after three seconds, and
+offline or invalid responses leave the installed CLI usable.
 
 Build the submission archive from the repository root:
 

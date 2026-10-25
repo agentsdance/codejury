@@ -29,6 +29,13 @@ version and absolute path. Installation errors stop the run; do not use npx or a
 private CLI copy. If the user requests a different version, install that version
 globally and inspect its help.
 
+Run `version` once before starting or resuming a review. It also checks npm for a
+newer stable CLI. If an update is available, show both versions and ask whether
+to **upgrade globally** or **keep the current version**. Run the printed npm
+install command only after the user agrees, then rerun `version` to verify.
+If they decline or explicitly chose a version, keep it. An unavailable update
+check does not block the review. Do not repeat this prompt during the same operation.
+
 Check Node.js 20.10+, npm, Git, and the requested agent CLIs. For GitHub PRs,
 check GitHub CLI authentication. Run `jury agents` to discover executables;
 this does not verify provider login or quota. Fix missing prerequisites before
