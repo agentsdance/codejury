@@ -4,7 +4,8 @@ Review and fix pull requests with a Claude reviewer and a separate Claude judge.
 
 You need Node.js 20.10+, npm, Git, and a signed-in Claude Code CLI. GitHub PRs
 also need a signed-in `gh` CLI. The plugin checks your global `jury` installation
-and installs it globally if missing.
+and installs it globally if missing. If a newer stable CLI is available, it asks
+whether to upgrade or keep your current version.
 
 ## Install
 

@@ -32,6 +32,13 @@ CLI path, and stops on installation errors. Node.js 20.10+ and npm are required.
 Use this runner in place of `jury` in every command below, including `agents`,
 `runs`, and reopening the console. Never use npx or install a private CLI copy.
 
+The `version` check also looks for a newer stable CLI on npm. If an update is
+available, show both versions and ask whether to **upgrade globally** or **keep
+the current version** before starting the review. Run the printed npm install
+command only after the user agrees, then rerun `version` to verify. If they
+decline or explicitly chose a version, keep it. An unavailable update check does
+not block the review. Do not repeat this prompt during the same operation.
+
 ## 3. Build the command
 
 Start from `node "<plugin-root>/scripts/jury.mjs" review`. Normalize the role flags as
@@ -69,10 +76,11 @@ missing or unauthenticated agent CLI, a missing `gh` login for a GitHub URL), sh
 the fix it names; `jury agents` lists which agent CLIs are installed.
 
 Older CLIs, including 0.8.1, reject a reviewer that is also the judge. If that specific error
-appears, explain that the global CLI is too old. Upgrade it with
-`npm install --global @agentsdance/codejury@latest`, then retry once through the
-same runner with the same normalized arguments. Honor an explicitly requested
-CLI version instead of upgrading it silently. If the upgrade or retry fails,
+appears, explain that the global CLI is too old. Offer
+`npm install --global @agentsdance/codejury@latest`; only after the user agrees,
+upgrade and retry once through the same runner with the same normalized arguments.
+If they already declined the startup offer or explicitly chose the old version,
+explain the incompatibility and stop without asking again. If the upgrade or retry fails,
 report the error and stop. Do not use npx, a private install, or another agent
 as a fallback. Disabled Claude or missing authentication still needs to be fixed.
 

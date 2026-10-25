@@ -12,6 +12,13 @@ Installation errors stop the operation; do not use npx or a private CLI copy.
 Respect an explicitly requested CLI version, install it globally if needed,
 and check its help for supported flags.
 
+Run `version` once before inspecting results. It checks npm for a newer stable
+CLI. If an update is available, show both versions and ask whether to **upgrade
+globally** or **keep the current version**. Run the printed npm install command
+only after the user agrees, then rerun `version` to verify. If they decline or
+explicitly chose a version, keep it. An unavailable update check does not block
+reading saved results. Do not repeat this prompt during the same operation.
+
 1. Identify the original state root. URL reviews default to `~/.jury`; use
    `--dir ""` to select it explicitly. A local-checkout review stores `runs/`
    under that checkout. Do not assume the current repository owns a URL run.
