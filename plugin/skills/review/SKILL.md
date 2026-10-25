@@ -24,14 +24,17 @@ or start a local review. Flags alone, including `--dir` or `--resume`, do not su
 
 ## 2. Find the CLI
 
-Use `jury` when `command -v jury` finds it. Otherwise run it without installing, as
-`npx -y @agentsdance/codejury`. It needs Node.js 20.10 or newer and npm; if neither works, explain
-which prerequisite is missing and how to install it. Use the same CLI prefix for every command
-below, including `agents`, `runs`, and reopening the console.
+Resolve `<plugin-root>` as two directories above this skill folder. Run
+`node "<plugin-root>/scripts/jury.mjs" version` to check the global CLI. The runner
+uses `npm root --global` to find the installed CodeJury package; if missing, it
+installs the latest stable release globally. It reports the version and absolute
+CLI path, and stops on installation errors. Node.js 20.10+ and npm are required.
+Use this runner in place of `jury` in every command below, including `agents`,
+`runs`, and reopening the console. Never use npx or install a private CLI copy.
 
 ## 3. Build the command
 
-Start from `jury review` (or `npx -y @agentsdance/codejury review`). Normalize the role flags as
+Start from `node "<plugin-root>/scripts/jury.mjs" review`. Normalize the role flags as
 described below, preserve the remaining arguments, and quote each value safely for the shell.
 Do not evaluate argument text as shell code.
 
@@ -66,12 +69,12 @@ missing or unauthenticated agent CLI, a missing `gh` login for a GitHub URL), sh
 the fix it names; `jury agents` lists which agent CLIs are installed.
 
 Older CLIs, including 0.8.1, reject a reviewer that is also the judge. If that specific error
-appears, explain that the installed CLI is too old and retry once using
-`npx -y --package=git+https://github.com/agentsdance/codejury.git jury` with the same normalized
-arguments. The repository CLI supports separate sessions for both roles. Use that CLI prefix
-for subsequent commands too. If the retry fails, show the error; do not substitute another agent
-or keep retrying. Explicitly disabled Claude or missing authentication still requires fixing
-that prerequisite.
+appears, explain that the global CLI is too old. Upgrade it with
+`npm install --global @agentsdance/codejury@latest`, then retry once through the
+same runner with the same normalized arguments. Honor an explicitly requested
+CLI version instead of upgrading it silently. If the upgrade or retry fails,
+report the error and stop. Do not use npx, a private install, or another agent
+as a fallback. Disabled Claude or missing authentication still needs to be fixed.
 
 Monitor the background output while the review runs. With the console enabled, do not rely on a
 background-task completion notification: the server keeps the process alive after review ends.

@@ -42,10 +42,11 @@ test("every plugin skill has a name and description, and the review skill uses r
   assert.match(review, /^disable-model-invocation: true$/m);
   const help = execFileSync(process.execPath, [path.join(root, "bin/jury.js"), "help", "review"], { encoding: "utf8" });
   for (const flag of review.match(/--[a-z][\w-]*/g)) {
-    if (flag === "--package") continue; // npm's repository-CLI fallback selector
+    if (flag === "--global") continue; // npm's global CLI installation
     // Reviewer aliases include a supported legacy option omitted from public help.
     assert.ok(help.includes(`${flag} `) || Object.hasOwn(reviewerOptions, flag.slice(2)), `jury review has no ${flag}`);
   }
   assert.equal(json("package.json").name, "@agentsdance/codejury");
-  assert.match(review, /npx -y @agentsdance\/codejury/);
+  assert.match(review, /npm install --global @agentsdance\/codejury@latest/);
+  assert.ok(existsSync(path.join(root, "plugin/scripts/jury.mjs")));
 });

@@ -23,10 +23,11 @@ original PR link from the saved run or conversation.
 
 Resolve `<plugin-root>` as two directories above this skill folder. Use
 `node "<plugin-root>/scripts/jury.mjs"` followed by the command and its arguments.
-The launcher first uses an installed CodeJury CLI available as `jury` or `codejury`
-on PATH. If none is found, it downloads the fallback release into
-`~/.cache/codejury/plugin-cli/`. Run `version` to report the selected CLI version.
-If the user requests a different version, use that version and inspect its help.
+The launcher checks npm's global CodeJury installation and reuses it. If missing,
+it installs the latest stable release globally. Run `version` to report the CLI
+version and absolute path. Installation errors stop the run; do not use npx or a
+private CLI copy. If the user requests a different version, install that version
+globally and inspect its help.
 
 Check Node.js 20.10+, npm, Git, and the requested agent CLIs. For GitHub PRs,
 check GitHub CLI authentication. Run `jury agents` to discover executables;

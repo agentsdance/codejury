@@ -134,25 +134,24 @@ for prerequisites, agent selection, and saved reviews.
 
 ## Claude Code plugin
 
-Code Jury is also a [Claude Code plugin](https://code.claude.com/docs/en/plugins). Add this
-repository as a plugin marketplace and install it:
+Install from your **terminal** and start a new Claude Code session:
 
 ```sh
 claude plugin marketplace add agentsdance/codejury
 claude plugin install codejury@codejury
+claude
 ```
 
-In a session, `/codejury:review <pr-url>` runs `jury review` (or `npx @agentsdance/codejury`
-when `jury` is not installed). In Claude Code it always sets `--judge claude --reviewer claude`,
-overriding supplied and saved role choices for new and resumed runs. The two roles use separate
-sessions. Other flags take precedence over the `--web=true` and `--push=false` defaults.
-Claude shares the web console link, summarizes the findings and verdicts when the review ends,
-and leaves the console running. Pass `--web=false` to disable it. The plugin requires a PR URL;
-if omitted, Claude asks for it before starting. The plugin also ships the
-`codejury` skill for running the review loop by hand. Agent CLIs are still installed
-and authenticated separately. `--push=false` disables pushing; it does not make the review read-only.
-Single-PR checkouts are temporary and their unpushed fixes are removed during cleanup.
-See the [plugin guide](plugin/README.md) for prerequisites, updates, and local installation checks.
+At the **Claude Code prompt**, enter your PR URL:
+
+```text
+/codejury:review https://github.com/owner/repo/pull/123
+```
+
+Claude reviews and fixes the PR in separate reviewer and judge sessions, and opens
+a browser console. Pushing is off by default; add `--push` to push fixes.
+Unpushed fixes in temporary single-PR checkouts are removed during cleanup.
+See the [plugin guide](plugin/README.md) for prerequisites, options, and updates.
 
 ## Screenshots
 

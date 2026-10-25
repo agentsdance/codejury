@@ -17,8 +17,11 @@ The CLI owns the mechanics; you own the judgement. See [DESIGN.md](https://githu
 For the automated loop, use `/codejury:review`; it always selects Claude as both judge and jury
 in separate sessions, and only the judge owns fixes. The guidance
 below is for explicitly requested manual review and triage. Do not edit a checkout while an
-automated Jury run is using it. In CLI examples, substitute `npx -y @agentsdance/codejury` for
-`jury` if it is not installed, and keep the same `--dir` and `--run` when working with saved findings.
+automated Jury run is using it. Resolve `<plugin-root>` as two directories above this
+skill folder and run `node "<plugin-root>/scripts/jury.mjs" version` first. The runner
+checks npm's global CodeJury installation and installs globally if missing; it stops
+on errors instead of using npx or a private copy. Use this runner in place of `jury`
+in the examples below. Keep the same `--dir` and `--run` for saved findings.
 
 ## The loop
 

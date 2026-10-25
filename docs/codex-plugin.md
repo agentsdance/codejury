@@ -15,8 +15,8 @@ In a new Codex chat, select **CodeJury** and ask:
 > Set up CodeJury and check which agents I can use.
 
 Setup checks prerequisites without starting a review. The plugin uses your global
-CodeJury CLI if available on PATH, or installs its fallback release automatically.
-Agent installation and login are separate.
+CodeJury CLI, or installs it globally with `npm install --global @agentsdance/codejury@latest`
+if missing. Agent installation and login are separate.
 
 ## Review a PR
 
@@ -41,8 +41,9 @@ To continue or inspect a saved review, ask:
 ## Development and packaging
 
 The plugin source is in [`plugins/codejury`](../plugins/codejury). Its launcher
-checks for an installed `jury` or `codejury` on PATH before downloading its fallback
-CLI release from npm. The plugin and CLI have separate versions.
+checks npm's global package directory and reuses CodeJury there. If missing, it
+installs globally; it never creates a separate plugin CLI installation. The plugin
+and CLI have separate versions.
 
 Build the submission archive from the repository root:
 

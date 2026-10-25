@@ -137,7 +137,7 @@ claude plugin install codejury@codejury
 ```
 
 在会话中运行 `/codejury:review <pr-url>`，插件会调用 `jury review`；
-如果没有安装 `jury`，则使用 `npx @agentsdance/codejury`。
+插件先检查全局 `jury`；未安装时通过 npm 全局安装，不使用独立目录或临时副本。
 在 Claude Code 中，插件始终设置 `--judge claude --reviewer claude`，
 对新任务和恢复的任务都会覆盖传入或已保存的角色选择。两种角色使用独立会话。
 其他显式传入的参数优先于默认的 `--web=true` 和 `--push=false`。
