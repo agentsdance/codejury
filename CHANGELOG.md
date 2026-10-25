@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Make Codex and Claude plugins reuse the global CodeJury CLI, install globally
+  when missing, and stop on setup errors instead of using private or npx copies.
+
 - Preserve single-PR push preferences on resume, and keep fixes local when an
   older run has no saved preference unless pushing is explicitly enabled.
 - Scope agent temporary files and default Go caches to owned invocation directories,

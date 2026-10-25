@@ -24,12 +24,12 @@ selected, without starting a review.
    node "<plugin-root>/scripts/jury.mjs" agents
    ```
 
-   The launcher first checks for an installed CodeJury CLI available as `jury`
-   or `codejury` on PATH and uses it. Otherwise, it downloads the fallback
-   release into `~/.cache/codejury/plugin-cli/`. Report the selected CLI version.
-   It does not replace or upgrade the user's global installation.
-   An explicitly requested CLI version takes precedence; check its help before
-   using version-dependent options.
+   The launcher checks `npm root --global` for CodeJury and reuses that global
+   installation. If missing, it runs `npm install --global @agentsdance/codejury@latest`.
+   It reports the version and absolute CLI path. Installation errors stop setup;
+   never use npx, a custom prefix, or a plugin-private CLI copy as a fallback.
+   Existing versions are not upgraded automatically. For a requested version,
+   install that version globally and check its help before using its options.
 3. `jury agents` checks executable availability, not authentication or quota.
    Report these separately. Consult the CLI's built-in install hints for missing
    agents. Let the user complete provider sign-in; do not collect credentials

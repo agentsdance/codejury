@@ -1,74 +1,43 @@
-// Reuse an installed CodeJury CLI, or download the fallback release.
+// Both plugins use npm's global CodeJury installation. Keep the two shipped runners in sync.
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const version = '0.9.0';
 const [major, minor] = process.versions.node.split('.').map(Number);
 if (major < 20 || (major === 20 && minor < 10)) throw new Error('CodeJury requires Node.js 20.10+.');
 
-function installedCli() {
-  for (const directory of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
-    for (const command of ['jury', 'codejury']) {
-      const executable = path.resolve(directory, command + (process.platform === 'win32' ? '.cmd' : ''));
-      try {
-        accessSync(executable, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
-        const target = realpathSync(executable);
-        // npm uses symlinks on POSIX and .cmd shims beside node_modules on Windows.
-        const packageRoot = process.platform === 'win32'
-          ? path.join(directory, 'node_modules', '@agentsdance', 'codejury')
-          : path.dirname(path.dirname(target));
-        const metadata = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
-        const entry = realpathSync(path.join(packageRoot, 'bin', 'jury.js'));
-        if (metadata.name === '@agentsdance/codejury' &&
-            (process.platform === 'win32' || entry === target)) return entry;
-      } catch { /* No usable CodeJury package behind this executable. */ }
-    }
+function npm(args, capture = false) {
+  const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
+    encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
+    shell: process.platform === 'win32',
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`npm ${args.join(' ')} failed (${result.error?.message ?? result.status ?? result.signal}). Fix npm's global installation and retry.`, { cause: result.error });
   }
-  return null;
+  return capture ? result.stdout.trim() : undefined;
 }
 
-function cachedCli() {
-  const cache = path.resolve(process.env.CODEJURY_PLUGIN_CACHE || path.join(homedir(), '.cache', 'codejury', 'plugin-cli'));
-  const install = path.join(cache, version);
-  const packageRoot = path.join(install, 'node_modules', '@agentsdance', 'codejury');
-  const entry = path.join(packageRoot, 'bin', 'jury.js');
-  function installed() {
-    try {
-      const metadata = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
-      return metadata.name === '@agentsdance/codejury' && metadata.version === version && existsSync(entry);
-    } catch { return false; }
-  }
-  let ready = installed();
-  if (!ready && existsSync(install)) {
-    // A concurrent launcher may have published a complete cache after our miss.
-    ready = installed();
-    if (!ready) throw new Error(`Incomplete CLI cache at ${install}; move it aside and retry.`);
-  }
-  if (!ready) {
-    mkdirSync(cache, { recursive: true });
-    const staging = mkdtempSync(path.join(cache, '.install-'));
-    try {
-      console.error(`Downloading CodeJury ${version} from npm into ${cache}`);
-      // cwd is the staging directory; keep cache paths out of the Windows shell command.
-      const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
-        'install', '--prefix', '.', '--no-save', '--package-lock=false',
-        '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org',
-        `@agentsdance/codejury@${version}`,
-      ], { cwd: staging, stdio: 'inherit', shell: process.platform === 'win32' });
-      if (result.error) throw result.error;
-      if (result.status !== 0) throw new Error(`npm installation failed (${result.status ?? result.signal}).`);
-      try { renameSync(staging, install); }
-      catch (error) { if (!installed()) throw error; } // Another concurrent invocation may have installed it.
-    } finally { rmSync(staging, { recursive: true, force: true }); }
-  }
-  if (!installed()) throw new Error(`Expected CodeJury ${version} at ${install}.`);
-  return entry;
+const globalRoot = npm(['root', '--global'], true);
+if (!path.isAbsolute(globalRoot)) throw new Error('npm did not return an absolute global package directory.');
+const packageRoot = path.join(globalRoot, '@agentsdance', 'codejury');
+const entry = path.join(packageRoot, 'bin', 'jury.js');
+function installed() {
+  try {
+    const metadata = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
+    return metadata.name === '@agentsdance/codejury' && existsSync(entry) ? metadata : null;
+  } catch { return null; }
 }
 
-const entry = installedCli() || cachedCli();
+let metadata = installed();
+if (!metadata) {
+  console.error('Installing CodeJury globally with npm.');
+  npm(['install', '--global', '--ignore-scripts', '--no-audit', '--no-fund', '@agentsdance/codejury@latest']);
+  metadata = installed();
+}
+if (!metadata) throw new Error(`Global CodeJury installation is incomplete at ${packageRoot}. Run npm install --global @agentsdance/codejury@latest and retry.`);
+console.error(`Using global CodeJury ${metadata.version} at ${entry}`);
+
 // Import in this process so cancellation reaches the CLI and its agent cleanup.
 process.argv = [process.execPath, entry, ...process.argv.slice(2)];
 await import(pathToFileURL(entry).href);
