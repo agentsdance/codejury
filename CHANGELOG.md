@@ -2,9 +2,11 @@
 
 ## Unreleased
 
+## 0.10.0 — 2026-10-25
+
 - Make Codex and Claude plugins reuse the global CodeJury CLI, install globally
   when missing, and stop on setup errors instead of using private or npx copies.
-
+- Ship Codex plugin 0.1.4, simplify both plugin guides, and add a Simplified Chinese README.
 - Preserve single-PR push preferences on resume, and keep fixes local when an
   older run has no saved preference unless pushing is explicitly enabled.
 - Scope agent temporary files and default Go caches to owned invocation directories,
